@@ -119,10 +119,10 @@ var (
 	clientKeychain = new(keychain)
 	clientPassword = password("tiger")
 	serverConfig   = &ServerConfig{
-		PasswordCallback: func(user, pass string) bool {
+		PasswordCallback: func(conn *ServerConn, user, pass string) bool {
 			return user == "testuser" && pass == string(clientPassword)
 		},
-		PublicKeyCallback: func(user, algo string, pubkey []byte) bool {
+		PublicKeyCallback: func(conn *ServerConn, user, algo string, pubkey []byte) bool {
 			key := clientKeychain.keys[0].(*rsa.PrivateKey).PublicKey
 			expected := []byte(serializePublickey(key))
 			algoname := algoName(key)

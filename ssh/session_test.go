@@ -18,7 +18,7 @@ type serverType func(*channel)
 // dial constructs a new test server and returns a *ClientConn.
 func dial(handler serverType, t *testing.T) *ClientConn {
 	pw := password("tiger")
-	serverConfig.PasswordCallback = func(user, pass string) bool {
+	serverConfig.PasswordCallback = func(conn *ServerConn, user, pass string) bool {
 		return user == "testuser" && pass == string(pw)
 	}
 	serverConfig.PublicKeyCallback = nil
