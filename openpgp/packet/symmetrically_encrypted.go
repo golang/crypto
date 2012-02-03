@@ -63,13 +63,13 @@ func (se *SymmetricallyEncrypted) Decrypt(c CipherFunction, key []byte) (io.Read
 		return nil, errors.InvalidArgumentError("can't try ciphers with different block lengths")
 	}
 
-	ocfbResync := cipher.OCFBResync
+	ocfbResync := OCFBResync
 	if se.MDC {
 		// MDC packets use a different form of OCFB mode.
-		ocfbResync = cipher.OCFBNoResync
+		ocfbResync = OCFBNoResync
 	}
 
-	s := cipher.NewOCFBDecrypter(c.new(key), se.prefix, ocfbResync)
+	s := NewOCFBDecrypter(c.new(key), se.prefix, ocfbResync)
 	if s == nil {
 		return nil, errors.ErrKeyIncorrect
 	}
@@ -274,7 +274,7 @@ func SerializeSymmetricallyEncrypted(w io.Writer, rand io.Reader, c CipherFuncti
 	if err != nil {
 		return
 	}
-	s, prefix := cipher.NewOCFBEncrypter(block, iv, cipher.OCFBNoResync)
+	s, prefix := NewOCFBEncrypter(block, iv, OCFBNoResync)
 	_, err = ciphertext.Write(prefix)
 	if err != nil {
 		return
