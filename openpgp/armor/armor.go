@@ -155,7 +155,7 @@ func (r *openpgpReader) Read(p []byte) (n int, err error) {
 // given Reader is not usable after calling this function: an arbitrary amount
 // of data may have been read past the end of the block.
 func Decode(in io.Reader) (p *Block, err error) {
-	r, _ := bufio.NewReaderSize(in, 100)
+	r := bufio.NewReaderSize(in, 100)
 	var line []byte
 	ignoreNext := false
 
