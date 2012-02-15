@@ -153,7 +153,7 @@ func ParseResponse(bytes []byte) (*Response, error) {
 	}
 
 	if ret.Certificate.PublicKeyAlgorithm != x509.RSA || !basicResp.SignatureAlgorithm.Algorithm.Equal(idSHA1WithRSA) {
-		return nil, x509.UnsupportedAlgorithmError{}
+		return nil, x509.ErrUnsupportedAlgorithm
 	}
 
 	hashType := crypto.SHA1
