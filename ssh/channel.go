@@ -224,22 +224,43 @@ func (c *channel) Read(data []byte) (n int, err error) {
 	panic("unreachable")
 }
 
-func (c *channel) Write(data []byte) (n int, err error) {
-	for len(data) > 0 {
-		c.lock.Lock()
+// getWindowSpace takes, at most, max bytes of space from the peer's window. It
+// returns the number of bytes actually reserved.
+func (c *channel) getWindowSpace(max uint32) (uint32, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	for {
 		if c.dead || c.weClosed {
 			return 0, io.EOF
 		}
 
-		if c.theirWindow == 0 {
-			c.cond.Wait()
-			continue
+		if c.theirWindow > 0 {
+			break
 		}
-		c.lock.Unlock()
+
+		c.cond.Wait()
+	}
+
+	taken := c.theirWindow
+	if taken > max {
+		taken = max
+	}
+
+	c.theirWindow -= taken
+	return taken, nil
+}
+
+func (c *channel) Write(data []byte) (n int, err error) {
+	for len(data) > 0 {
+		var space uint32
+		if space, err = c.getWindowSpace(uint32(len(data))); err != nil {
+			return 0, err
+		}
 
 		todo := data
-		if uint32(len(todo)) > c.theirWindow {
-			todo = todo[:c.theirWindow]
+		if uint32(len(todo)) > space {
+			todo = todo[:space]
 		}
 
 		packet := make([]byte, 1+4+4+len(todo))
