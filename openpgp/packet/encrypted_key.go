@@ -7,7 +7,6 @@ package packet
 import (
 	"code.google.com/p/go.crypto/openpgp/elgamal"
 	"code.google.com/p/go.crypto/openpgp/errors"
-	"crypto/rand"
 	"crypto/rsa"
 	"encoding/binary"
 	"io"
@@ -63,7 +62,8 @@ func checksumKeyMaterial(key []byte) uint16 {
 
 // Decrypt decrypts an encrypted session key with the given private key. The
 // private key must have been decrypted first.
-func (e *EncryptedKey) Decrypt(priv *PrivateKey) error {
+// If config is nil, sensible defaults will be used.
+func (e *EncryptedKey) Decrypt(priv *PrivateKey, config *Config) error {
 	var err error
 	var b []byte
 
@@ -71,7 +71,7 @@ func (e *EncryptedKey) Decrypt(priv *PrivateKey) error {
 	// padding oracle attacks.
 	switch priv.PubKeyAlgo {
 	case PubKeyAlgoRSA, PubKeyAlgoRSAEncryptOnly:
-		b, err = rsa.DecryptPKCS1v15(rand.Reader, priv.PrivateKey.(*rsa.PrivateKey), e.encryptedMPI1)
+		b, err = rsa.DecryptPKCS1v15(config.Random(), priv.PrivateKey.(*rsa.PrivateKey), e.encryptedMPI1)
 	case PubKeyAlgoElGamal:
 		c1 := new(big.Int).SetBytes(e.encryptedMPI1)
 		c2 := new(big.Int).SetBytes(e.encryptedMPI2)
@@ -97,7 +97,8 @@ func (e *EncryptedKey) Decrypt(priv *PrivateKey) error {
 
 // SerializeEncryptedKey serializes an encrypted key packet to w that contains
 // key, encrypted to pub.
-func SerializeEncryptedKey(w io.Writer, rand io.Reader, pub *PublicKey, cipherFunc CipherFunction, key []byte) error {
+// If config is nil, sensible defaults will be used.
+func SerializeEncryptedKey(w io.Writer, pub *PublicKey, cipherFunc CipherFunction, key []byte, config *Config) error {
 	var buf [10]byte
 	buf[0] = encryptedKeyVersion
 	binary.BigEndian.PutUint64(buf[1:9], pub.KeyId)
@@ -112,9 +113,9 @@ func SerializeEncryptedKey(w io.Writer, rand io.Reader, pub *PublicKey, cipherFu
 
 	switch pub.PubKeyAlgo {
 	case PubKeyAlgoRSA, PubKeyAlgoRSAEncryptOnly:
-		return serializeEncryptedKeyRSA(w, rand, buf, pub.PublicKey.(*rsa.PublicKey), keyBlock)
+		return serializeEncryptedKeyRSA(w, config.Random(), buf, pub.PublicKey.(*rsa.PublicKey), keyBlock)
 	case PubKeyAlgoElGamal:
-		return serializeEncryptedKeyElGamal(w, rand, buf, pub.PublicKey.(*elgamal.PublicKey), keyBlock)
+		return serializeEncryptedKeyElGamal(w, config.Random(), buf, pub.PublicKey.(*elgamal.PublicKey), keyBlock)
 	case PubKeyAlgoDSA, PubKeyAlgoRSASignOnly:
 		return errors.InvalidArgumentError("cannot encrypt to public key of type " + strconv.Itoa(int(pub.PubKeyAlgo)))
 	}

@@ -80,7 +80,8 @@ type keyEnvelopePair struct {
 // ReadMessage parses an OpenPGP message that may be signed and/or encrypted.
 // The given KeyRing should contain both public keys (for signature
 // verification) and, possibly encrypted, private keys for decrypting.
-func ReadMessage(r io.Reader, keyring KeyRing, prompt PromptFunction) (md *MessageDetails, err error) {
+// If config is nil, sensible defaults will be used.
+func ReadMessage(r io.Reader, keyring KeyRing, prompt PromptFunction, config *packet.Config) (md *MessageDetails, err error) {
 	var p packet.Packet
 
 	var symKeys []*packet.SymmetricKeyEncrypted
@@ -155,7 +156,7 @@ FindKey:
 			}
 			if !pk.key.PrivateKey.Encrypted {
 				if len(pk.encryptedKey.Key) == 0 {
-					pk.encryptedKey.Decrypt(pk.key.PrivateKey)
+					pk.encryptedKey.Decrypt(pk.key.PrivateKey, config)
 				}
 				if len(pk.encryptedKey.Key) == 0 {
 					continue

@@ -8,11 +8,8 @@ import (
 	"code.google.com/p/go.crypto/openpgp/armor"
 	"code.google.com/p/go.crypto/openpgp/errors"
 	"code.google.com/p/go.crypto/openpgp/packet"
-	"crypto"
-	"crypto/rand"
 	"crypto/rsa"
 	"io"
-	"time"
 )
 
 // PublicKeyType is the armor type for a PGP public key.
@@ -383,16 +380,19 @@ const defaultRSAKeyBits = 2048
 // NewEntity returns an Entity that contains a fresh RSA/RSA keypair with a
 // single identity composed of the given full name, comment and email, any of
 // which may be empty but must not contain any of "()<>\x00".
-func NewEntity(rand io.Reader, currentTime time.Time, name, comment, email string) (*Entity, error) {
+// If config is nil, sensible defaults will be used.
+func NewEntity(name, comment, email string, config *packet.Config) (*Entity, error) {
+	currentTime := config.Now()
+
 	uid := packet.NewUserId(name, comment, email)
 	if uid == nil {
 		return nil, errors.InvalidArgumentError("user id field contained invalid characters")
 	}
-	signingPriv, err := rsa.GenerateKey(rand, defaultRSAKeyBits)
+	signingPriv, err := rsa.GenerateKey(config.Random(), defaultRSAKeyBits)
 	if err != nil {
 		return nil, err
 	}
-	encryptingPriv, err := rsa.GenerateKey(rand, defaultRSAKeyBits)
+	encryptingPriv, err := rsa.GenerateKey(config.Random(), defaultRSAKeyBits)
 	if err != nil {
 		return nil, err
 	}
@@ -410,7 +410,7 @@ func NewEntity(rand io.Reader, currentTime time.Time, name, comment, email strin
 			CreationTime: currentTime,
 			SigType:      packet.SigTypePositiveCert,
 			PubKeyAlgo:   packet.PubKeyAlgoRSA,
-			Hash:         crypto.SHA256,
+			Hash:         config.Hash(),
 			IsPrimaryId:  &isPrimaryId,
 			FlagsValid:   true,
 			FlagSign:     true,
@@ -427,7 +427,7 @@ func NewEntity(rand io.Reader, currentTime time.Time, name, comment, email strin
 			CreationTime:              currentTime,
 			SigType:                   packet.SigTypeSubkeyBinding,
 			PubKeyAlgo:                packet.PubKeyAlgoRSA,
-			Hash:                      crypto.SHA256,
+			Hash:                      config.Hash(),
 			FlagsValid:                true,
 			FlagEncryptStorage:        true,
 			FlagEncryptCommunications: true,
@@ -443,7 +443,8 @@ func NewEntity(rand io.Reader, currentTime time.Time, name, comment, email strin
 // SerializePrivate serializes an Entity, including private key material, to
 // the given Writer. For now, it must only be used on an Entity returned from
 // NewEntity.
-func (e *Entity) SerializePrivate(w io.Writer) (err error) {
+// If config is nil, sensible defaults will be used.
+func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error) {
 	err = e.PrivateKey.Serialize(w)
 	if err != nil {
 		return
@@ -453,7 +454,7 @@ func (e *Entity) SerializePrivate(w io.Writer) (err error) {
 		if err != nil {
 			return
 		}
-		err = ident.SelfSignature.SignUserId(rand.Reader, ident.UserId.Id, e.PrimaryKey, e.PrivateKey)
+		err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
 		if err != nil {
 			return
 		}
@@ -467,7 +468,7 @@ func (e *Entity) SerializePrivate(w io.Writer) (err error) {
 		if err != nil {
 			return
 		}
-		err = subkey.Sig.SignKey(rand.Reader, subkey.PublicKey, e.PrivateKey)
+		err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
 		if err != nil {
 			return
 		}
@@ -519,7 +520,8 @@ func (e *Entity) Serialize(w io.Writer) error {
 // associated with e. The provided identity must already be an element of
 // e.Identities and the private key of signer must have been decrypted if
 // necessary.
-func (e *Entity) SignIdentity(identity string, signer *Entity) error {
+// If config is nil, sensible defaults will be used.
+func (e *Entity) SignIdentity(identity string, signer *Entity, config *packet.Config) error {
 	if signer.PrivateKey == nil {
 		return errors.InvalidArgumentError("signing Entity must have a private key")
 	}
@@ -534,11 +536,11 @@ func (e *Entity) SignIdentity(identity string, signer *Entity) error {
 	sig := &packet.Signature{
 		SigType:      packet.SigTypeGenericCert,
 		PubKeyAlgo:   signer.PrivateKey.PubKeyAlgo,
-		Hash:         crypto.SHA256,
-		CreationTime: time.Now(),
+		Hash:         config.Hash(),
+		CreationTime: config.Now(),
 		IssuerKeyId:  &signer.PrivateKey.KeyId,
 	}
-	if err := sig.SignKey(rand.Reader, e.PrimaryKey, signer.PrivateKey); err != nil {
+	if err := sig.SignKey(e.PrimaryKey, signer.PrivateKey, config); err != nil {
 		return err
 	}
 	ident.Signatures = append(ident.Signatures, sig)

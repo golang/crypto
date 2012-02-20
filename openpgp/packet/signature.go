@@ -426,7 +426,8 @@ func (sig *Signature) signPrepareHash(h hash.Hash) (digest []byte, err error) {
 // Sign signs a message with a private key. The hash, h, must contain
 // the hash of the message to be signed and will be mutated by this function.
 // On success, the signature is stored in sig. Call Serialize to write it out.
-func (sig *Signature) Sign(rand io.Reader, h hash.Hash, priv *PrivateKey) (err error) {
+// If config is nil, sensible defaults will be used.
+func (sig *Signature) Sign(h hash.Hash, priv *PrivateKey, config *Config) (err error) {
 	sig.outSubpackets = sig.buildSubpackets()
 	digest, err := sig.signPrepareHash(h)
 	if err != nil {
@@ -435,7 +436,7 @@ func (sig *Signature) Sign(rand io.Reader, h hash.Hash, priv *PrivateKey) (err e
 
 	switch priv.PubKeyAlgo {
 	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly:
-		sig.RSASignature.bytes, err = rsa.SignPKCS1v15(rand, priv.PrivateKey.(*rsa.PrivateKey), sig.Hash, digest)
+		sig.RSASignature.bytes, err = rsa.SignPKCS1v15(config.Random(), priv.PrivateKey.(*rsa.PrivateKey), sig.Hash, digest)
 		sig.RSASignature.bitLength = uint16(8 * len(sig.RSASignature.bytes))
 	case PubKeyAlgoDSA:
 		dsaPriv := priv.PrivateKey.(*dsa.PrivateKey)
@@ -445,7 +446,7 @@ func (sig *Signature) Sign(rand io.Reader, h hash.Hash, priv *PrivateKey) (err e
 		if len(digest) > subgroupSize {
 			digest = digest[:subgroupSize]
 		}
-		r, s, err := dsa.Sign(rand, dsaPriv, digest)
+		r, s, err := dsa.Sign(config.Random(), dsaPriv, digest)
 		if err == nil {
 			sig.DSASigR.bytes = r.Bytes()
 			sig.DSASigR.bitLength = uint16(8 * len(sig.DSASigR.bytes))
@@ -462,22 +463,24 @@ func (sig *Signature) Sign(rand io.Reader, h hash.Hash, priv *PrivateKey) (err e
 // SignUserId computes a signature from priv, asserting that pub is a valid
 // key for the identity id.  On success, the signature is stored in sig. Call
 // Serialize to write it out.
-func (sig *Signature) SignUserId(rand io.Reader, id string, pub *PublicKey, priv *PrivateKey) error {
+// If config is nil, sensible defaults will be used.
+func (sig *Signature) SignUserId(id string, pub *PublicKey, priv *PrivateKey, config *Config) error {
 	h, err := userIdSignatureHash(id, pub, sig)
 	if err != nil {
 		return nil
 	}
-	return sig.Sign(rand, h, priv)
+	return sig.Sign(h, priv, config)
 }
 
 // SignKey computes a signature from priv, asserting that pub is a subkey.  On
 // success, the signature is stored in sig. Call Serialize to write it out.
-func (sig *Signature) SignKey(rand io.Reader, pub *PublicKey, priv *PrivateKey) error {
+// If config is nil, sensible defaults will be used.
+func (sig *Signature) SignKey(pub *PublicKey, priv *PrivateKey, config *Config) error {
 	h, err := keySignatureHash(&priv.PublicKey, pub, sig)
 	if err != nil {
 		return err
 	}
-	return sig.Sign(rand, h, priv)
+	return sig.Sign(h, priv, config)
 }
 
 // Serialize marshals sig to w. SignRSA or SignDSA must have been called first.

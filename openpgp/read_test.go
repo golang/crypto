@@ -104,7 +104,7 @@ func TestGetKeyById(t *testing.T) {
 func checkSignedMessage(t *testing.T, signedHex, expected string) {
 	kring, _ := ReadKeyRing(readerFromHex(testKeys1And2Hex))
 
-	md, err := ReadMessage(readerFromHex(signedHex), kring, nil)
+	md, err := ReadMessage(readerFromHex(signedHex), kring, nil, nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -178,7 +178,7 @@ func TestSignedEncryptedMessage(t *testing.T) {
 			return nil, nil
 		}
 
-		md, err := ReadMessage(readerFromHex(test.messageHex), kring, prompt)
+		md, err := ReadMessage(readerFromHex(test.messageHex), kring, prompt, nil)
 		if err != nil {
 			t.Errorf("#%d: error reading message: %s", i, err)
 			return
@@ -206,7 +206,7 @@ func TestUnspecifiedRecipient(t *testing.T) {
 	expected := "Recipient unspecified\n"
 	kring, _ := ReadKeyRing(readerFromHex(testKeys1And2PrivateHex))
 
-	md, err := ReadMessage(readerFromHex(recipientUnspecifiedHex), kring, nil)
+	md, err := ReadMessage(readerFromHex(recipientUnspecifiedHex), kring, nil, nil)
 	if err != nil {
 		t.Errorf("error reading message: %s", err)
 		return
@@ -236,7 +236,7 @@ func TestSymmetricallyEncrypted(t *testing.T) {
 		return []byte("password"), nil
 	}
 
-	md, err := ReadMessage(readerFromHex(symmetricallyEncryptedCompressedHex), nil, prompt)
+	md, err := ReadMessage(readerFromHex(symmetricallyEncryptedCompressedHex), nil, prompt, nil)
 	if err != nil {
 		t.Errorf("ReadMessage: %s", err)
 		return
