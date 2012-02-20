@@ -111,7 +111,7 @@ func (p ParseError) Error() string {
 
 // ParseResponse parses an OCSP response in DER form. It only supports
 // responses for a single certificate and only those using RSA signatures.
-// Non-RSA responses will result in an x509.UnsupportedAlgorithmError.
+// Non-RSA responses will result in x509.ErrUnsupportedAlgorithm.
 // Signature errors or parse failures will result in a ParseError.
 func ParseResponse(bytes []byte) (*Response, error) {
 	var resp responseASN1
