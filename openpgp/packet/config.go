@@ -12,8 +12,7 @@ import (
 )
 
 // Config collects a number of parameters along with sensible defaults.
-
-// A nil *Config is valid and produces all default values.
+// A nil *Config is valid and results in all default values.
 type Config struct {
 	// Rand provides the source of entropy.
 	// If nil, the crypto/rand Reader is used.

@@ -483,13 +483,14 @@ func (sig *Signature) SignKey(pub *PublicKey, priv *PrivateKey, config *Config) 
 	return sig.Sign(h, priv, config)
 }
 
-// Serialize marshals sig to w. SignRSA or SignDSA must have been called first.
+// Serialize marshals sig to w. Sign, SignUserId or SignKey must have been
+// called first.
 func (sig *Signature) Serialize(w io.Writer) (err error) {
 	if len(sig.outSubpackets) == 0 {
 		sig.outSubpackets = sig.rawSubpackets
 	}
 	if sig.RSASignature.bytes == nil && sig.DSASigR.bytes == nil {
-		return errors.InvalidArgumentError("Signature: need to call SignRSA or SignDSA before Serialize")
+		return errors.InvalidArgumentError("Signature: need to call Sign, SignUserId or SignKey before Serialize")
 	}
 
 	sigLength := 0
