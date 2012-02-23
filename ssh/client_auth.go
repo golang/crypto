@@ -135,7 +135,7 @@ func ClientAuthPassword(impl ClientPassword) ClientAuth {
 
 // ClientKeyring implements access to a client key ring.
 type ClientKeyring interface {
-	// Key returns the i'th rsa.Publickey or dsa.Publickey, or nil if
+	// Key returns the i'th *rsa.Publickey or *dsa.Publickey, or nil if
 	// no key exists at i.
 	Key(i int) (key interface{}, err error)
 
@@ -163,7 +163,6 @@ type publickeyAuthMsg struct {
 }
 
 func (p *publickeyAuth) auth(session []byte, user string, t *transport, rand io.Reader) (bool, []string, error) {
-
 	// Authentication is performed in two stages. The first stage sends an
 	// enquiry to test if each key is acceptable to the remote. The second
 	// stage attempts to authenticate with the valid keys obtained in the

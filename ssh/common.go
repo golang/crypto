@@ -154,11 +154,11 @@ func serializeSignature(algoname string, sig []byte) []byte {
 	return ret
 }
 
-// serialize an rsa.PublicKey or dsa.PublicKey according to RFC 4253 6.6.
+// serialize a *rsa.PublicKey or *dsa.PublicKey according to RFC 4253 6.6.
 func serializePublickey(key interface{}) []byte {
 	algoname := algoName(key)
 	switch key := key.(type) {
-	case rsa.PublicKey:
+	case *rsa.PublicKey:
 		e := new(big.Int).SetInt64(int64(key.E))
 		length := stringLength([]byte(algoname))
 		length += intLength(e)
@@ -168,7 +168,7 @@ func serializePublickey(key interface{}) []byte {
 		r = marshalInt(r, e)
 		marshalInt(r, key.N)
 		return ret
-	case dsa.PublicKey:
+	case *dsa.PublicKey:
 		length := stringLength([]byte(algoname))
 		length += intLength(key.P)
 		length += intLength(key.Q)
@@ -187,9 +187,9 @@ func serializePublickey(key interface{}) []byte {
 
 func algoName(key interface{}) string {
 	switch key.(type) {
-	case rsa.PublicKey:
+	case *rsa.PublicKey:
 		return "ssh-rsa"
-	case dsa.PublicKey:
+	case *dsa.PublicKey:
 		return "ssh-dss"
 	}
 	panic("unexpected key type")
