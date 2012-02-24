@@ -16,6 +16,7 @@ import (
 const (
 	kexAlgoDH14SHA1 = "diffie-hellman-group14-sha1"
 	hostAlgoRSA     = "ssh-rsa"
+	hostAlgoDSA     = "ssh-dss"
 	macSHA196       = "hmac-sha1-96"
 	compressionNone = "none"
 	serviceUserAuth = "ssh-userauth"
@@ -144,6 +145,15 @@ func (c *CryptoConfig) ciphers() []string {
 
 // serialize a signed slice according to RFC 4254 6.6.
 func serializeSignature(algoname string, sig []byte) []byte {
+	switch algoname {
+	// The corresponding private key to a public certificate is always a normal
+	// private key.  For signature serialization purposes, ensure we use the
+	// proper ssh-rsa or ssh-dss algo name in case the public cert algo name is passed.
+	case hostAlgoRSACertV01:
+		algoname = "ssh-rsa"
+	case hostAlgoDSACertV01:
+		algoname = "ssh-dss"
+	}
 	length := stringLength([]byte(algoname))
 	length += stringLength(sig)
 
@@ -156,33 +166,25 @@ func serializeSignature(algoname string, sig []byte) []byte {
 
 // serialize a *rsa.PublicKey or *dsa.PublicKey according to RFC 4253 6.6.
 func serializePublickey(key interface{}) []byte {
+	var pubKeyBytes []byte
 	algoname := algoName(key)
 	switch key := key.(type) {
 	case *rsa.PublicKey:
-		e := new(big.Int).SetInt64(int64(key.E))
-		length := stringLength([]byte(algoname))
-		length += intLength(e)
-		length += intLength(key.N)
-		ret := make([]byte, length)
-		r := marshalString(ret, []byte(algoname))
-		r = marshalInt(r, e)
-		marshalInt(r, key.N)
-		return ret
+		pubKeyBytes = marshalPubRSA(key)
 	case *dsa.PublicKey:
-		length := stringLength([]byte(algoname))
-		length += intLength(key.P)
-		length += intLength(key.Q)
-		length += intLength(key.G)
-		length += intLength(key.Y)
-		ret := make([]byte, length)
-		r := marshalString(ret, []byte(algoname))
-		r = marshalInt(r, key.P)
-		r = marshalInt(r, key.Q)
-		r = marshalInt(r, key.G)
-		marshalInt(r, key.Y)
-		return ret
+		pubKeyBytes = marshalPubDSA(key)
+	case *OpenSSHCertV01:
+		pubKeyBytes = marshalOpenSSHCertV01(key)
+	default:
+		panic("unexpected key type")
 	}
-	panic("unexpected key type")
+
+	length := stringLength([]byte(algoname))
+	length += len(pubKeyBytes)
+	ret := make([]byte, length)
+	r := marshalString(ret, []byte(algoname))
+	copy(r, pubKeyBytes)
+	return ret
 }
 
 func algoName(key interface{}) string {
@@ -191,6 +193,8 @@ func algoName(key interface{}) string {
 		return "ssh-rsa"
 	case *dsa.PublicKey:
 		return "ssh-dss"
+	case *OpenSSHCertV01:
+		return algoName(key.(*OpenSSHCertV01).Key) + "-cert-v01@openssh.com"
 	}
 	panic("unexpected key type")
 }

@@ -448,6 +448,23 @@ func parseUint32(in []byte) (out uint32, rest []byte, ok bool) {
 	return
 }
 
+func parseUint64(in []byte) (out uint64, rest []byte, ok bool) {
+	if len(in) < 8 {
+		return
+	}
+	out = uint64(in[0])<<56 |
+		uint64(in[1])<<48 |
+		uint64(in[2])<<40 |
+		uint64(in[3])<<32 |
+		uint64(in[4])<<24 |
+		uint64(in[5])<<16 |
+		uint64(in[6])<<8 |
+		uint64(in[7])
+	rest = in[8:]
+	ok = true
+	return
+}
+
 func nameListLength(namelist []string) int {
 	length := 4 /* uint32 length prefix */
 	for i, name := range namelist {

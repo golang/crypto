@@ -67,47 +67,8 @@ func (s *ServerConfig) SetRSAPrivateKey(pemBytes []byte) error {
 		return err
 	}
 
-	s.rsaSerialized = marshalRSA(s.rsa)
+	s.rsaSerialized = marshalPrivRSA(s.rsa)
 	return nil
-}
-
-// marshalRSA serializes an RSA private key according to RFC 4256, section 6.6.
-func marshalRSA(priv *rsa.PrivateKey) []byte {
-	e := new(big.Int).SetInt64(int64(priv.E))
-	length := stringLength([]byte(hostAlgoRSA))
-	length += intLength(e)
-	length += intLength(priv.N)
-
-	ret := make([]byte, length)
-	r := marshalString(ret, []byte(hostAlgoRSA))
-	r = marshalInt(r, e)
-	r = marshalInt(r, priv.N)
-
-	return ret
-}
-
-// parseRSA parses an RSA key according to RFC 4256, section 6.6.
-func parseRSA(in []byte) (pubKey *rsa.PublicKey, ok bool) {
-	algo, in, ok := parseString(in)
-	if !ok || string(algo) != hostAlgoRSA {
-		return nil, false
-	}
-	bigE, in, ok := parseInt(in)
-	if !ok || bigE.BitLen() > 24 {
-		return nil, false
-	}
-	e := bigE.Int64()
-	if e < 3 || e&1 == 0 {
-		return nil, false
-	}
-	N, in, ok := parseInt(in)
-	if !ok || len(in) > 0 {
-		return nil, false
-	}
-	return &rsa.PublicKey{
-		N: N,
-		E: int(e),
-	}, true
 }
 
 func parseRSASig(in []byte) (sig []byte, ok bool) {
@@ -485,7 +446,11 @@ userAuthLoop:
 					h := hashFunc.New()
 					h.Write(signedData)
 					digest := h.Sum(nil)
-					rsaKey, ok := parseRSA(pubKey)
+					key, _, ok := parsePubKey(pubKey)
+					if !ok {
+						return ParseError{msgUserAuthRequest}
+					}
+					rsaKey, ok := key.(*rsa.PublicKey)
 					if !ok {
 						return ParseError{msgUserAuthRequest}
 					}
