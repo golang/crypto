@@ -17,7 +17,6 @@ const (
 	kexAlgoDH14SHA1 = "diffie-hellman-group14-sha1"
 	hostAlgoRSA     = "ssh-rsa"
 	hostAlgoDSA     = "ssh-dss"
-	macSHA196       = "hmac-sha1-96"
 	compressionNone = "none"
 	serviceUserAuth = "ssh-userauth"
 	serviceSSH      = "ssh-connection"
@@ -25,7 +24,6 @@ const (
 
 var supportedKexAlgos = []string{kexAlgoDH14SHA1}
 var supportedHostKeyAlgos = []string{hostAlgoRSA}
-var supportedMACs = []string{macSHA196}
 var supportedCompressions = []string{compressionNone}
 
 // dhGroup is a multiplicative group suitable for implementing Diffie-Hellman key agreement.
@@ -134,6 +132,9 @@ type CryptoConfig struct {
 	// The allowed cipher algorithms. If unspecified then DefaultCipherOrder is
 	// used.
 	Ciphers []string
+
+	// The allowed MAC algorithms. If unspecified then DefaultMACOrder is used.
+	MACs []string
 }
 
 func (c *CryptoConfig) ciphers() []string {
@@ -141,6 +142,13 @@ func (c *CryptoConfig) ciphers() []string {
 		return DefaultCipherOrder
 	}
 	return c.Ciphers
+}
+
+func (c *CryptoConfig) macs() []string {
+	if c.MACs == nil {
+		return DefaultMACOrder
+	}
+	return c.MACs
 }
 
 // serialize a signed slice according to RFC 4254 6.6.

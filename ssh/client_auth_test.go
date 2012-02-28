@@ -255,3 +255,24 @@ func TestClientAuthRSAandDSA(t *testing.T) {
 	}
 	c.Close()
 }
+
+func TestClientHMAC(t *testing.T) {
+	kc := new(keychain)
+	kc.keys = append(kc.keys, rsakey)
+	for _, mac := range DefaultMACOrder {
+		config := &ClientConfig{
+			User: "testuser",
+			Auth: []ClientAuth{
+				ClientAuthKeyring(kc),
+			},
+			Crypto: CryptoConfig{
+				MACs: []string{mac},
+			},
+		}
+		c, err := Dial("tcp", newMockAuthServer(t), config)
+		if err != nil {
+			t.Fatalf("client could not authenticate with mac algo %s: %v", mac, err)
+		}
+		c.Close()
+	}
+}

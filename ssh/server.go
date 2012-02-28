@@ -228,8 +228,8 @@ func (s *ServerConn) Handshake() error {
 		ServerHostKeyAlgos:      supportedHostKeyAlgos,
 		CiphersClientServer:     s.config.Crypto.ciphers(),
 		CiphersServerClient:     s.config.Crypto.ciphers(),
-		MACsClientServer:        supportedMACs,
-		MACsServerClient:        supportedMACs,
+		MACsClientServer:        s.config.Crypto.macs(),
+		MACsServerClient:        s.config.Crypto.macs(),
 		CompressionClientServer: supportedCompressions,
 		CompressionServerClient: supportedCompressions,
 	}

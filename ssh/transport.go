@@ -8,8 +8,6 @@ import (
 	"bufio"
 	"crypto"
 	"crypto/cipher"
-	"crypto/hmac"
-	"crypto/sha1"
 	"crypto/subtle"
 	"errors"
 	"hash"
@@ -255,28 +253,22 @@ var (
 // (to setup server->client keys) or clientKeys (for client->server keys).
 func (c *common) setupKeys(d direction, K, H, sessionId []byte, hashFunc crypto.Hash) error {
 	cipherMode := cipherModes[c.cipherAlgo]
-
-	macKeySize := 20
+	macMode := macModes[c.macAlgo]
 
 	iv := make([]byte, cipherMode.ivSize)
 	key := make([]byte, cipherMode.keySize)
-	macKey := make([]byte, macKeySize)
+	macKey := make([]byte, macMode.keySize)
 
 	h := hashFunc.New()
 	generateKeyMaterial(iv, d.ivTag, K, H, sessionId, h)
 	generateKeyMaterial(key, d.keyTag, K, H, sessionId, h)
 	generateKeyMaterial(macKey, d.macKeyTag, K, H, sessionId, h)
 
-	c.mac = truncatingMAC{12, hmac.New(sha1.New, macKey)}
+	c.mac = macMode.new(macKey)
 
-	cipher, err := cipherMode.createCipher(key, iv)
-	if err != nil {
-		return err
-	}
-
-	c.cipher = cipher
-
-	return nil
+	var err error
+	c.cipher, err = cipherMode.createCipher(key, iv)
+	return err
 }
 
 // generateKeyMaterial fills out with key material generated from tag, K, H
@@ -304,32 +296,6 @@ func generateKeyMaterial(out, tag []byte, K, H, sessionId []byte, h hash.Hash) {
 		}
 	}
 }
-
-// truncatingMAC wraps around a hash.Hash and truncates the output digest to
-// a given size.
-type truncatingMAC struct {
-	length int
-	hmac   hash.Hash
-}
-
-func (t truncatingMAC) Write(data []byte) (int, error) {
-	return t.hmac.Write(data)
-}
-
-func (t truncatingMAC) Sum(in []byte) []byte {
-	out := t.hmac.Sum(in)
-	return out[:len(in)+t.length]
-}
-
-func (t truncatingMAC) Reset() {
-	t.hmac.Reset()
-}
-
-func (t truncatingMAC) Size() int {
-	return t.length
-}
-
-func (t truncatingMAC) BlockSize() int { return t.hmac.BlockSize() }
 
 // maxVersionStringBytes is the maximum number of bytes that we'll accept as a
 // version string. In the event that the client is talking a different protocol

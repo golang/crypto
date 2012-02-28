@@ -62,8 +62,8 @@ func (c *ClientConn) handshake() error {
 		ServerHostKeyAlgos:      supportedHostKeyAlgos,
 		CiphersClientServer:     c.config.Crypto.ciphers(),
 		CiphersServerClient:     c.config.Crypto.ciphers(),
-		MACsClientServer:        supportedMACs,
-		MACsServerClient:        supportedMACs,
+		MACsClientServer:        c.config.Crypto.macs(),
+		MACsServerClient:        c.config.Crypto.macs(),
 		CompressionClientServer: supportedCompressions,
 		CompressionServerClient: supportedCompressions,
 	}
