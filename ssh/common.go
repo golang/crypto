@@ -249,3 +249,15 @@ func safeString(s string) string {
 	}
 	return string(out)
 }
+
+func appendU16(buf []byte, n uint16) []byte {
+	return append(buf, byte(n>>8), byte(n))
+}
+
+func appendU32(buf []byte, n uint32) []byte {
+	return append(buf, byte(n>>24), byte(n>>16), byte(n>>8), byte(n))
+}
+
+func appendInt(buf []byte, n int) []byte {
+	return appendU32(buf, uint32(n))
+}
