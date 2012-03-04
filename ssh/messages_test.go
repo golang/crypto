@@ -123,3 +123,37 @@ func (*kexDHInitMsg) Generate(rand *rand.Rand, size int) reflect.Value {
 	dhi.X = randomInt(rand)
 	return reflect.ValueOf(dhi)
 }
+
+var (
+	_kexInitMsg   = new(kexInitMsg).Generate(rand.New(rand.NewSource(0)), 10).Elem().Interface()
+	_kexDHInitMsg = new(kexDHInitMsg).Generate(rand.New(rand.NewSource(0)), 10).Elem().Interface()
+
+	_kexInit   = marshal(msgKexInit, _kexInitMsg)
+	_kexDHInit = marshal(msgKexDHInit, _kexDHInitMsg)
+)
+
+func BenchmarkMarshalKexInitMsg(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		marshal(msgKexInit, _kexInitMsg)
+	}
+}
+
+func BenchmarkUnmarshalKexInitMsg(b *testing.B) {
+	m := new(kexInitMsg)
+	for i := 0; i < b.N; i++ {
+		unmarshal(m, _kexInit, msgKexInit)
+	}
+}
+
+func BenchmarkMarshalKexDHInitMsg(b *testing.B) {
+	for i := 0; i < b.N; i++ {
+		marshal(msgKexDHInit, _kexDHInitMsg)
+	}
+}
+
+func BenchmarkUnmarshalKexDHInitMsg(b *testing.B) {
+	m := new(kexDHInitMsg)
+	for i := 0; i < b.N; i++ {
+		unmarshal(m, _kexDHInit, msgKexDHInit)
+	}
+}
