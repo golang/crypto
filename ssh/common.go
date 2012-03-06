@@ -14,6 +14,7 @@ import (
 
 // These are string constants in the SSH protocol.
 const (
+	keyAlgoDH1SHA1  = "diffie-hellman-group1-sha1"
 	kexAlgoDH14SHA1 = "diffie-hellman-group14-sha1"
 	hostAlgoRSA     = "ssh-rsa"
 	hostAlgoDSA     = "ssh-dss"
@@ -22,13 +23,28 @@ const (
 	serviceSSH      = "ssh-connection"
 )
 
-var supportedKexAlgos = []string{kexAlgoDH14SHA1}
+var supportedKexAlgos = []string{kexAlgoDH14SHA1, keyAlgoDH1SHA1}
 var supportedHostKeyAlgos = []string{hostAlgoRSA}
 var supportedCompressions = []string{compressionNone}
 
 // dhGroup is a multiplicative group suitable for implementing Diffie-Hellman key agreement.
 type dhGroup struct {
 	g, p *big.Int
+}
+
+// dhGroup1 is the group called diffie-hellman-group1-sha1 in RFC 4253 and
+// Oakley Group 2 in RFC 2409.
+var dhGroup1 *dhGroup
+
+var dhGroup1Once sync.Once
+
+func initDHGroup1() {
+	p, _ := new(big.Int).SetString("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF", 16)
+
+	dhGroup1 = &dhGroup{
+		g: new(big.Int).SetInt64(2),
+		p: p,
+	}
 }
 
 // dhGroup14 is the group called diffie-hellman-group14-sha1 in RFC 4253 and

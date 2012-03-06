@@ -105,6 +105,10 @@ func (c *ClientConn) handshake() error {
 		hashFunc = crypto.SHA1
 		dhGroup14Once.Do(initDHGroup14)
 		H, K, err = c.kexDH(dhGroup14, hashFunc, &magics, hostKeyAlgo)
+	case keyAlgoDH1SHA1:
+		hashFunc = crypto.SHA1
+		dhGroup1Once.Do(initDHGroup1)
+		H, K, err = c.kexDH(dhGroup1, hashFunc, &magics, hostKeyAlgo)
 	default:
 		err = fmt.Errorf("ssh: unexpected key exchange algorithm %v", kexAlgo)
 	}

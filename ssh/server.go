@@ -272,6 +272,10 @@ func (s *ServerConn) Handshake() error {
 		hashFunc = crypto.SHA1
 		dhGroup14Once.Do(initDHGroup14)
 		H, K, err = s.kexDH(dhGroup14, hashFunc, &magics, hostKeyAlgo)
+	case keyAlgoDH1SHA1:
+		hashFunc = crypto.SHA1
+		dhGroup1Once.Do(initDHGroup1)
+		H, K, err = s.kexDH(dhGroup1, hashFunc, &magics, hostKeyAlgo)
 	default:
 		err = errors.New("ssh: unexpected key exchange algorithm " + kexAlgo)
 	}
