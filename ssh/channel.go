@@ -149,6 +149,9 @@ func (c *channel) handlePacket(packet interface{}) {
 	case *channelEOFMsg:
 		c.theySentEOF = true
 		c.cond.Signal()
+	case *windowAdjustMsg:
+		c.theirWindow += packet.AdditionalBytes
+		c.cond.Signal()
 	default:
 		panic("unknown packet type")
 	}

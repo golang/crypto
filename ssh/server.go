@@ -570,6 +570,16 @@ func (s *ServerConn) Accept() (Channel, error) {
 				c.handlePacket(msg)
 				s.lock.Unlock()
 
+			case *windowAdjustMsg:
+				s.lock.Lock()
+				c, ok := s.channels[msg.PeersId]
+				if !ok {
+					s.lock.Unlock()
+					continue
+				}
+				c.handlePacket(msg)
+				s.lock.Unlock()
+
 			case *channelEOFMsg:
 				s.lock.Lock()
 				c, ok := s.channels[msg.PeersId]
