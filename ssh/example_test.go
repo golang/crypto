@@ -1,0 +1,121 @@
+// Copyright 2011 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package ssh
+
+import (
+	"bytes"
+	"exp/terminal"
+	"fmt"
+	"io/ioutil"
+)
+
+func ExampleListen() {
+	// An SSH server is represented by a ServerConfig, which holds
+	// certificate details and handles authentication of ServerConns.
+	config := &ServerConfig{
+		PasswordCallback: func(conn *ServerConn, user, pass string) bool {
+			return user == "testuser" && pass == "tiger"
+		},
+	}
+
+	pemBytes, err := ioutil.ReadFile("id_rsa")
+	if err != nil {
+		panic("Failed to load private key")
+	}
+	if err = config.SetRSAPrivateKey(pemBytes); err != nil {
+		panic("Failed to parse private key")
+	}
+
+	// Once a ServerConfig has been configured, connections can be
+	// accepted.
+	listener, err := Listen("tcp", "0.0.0.0:2022", config)
+	if err != nil {
+		panic("failed to listen for connection")
+	}
+	sConn, err := listener.Accept()
+	if err != nil {
+		panic("failed to accept incoming connection")
+	}
+	if err := sConn.Handshake(); err != nil {
+		panic("failed to handshake")
+	}
+
+	// A ServerConn multiplexes several channels, which must 
+	// themselves be Accepted.
+	for {
+		// Accept reads from the connection, demultiplexes packets
+		// to their corresponding channels and returns when a new
+		// channel request is seen. Some goroutine must always be
+		// calling Accept; otherwise no messages will be forwarded
+		// to the channels.
+		channel, err := sConn.Accept()
+		if err != nil {
+			panic("error from Accept")
+		}
+
+		// Channels have a type, depending on the application level
+		// protocol intended. In the case of a shell, the type is
+		// "session" and ServerShell may be used to present a simple
+		// terminal interface.
+		if channel.ChannelType() != "session" {
+			channel.Reject(UnknownChannelType, "unknown channel type")
+			continue
+		}
+		channel.Accept()
+
+		term := terminal.NewTerminal(channel, "> ")
+		serverTerm := &ServerTerminal{
+			Term:    term,
+			Channel: channel,
+		}
+		go func() {
+			defer channel.Close()
+			for {
+				line, err := serverTerm.ReadLine()
+				if err != nil {
+					break
+				}
+				fmt.Println(line)
+			}
+		}()
+	}
+}
+
+func ExampleDial() {
+	// An SSH client is represented with a ClientConn. Currently only
+	// the "password" authentication method is supported.
+	//
+	// To authenticate with the remote server you must pass at least one
+	// implementation of ClientAuth via the Auth field in ClientConfig.
+	config := &ClientConfig{
+		User: "username",
+		Auth: []ClientAuth{
+			// ClientAuthPassword wraps a ClientPassword implementation
+			// in a type that implements ClientAuth.
+			ClientAuthPassword(password("yourpassword")),
+		},
+	}
+	client, err := Dial("tcp", "yourserver.com:22", config)
+	if err != nil {
+		panic("Failed to dial: " + err.Error())
+	}
+
+	// Each ClientConn can support multiple interactive sessions,
+	// represented by a Session.
+	session, err := client.NewSession()
+	if err != nil {
+		panic("Failed to create session: " + err.Error())
+	}
+	defer session.Close()
+
+	// Once a Session is created, you can execute a single command on
+	// the remote side using the Run method.
+	var b bytes.Buffer
+	session.Stdout = &b
+	if err := session.Run("/usr/bin/whoami"); err != nil {
+		panic("Failed to run: " + err.Error())
+	}
+	fmt.Println(b.String())
+}

@@ -58,7 +58,7 @@ y2VdEyF7DPCZewIhAI7GOI/6LDIFOvtPo6Bj2nNmyQ1HU6k/LRtNIXi4c9NJAiAr
 rrxx26itVhJmcvoUhOjwuzSlP2bE5VHAvkGB352YBg==
 -----END RSA PRIVATE KEY-----`
 
-// keychain implements the ClientPublickey interface
+// keychain implements the ClientKeyring interface
 type keychain struct {
 	keys []interface{}
 }
