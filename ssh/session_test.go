@@ -8,9 +8,10 @@ package ssh
 
 import (
 	"bytes"
-	"exp/terminal"
 	"io"
 	"testing"
+
+	"code.google.com/p/go.crypto/ssh/terminal"
 )
 
 type serverType func(*channel)

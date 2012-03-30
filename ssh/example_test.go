@@ -6,9 +6,10 @@ package ssh
 
 import (
 	"bytes"
-	"exp/terminal"
 	"fmt"
 	"io/ioutil"
+
+	"code.google.com/p/go.crypto/ssh/terminal"
 )
 
 func ExampleListen() {
