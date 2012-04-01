@@ -5,7 +5,7 @@
 package ssh
 
 import (
-	"errors"
+	"fmt"
 	"io"
 )
 
@@ -52,7 +52,14 @@ func (c *ClientConn) authenticate(session []byte) error {
 			}
 		}
 	}
-	return errors.New("ssh: unable to authenticate, no supported methods remain")
+	return fmt.Errorf("ssh: unable to authenticate, attempted methods %v, no supported methods remain", keys(tried))
+}
+
+func keys(m map[string]bool) (s []string) {
+	for k, _ := range m {
+		s = append(s, k)
+	}
+	return
 }
 
 // A ClientAuth represents an instance of an RFC 4252 authentication method.
