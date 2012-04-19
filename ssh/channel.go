@@ -171,7 +171,7 @@ func (c *channel) handleData(data []byte) {
 	c.myWindow -= uint32(len(data))
 	for i := 0; i < 2; i++ {
 		tail := c.head + c.length
-		if tail > len(c.pendingData) {
+		if tail >= len(c.pendingData) {
 			tail -= len(c.pendingData)
 		}
 		n := copy(c.pendingData[tail:], data)
@@ -236,16 +236,6 @@ func (c *channel) Read(data []byte) (n int, err error) {
 		return 0, c.err
 	}
 
-	if c.myWindow <= uint32(len(c.pendingData))/2 {
-		packet := marshal(msgChannelWindowAdjust, windowAdjustMsg{
-			PeersId:         c.theirId,
-			AdditionalBytes: uint32(len(c.pendingData)) - c.myWindow,
-		})
-		if err := c.serverConn.writePacket(packet); err != nil {
-			return 0, err
-		}
-	}
-
 	for {
 		if c.theySentEOF || c.theyClosed || c.dead {
 			return 0, io.EOF
@@ -265,16 +255,29 @@ func (c *channel) Read(data []byte) (n int, err error) {
 		}
 
 		if c.length > 0 {
-			tail := c.head + c.length
-			if tail > len(c.pendingData) {
-				tail -= len(c.pendingData)
-			}
+			tail := min(c.head + c.length, len(c.pendingData))
 			n = copy(data, c.pendingData[c.head:tail])
 			c.head += n
 			c.length -= n
 			if c.head == len(c.pendingData) {
 				c.head = 0
 			}
+
+			windowAdjustment := uint32(len(c.pendingData)-c.length) - c.myWindow
+			if windowAdjustment >= uint32(len(c.pendingData)/2) {
+				packet := marshal(msgChannelWindowAdjust, windowAdjustMsg{
+					PeersId:         c.theirId,
+					AdditionalBytes: windowAdjustment,
+				})
+				c.serverConn.lock.Lock()
+				err = c.serverConn.writePacket(packet)
+				c.serverConn.lock.Unlock()
+				if err != nil {
+					return
+				}
+				c.myWindow += windowAdjustment
+			}
+
 			return
 		}
 
