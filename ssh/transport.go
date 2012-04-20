@@ -105,10 +105,10 @@ func (r *reader) readOnePacket() ([]byte, error) {
 	paddingLength := uint32(lengthBytes[4])
 
 	if length <= paddingLength+1 {
-		return nil, errors.New("invalid packet length")
+		return nil, errors.New("ssh: invalid packet length")
 	}
 	if length > maxPacketSize {
-		return nil, errors.New("packet too large")
+		return nil, errors.New("ssh: packet too large")
 	}
 
 	packet := make([]byte, length-1+macSize)
@@ -135,6 +135,9 @@ func (t *transport) readPacket() ([]byte, error) {
 		packet, err := t.readOnePacket()
 		if err != nil {
 			return nil, err
+		}
+		if len(packet) == 0 {
+			return nil, errors.New("ssh: zero length packet")
 		}
 		if packet[0] != msgIgnore && packet[0] != msgDebug {
 			return packet, nil

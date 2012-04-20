@@ -85,7 +85,7 @@ func (k *keychain) Sign(i int, rand io.Reader, data []byte) (sig []byte, err err
 	case *rsa.PrivateKey:
 		return rsa.SignPKCS1v15(rand, key, hashFunc, digest)
 	}
-	return nil, errors.New("unknown key type")
+	return nil, errors.New("ssh: unknown key type")
 }
 
 func (k *keychain) loadPEM(file string) error {

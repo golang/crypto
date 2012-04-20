@@ -56,7 +56,7 @@ type ChannelRequest struct {
 }
 
 func (c ChannelRequest) Error() string {
-	return "channel request received"
+	return "ssh: channel request received"
 }
 
 // RejectionReason is an enumeration used when rejecting channel creation
@@ -255,7 +255,7 @@ func (c *channel) Read(data []byte) (n int, err error) {
 		}
 
 		if c.length > 0 {
-			tail := min(c.head + c.length, len(c.pendingData))
+			tail := min(c.head+c.length, len(c.pendingData))
 			n = copy(data, c.pendingData[c.head:tail])
 			c.head += n
 			c.length -= n
@@ -374,18 +374,17 @@ func (c *channel) AckRequest(ok bool) error {
 		return c.serverConn.err
 	}
 
-	if ok {
-		ack := channelRequestSuccessMsg{
-			PeersId: c.theirId,
-		}
-		return c.serverConn.writePacket(marshal(msgChannelSuccess, ack))
-	} else {
+	if !ok {
 		ack := channelRequestFailureMsg{
 			PeersId: c.theirId,
 		}
 		return c.serverConn.writePacket(marshal(msgChannelFailure, ack))
 	}
-	panic("unreachable")
+
+	ack := channelRequestSuccessMsg{
+		PeersId: c.theirId,
+	}
+	return c.serverConn.writePacket(marshal(msgChannelSuccess, ack))
 }
 
 func (c *channel) ChannelType() string {

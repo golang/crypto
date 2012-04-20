@@ -7,6 +7,7 @@ package ssh
 import (
 	"crypto/dsa"
 	"crypto/rsa"
+	"errors"
 	"math/big"
 	"strconv"
 	"sync"
@@ -30,6 +31,13 @@ var supportedCompressions = []string{compressionNone}
 // dhGroup is a multiplicative group suitable for implementing Diffie-Hellman key agreement.
 type dhGroup struct {
 	g, p *big.Int
+}
+
+func (group *dhGroup) diffieHellman(theirPublic, myPrivate *big.Int) (*big.Int, error) {
+	if theirPublic.Sign() <= 0 || theirPublic.Cmp(group.p) >= 0 {
+		return nil, errors.New("ssh: DH parameter out of bounds")
+	}
+	return new(big.Int).Exp(theirPublic, myPrivate, group.p), nil
 }
 
 // dhGroup1 is the group called diffie-hellman-group1-sha1 in RFC 4253 and
@@ -178,8 +186,8 @@ func serializeSignature(algoname string, sig []byte) []byte {
 	case hostAlgoDSACertV01:
 		algoname = "ssh-dss"
 	}
-	length := stringLength([]byte(algoname))
-	length += stringLength(sig)
+	length := stringLength(len(algoname))
+	length += stringLength(len(sig))
 
 	ret := make([]byte, length)
 	r := marshalString(ret, []byte(algoname))
@@ -203,7 +211,7 @@ func serializePublickey(key interface{}) []byte {
 		panic("unexpected key type")
 	}
 
-	length := stringLength([]byte(algoname))
+	length := stringLength(len(algoname))
 	length += len(pubKeyBytes)
 	ret := make([]byte, length)
 	r := marshalString(ret, []byte(algoname))
@@ -230,14 +238,14 @@ func buildDataSignedForAuth(sessionId []byte, req userAuthRequestMsg, algo, pubK
 	service := []byte(req.Service)
 	method := []byte(req.Method)
 
-	length := stringLength(sessionId)
+	length := stringLength(len(sessionId))
 	length += 1
-	length += stringLength(user)
-	length += stringLength(service)
-	length += stringLength(method)
+	length += stringLength(len(user))
+	length += stringLength(len(service))
+	length += stringLength(len(method))
 	length += 1
-	length += stringLength(algo)
-	length += stringLength(pubKey)
+	length += stringLength(len(algo))
+	length += stringLength(len(pubKey))
 
 	ret := make([]byte, length)
 	r := marshalString(ret, sessionId)

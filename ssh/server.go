@@ -141,24 +141,23 @@ func (s *ServerConn) kexDH(group *dhGroup, hashFunc crypto.Hash, magics *handsha
 		return
 	}
 
-	if kexDHInit.X.Sign() == 0 || kexDHInit.X.Cmp(group.p) >= 0 {
-		return nil, nil, errors.New("client DH parameter out of bounds")
-	}
-
 	y, err := rand.Int(s.config.rand(), group.p)
 	if err != nil {
 		return
 	}
 
 	Y := new(big.Int).Exp(group.g, y, group.p)
-	kInt := new(big.Int).Exp(kexDHInit.X, y, group.p)
+	kInt, err := group.diffieHellman(kexDHInit.X, y)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	var serializedHostKey []byte
 	switch hostKeyAlgo {
 	case hostAlgoRSA:
 		serializedHostKey = s.config.rsaSerialized
 	default:
-		return nil, nil, errors.New("internal error")
+		return nil, nil, errors.New("ssh: internal error")
 	}
 
 	h := hashFunc.New()
@@ -187,7 +186,7 @@ func (s *ServerConn) kexDH(group *dhGroup, hashFunc crypto.Hash, magics *handsha
 			return
 		}
 	default:
-		return nil, nil, errors.New("internal error")
+		return nil, nil, errors.New("ssh: internal error")
 	}
 
 	serializedSig := serializeSignature(hostAlgoRSA, sig)

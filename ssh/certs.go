@@ -154,18 +154,18 @@ func marshalOpenSSHCertV01(cert *OpenSSHCertV01) []byte {
 
 	sigKey := serializePublickey(cert.SignatureKey)
 
-	length := stringLength(cert.Nonce)
+	length := stringLength(len(cert.Nonce))
 	length += len(pubKey)
 	length += 8 // Length of Serial
 	length += 4 // Length of Type
-	length += stringLength([]byte(cert.KeyId))
+	length += stringLength(len(cert.KeyId))
 	length += lengthPrefixedNameListLength(cert.ValidPrincipals)
 	length += 8 // Length of ValidAfter
 	length += 8 // Length of ValidBefore
 	length += tupleListLength(cert.CriticalOptions)
 	length += tupleListLength(cert.Extensions)
-	length += stringLength(cert.Reserved)
-	length += stringLength(sigKey)
+	length += stringLength(len(cert.Reserved))
+	length += stringLength(len(sigKey))
 	length += signatureLength(cert.Signature)
 
 	ret := make([]byte, length)
@@ -215,9 +215,7 @@ func parseLengthPrefixedNameList(in []byte) (out []string, rest []byte, ok bool)
 
 	for len(list) > 0 {
 		var next []byte
-		var ok bool
-		next, list, ok = parseString(list)
-		if !ok {
+		if next, list, ok = parseString(list); !ok {
 			return nil, nil, false
 		}
 		out = append(out, string(next))
@@ -272,8 +270,8 @@ func parseTupleList(in []byte) (out []tuple, rest []byte, ok bool) {
 
 func signatureLength(sig *signature) int {
 	length := 4 // length prefix for signature
-	length += stringLength([]byte(sig.Format))
-	length += stringLength(sig.Blob)
+	length += stringLength(len(sig.Format))
+	length += stringLength(len(sig.Blob))
 	return length
 }
 

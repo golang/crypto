@@ -543,8 +543,8 @@ func writeString(w io.Writer, s []byte) {
 	w.Write(s)
 }
 
-func stringLength(s []byte) int {
-	return 4 + len(s)
+func stringLength(n int) int {
+	return 4 + n
 }
 
 func marshalString(to []byte, s []byte) []byte {

@@ -213,7 +213,7 @@ func (p *publickeyAuth) auth(session []byte, user string, t *transport, rand io.
 		}
 		// manually wrap the serialized signature in a string
 		s := serializeSignature(algoname, sign)
-		sig := make([]byte, stringLength(s))
+		sig := make([]byte, stringLength(len(s)))
 		marshalString(sig, s)
 		msg := publickeyAuthMsg{
 			User:     user,

@@ -231,9 +231,9 @@ func (s *Session) waitForResponse() error {
 	case *channelRequestSuccessMsg:
 		return nil
 	case *channelRequestFailureMsg:
-		return errors.New("request failed")
+		return errors.New("ssh: request failed")
 	}
-	return fmt.Errorf("unknown packet %T received: %v", msg, msg)
+	return fmt.Errorf("ssh: unknown packet %T received: %v", msg, msg)
 }
 
 func (s *Session) start() error {

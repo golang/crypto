@@ -154,16 +154,16 @@ func (c *ClientConn) kexDH(group *dhGroup, hashFunc crypto.Hash, magics *handsha
 		return nil, nil, err
 	}
 
-	var kexDHReply = new(kexDHReplyMsg)
-	if err = unmarshal(kexDHReply, packet, msgKexDHReply); err != nil {
+	var kexDHReply kexDHReplyMsg
+	if err = unmarshal(&kexDHReply, packet, msgKexDHReply); err != nil {
 		return nil, nil, err
 	}
 
-	if kexDHReply.Y.Sign() == 0 || kexDHReply.Y.Cmp(group.p) >= 0 {
-		return nil, nil, errors.New("server DH parameter out of bounds")
+	kInt, err := group.diffieHellman(kexDHReply.Y, x)
+	if err != nil {
+		return nil, nil, err
 	}
 
-	kInt := new(big.Int).Exp(kexDHReply.Y, x, group.p)
 	h := hashFunc.New()
 	writeString(h, magics.clientVersion)
 	writeString(h, magics.serverVersion)
@@ -352,7 +352,7 @@ func (c *clientChan) waitForChannelOpenResponse() error {
 	case *channelOpenFailureMsg:
 		return errors.New(safeString(msg.Message))
 	}
-	return errors.New("unexpected packet")
+	return errors.New("ssh: unexpected packet")
 }
 
 // sendEOF sends EOF to the server. RFC 4254 Section 5.3

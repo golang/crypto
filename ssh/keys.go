@@ -78,7 +78,7 @@ func parseDSA(in []byte) (out *dsa.PublicKey, rest []byte, ok bool) {
 // marshalPrivRSA serializes an RSA private key according to RFC 4253, section 6.6.
 func marshalPrivRSA(priv *rsa.PrivateKey) []byte {
 	e := new(big.Int).SetInt64(int64(priv.E))
-	length := stringLength([]byte(hostAlgoRSA))
+	length := stringLength(len(hostAlgoRSA))
 	length += intLength(e)
 	length += intLength(priv.N)
 

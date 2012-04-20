@@ -35,10 +35,10 @@ func newRC4(key, iv []byte) (cipher.Stream, error) {
 }
 
 type cipherMode struct {
-	keySize  int
-	ivSize   int
-	skip     int
-	createFn func(key, iv []byte) (cipher.Stream, error)
+	keySize    int
+	ivSize     int
+	skip       int
+	createFunc func(key, iv []byte) (cipher.Stream, error)
 }
 
 func (c *cipherMode) createCipher(key, iv []byte) (cipher.Stream, error) {
@@ -49,7 +49,7 @@ func (c *cipherMode) createCipher(key, iv []byte) (cipher.Stream, error) {
 		panic("ssh: iv too small for cipher")
 	}
 
-	stream, err := c.createFn(key[:c.keySize], iv[:c.ivSize])
+	stream, err := c.createFunc(key[:c.keySize], iv[:c.ivSize])
 	if err != nil {
 		return nil, err
 	}
