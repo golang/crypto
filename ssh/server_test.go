@@ -120,7 +120,7 @@ func startSSHServer(t *testing.T) (addr string) {
 		t.Fatalf("Failed to parse private key: %s", err.Error())
 	}
 
-	listener, err := Listen("tcp", ":0", config)
+	listener, err := Listen("tcp", "127.0.0.1:0", config)
 	if err != nil {
 		t.Fatalf("Bind error: %s", err)
 	}
