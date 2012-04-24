@@ -275,6 +275,20 @@ func TestExitWithoutStatusOrSignal(t *testing.T) {
 	}
 }
 
+func TestInvalidServerMessage(t *testing.T) {
+	conn := dial(sendInvalidRecord, t)
+	defer conn.Close()
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("Unable to request new session: %s", err)
+	}
+	// Make sure that we closed all the clientChans when the connection
+	// failed.
+	session.wait()
+
+	defer session.Close()
+}
+
 type exitStatusMsg struct {
 	PeersId   uint32
 	Request   string
@@ -372,4 +386,15 @@ func sendSignal(signal string, ch *channel) {
 		Lang:       "en-GB-oed",
 	}
 	ch.serverConn.writePacket(marshal(msgChannelRequest, sig))
+}
+
+func sendInvalidRecord(ch *channel) {
+	defer ch.Close()
+	packet := make([]byte, 1+4+4+1)
+	packet[0] = msgChannelData
+	marshalUint32(packet[1:], 29348723 /* invalid channel id */)
+	marshalUint32(packet[5:], 1)
+	packet[9] = 42
+
+	ch.serverConn.writePacket(packet)
 }
