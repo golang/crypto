@@ -229,16 +229,35 @@ func (edc extendedDataChannel) Write(data []byte) (n int, err error) {
 }
 
 func (c *channel) Read(data []byte) (n int, err error) {
+	n, err, windowAdjustment := c.read(data)
+
+	if windowAdjustment > 0 {
+		packet := marshal(msgChannelWindowAdjust, windowAdjustMsg{
+			PeersId:         c.theirId,
+			AdditionalBytes: windowAdjustment,
+		})
+		c.serverConn.lock.Lock()
+		err = c.serverConn.writePacket(packet)
+		c.serverConn.lock.Unlock()
+		if err != nil {
+			return
+		}
+	}
+
+	return
+}
+
+func (c *channel) read(data []byte) (n int, err error, windowAdjustment uint32) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
 	if c.err != nil {
-		return 0, c.err
+		return 0, c.err, 0
 	}
 
 	for {
 		if c.theySentEOF || c.theyClosed || c.dead {
-			return 0, io.EOF
+			return 0, io.EOF, 0
 		}
 
 		if len(c.pendingRequests) > 0 {
@@ -251,7 +270,7 @@ func (c *channel) Read(data []byte) (n int, err error) {
 				copy(c.pendingRequests, oldPendingRequests[1:])
 			}
 
-			return 0, req
+			return 0, req, 0
 		}
 
 		if c.length > 0 {
@@ -263,20 +282,11 @@ func (c *channel) Read(data []byte) (n int, err error) {
 				c.head = 0
 			}
 
-			windowAdjustment := uint32(len(c.pendingData)-c.length) - c.myWindow
-			if windowAdjustment >= uint32(len(c.pendingData)/2) {
-				packet := marshal(msgChannelWindowAdjust, windowAdjustMsg{
-					PeersId:         c.theirId,
-					AdditionalBytes: windowAdjustment,
-				})
-				c.serverConn.lock.Lock()
-				err = c.serverConn.writePacket(packet)
-				c.serverConn.lock.Unlock()
-				if err != nil {
-					return
-				}
-				c.myWindow += windowAdjustment
+			windowAdjustment = uint32(len(c.pendingData)-c.length) - c.myWindow
+			if windowAdjustment < uint32(len(c.pendingData)/2) {
+				windowAdjustment = 0
 			}
+			c.myWindow += windowAdjustment
 
 			return
 		}
