@@ -78,6 +78,7 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 		}
 		cert.Key = dsaPubKey
 	default:
+		ok = false
 		return
 	}
 
