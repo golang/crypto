@@ -9,6 +9,7 @@ package ssh
 import (
 	"bytes"
 	"io"
+	"net"
 	"testing"
 
 	"code.google.com/p/go.crypto/ssh/terminal"
@@ -43,6 +44,10 @@ func dial(handler serverType, t *testing.T) *ClientConn {
 		for {
 			ch, err := conn.Accept()
 			if err == io.EOF {
+				return
+			}
+			// We sometimes get ECONNRESET rather than EOF.
+			if _, ok := err.(*net.OpError); ok {
 				return
 			}
 			if err != nil {
