@@ -139,7 +139,7 @@ type channelOpenConfirmMsg struct {
 // See RFC 4254, section 5.1.
 type channelOpenFailureMsg struct {
 	PeersId  uint32
-	Reason   uint32
+	Reason   RejectionReason
 	Message  string
 	Language string
 }

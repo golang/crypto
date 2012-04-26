@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"fmt"
 	"io/ioutil"
+	"log"
+	"net/http"
 
 	"code.google.com/p/go.crypto/ssh/terminal"
 )
@@ -119,4 +121,31 @@ func ExampleDial() {
 		panic("Failed to run: " + err.Error())
 	}
 	fmt.Println(b.String())
+}
+
+func ExampleClientConn_Listen() {
+	config := &ClientConfig{
+		User: "username",
+		Auth: []ClientAuth{
+			ClientAuthPassword(password("password")),
+		},
+	}
+	// Dial your ssh server.
+	conn, err := Dial("tcp", "localhost:22", config)
+	if err != nil {
+		log.Fatalf("unable to connect: %s", err)
+	}
+	defer conn.Close()
+
+	// Request the remote side to open port 8080 on all interfaces.
+	l, err := conn.Listen("tcp", "0.0.0.0:8080")
+	if err != nil {
+		log.Fatalf("unable to register tcp forward: %v", err)
+	}
+	defer l.Close()
+
+	// Serve HTTP with your SSH server acting as a reverse proxy.
+	http.Serve(l, http.HandlerFunc(func(resp http.ResponseWriter, req *http.Request) {
+		fmt.Fprintf(resp, "Hello world!\n")
+	}))
 }

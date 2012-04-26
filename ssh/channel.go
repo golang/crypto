@@ -122,7 +122,7 @@ func (c *channel) Reject(reason RejectionReason, message string) error {
 
 	reject := channelOpenFailureMsg{
 		PeersId:  c.theirId,
-		Reason:   uint32(reason),
+		Reason:   reason,
 		Message:  message,
 		Language: "en",
 	}

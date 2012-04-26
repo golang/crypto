@@ -21,8 +21,9 @@ var clientVersion = []byte("SSH-2.0-Go\r\n")
 // ClientConn represents the client side of an SSH connection.
 type ClientConn struct {
 	*transport
-	config *ClientConfig
-	chanlist
+	config      *ClientConfig
+	chanlist    // channels associated with this connection
+	forwardList // forwared tcpip connections from the remote side
 }
 
 // Client returns a new SSH client connection using c as the underlying transport.
@@ -239,7 +240,7 @@ func (c *ClientConn) mainLoop() {
 		default:
 			switch msg := decode(packet).(type) {
 			case *channelOpenMsg:
-				c.getChan(msg.PeersId).msg <- msg
+				c.handleChanOpen(msg)
 			case *channelOpenConfirmMsg:
 				c.getChan(msg.PeersId).msg <- msg
 			case *channelOpenFailureMsg:
@@ -279,6 +280,71 @@ func (c *ClientConn) mainLoop() {
 			}
 		}
 	}
+}
+
+// Handle channel open messages from the remote side.
+func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
+	switch msg.ChanType {
+	case "forwarded-tcpip":
+		addr, err := parseAddr(msg.TypeSpecificData)
+		if err != nil {
+			// invalid request
+			m := channelOpenFailureMsg{
+				PeersId:  msg.PeersId,
+				Reason:   ConnectionFailed,
+				Message:  fmt.Sprintf("invalid request: %v", err),
+				Language: "en_US.UTF-8",
+			}
+			c.writePacket(marshal(msgChannelOpenFailure, m))
+			return
+		}
+		l, ok := c.forwardList.Lookup(addr)
+		if !ok {
+			// Section 7.2, implementations MUST reject suprious incoming
+			// connections.
+			return
+		}
+		ch := c.newChan(c.transport)
+		ch.peersId = msg.PeersId
+		ch.stdin.win.add(msg.PeersWindow)
+
+		m := channelOpenConfirmMsg{
+			PeersId:       ch.peersId,
+			MyId:          ch.id,
+			MyWindow:      1 << 14,
+			MaxPacketSize: 1 << 15, // RFC 4253 6.1
+		}
+		c.writePacket(marshal(msgChannelOpenConfirm, m))
+		l <- forward{ch, addr}
+	default:
+		// unknown channel type
+		m := channelOpenFailureMsg{
+			PeersId:  msg.PeersId,
+			Reason:   UnknownChannelType,
+			Message:  fmt.Sprintf("unknown channel type: %v", msg.ChanType),
+			Language: "en_US.UTF-8",
+		}
+		c.writePacket(marshal(msgChannelOpenFailure, m))
+	}
+}
+
+// parseAddr parses the originating address from the remote into a *net.TCPAddr. 
+// RFC 4254 section 7.2 is mute on what to do if parsing fails but the forwardlist
+// requires a valid *net.TCPAddr to operate, so we enforce that restriction here.
+func parseAddr(b []byte) (*net.TCPAddr, error) {
+	addr, b, ok := parseString(b)
+	if !ok {
+		return nil, ParseError{msgChannelOpen}
+	}
+	port, _, ok := parseUint32(b)
+	if !ok {
+		return nil, ParseError{msgChannelOpen}
+	}
+	ip := net.ParseIP(string(addr))
+	if ip == nil {
+		return nil, ParseError{msgChannelOpen}
+	}
+	return &net.TCPAddr{ip, int(port)}, nil
 }
 
 // Dial connects to the given network address using net.Dial and
@@ -381,6 +447,14 @@ func (c *clientChan) sendClose() error {
 	return c.writePacket(marshal(msgChannelClose, channelCloseMsg{
 		PeersId: c.peersId,
 	}))
+}
+
+func (c *clientChan) sendWindowAdj(n int) error {
+	msg := windowAdjustMsg{
+		PeersId:         c.peersId,
+		AdditionalBytes: uint32(n),
+	}
+	return c.writePacket(marshal(msgChannelWindowAdjust, msg))
 }
 
 // Close closes the channel. This does not close the underlying connection.
@@ -522,11 +596,7 @@ func (r *chanReader) Read(data []byte) (int, error) {
 		if len(r.buf) > 0 {
 			n := copy(data, r.buf)
 			r.buf = r.buf[n:]
-			msg := windowAdjustMsg{
-				PeersId:         r.clientChan.peersId,
-				AdditionalBytes: uint32(n),
-			}
-			return n, r.clientChan.writePacket(marshal(msgChannelWindowAdjust, msg))
+			return n, r.clientChan.sendWindowAdj(n)
 		}
 		r.buf, ok = <-r.data
 		if !ok {

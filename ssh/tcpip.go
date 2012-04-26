@@ -9,8 +9,153 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 )
+
+var (
+	// TODO(dfc) relax this restriction
+	errNoPort = errors.New("A port number must be supplied")
+)
+
+// Listen requests the remote peer open a listening socket 
+// on addr. Incoming connections will be available by calling
+// Accept on the returned net.Listener.
+func (c *ClientConn) Listen(n, addr string) (net.Listener, error) {
+	raddr, err := net.ResolveTCPAddr(n, addr)
+	if err != nil {
+		return nil, err
+	}
+	return c.ListenTCP(raddr)
+}
+
+// ListenTCP requests the remote peer open a listening socket 
+// on raddr. Incoming connections will be available by calling
+// Accept on the returned net.Listener.
+func (c *ClientConn) ListenTCP(raddr *net.TCPAddr) (net.Listener, error) {
+	if raddr.Port == 0 {
+		return nil, errNoPort
+	}
+	return c.listen(raddr)
+}
+
+// RFC 4254 7.1
+type channelForwardMsg struct {
+	Message   string
+	WantReply bool
+	raddr     string
+	rport     uint32
+}
+
+func (c *ClientConn) listen(addr *net.TCPAddr) (net.Listener, error) {
+	m := channelForwardMsg{
+		"tcpip-forward",
+		false, // can't handle reply message from remote yet
+		addr.IP.String(),
+		uint32(addr.Port),
+	}
+	// register this forward
+	ch := c.forwardList.Add(addr)
+	// send message
+	if err := c.writePacket(marshal(msgGlobalRequest, m)); err != nil {
+		c.forwardList.Remove(addr)
+		return nil, err
+	}
+	return &tcpListener{addr, c, ch}, nil
+}
+
+// forwardList stores a mapping between remote 
+// forward requests and the tcpListeners.
+type forwardList struct {
+	sync.Mutex
+	entries []forwardEntry
+}
+
+// forwardEntry represents an established mapping of a laddr on a 
+// remote ssh server to a channel connected to a tcpListener.
+type forwardEntry struct {
+	laddr *net.TCPAddr
+	c     chan forward
+}
+
+// forward represents an incoming forwarded tcpip connection
+type forward struct {
+	c     *clientChan  // the ssh client channel underlying this forward
+	raddr *net.TCPAddr // the raddr of the incoming connection
+}
+
+func (l *forwardList) Add(addr *net.TCPAddr) chan forward {
+	l.Lock()
+	defer l.Unlock()
+	f := forwardEntry{
+		addr,
+		make(chan forward, 1),
+	}
+	l.entries = append(l.entries, f)
+	return f.c
+}
+
+func (l *forwardList) Remove(addr *net.TCPAddr) {
+	l.Lock()
+	defer l.Unlock()
+	for i, f := range l.entries {
+		if addr.IP.Equal(f.laddr.IP) && addr.Port == f.laddr.Port {
+			l.entries = append(l.entries[:i], l.entries[i+1:]...)
+			return
+		}
+	}
+}
+
+func (l *forwardList) Lookup(addr *net.TCPAddr) (chan forward, bool) {
+	l.Lock()
+	defer l.Unlock()
+	for _, f := range l.entries {
+		if addr.IP.Equal(f.laddr.IP) && addr.Port == f.laddr.Port {
+			return f.c, true
+		}
+	}
+	return nil, false
+}
+
+type tcpListener struct {
+	laddr *net.TCPAddr
+	conn  *ClientConn
+	in    <-chan forward
+}
+
+// Accept waits for and returns the next connection to the listener.
+func (l *tcpListener) Accept() (net.Conn, error) {
+	s, ok := <-l.in
+	if !ok {
+		return nil, io.EOF
+	}
+	return &tcpChanConn{
+		tcpChan: &tcpChan{
+			clientChan: s.c,
+			Reader:     s.c.stdout,
+			Writer:     s.c.stdin,
+		},
+		laddr: l.laddr,
+		raddr: s.raddr,
+	}, nil
+}
+
+// Close closes the listener.
+func (l *tcpListener) Close() error {
+	m := channelForwardMsg{
+		"cancel-tcpip-forward",
+		false, // TODO(dfc) process reply
+		l.laddr.IP.String(),
+		uint32(l.laddr.Port),
+	}
+	l.conn.forwardList.Remove(l.laddr)
+	return l.conn.writePacket(marshal(msgGlobalRequest, m))
+}
+
+// Addr returns the listener's network address.
+func (l *tcpListener) Addr() net.Addr {
+	return l.laddr
+}
 
 // Dial initiates a connection to the addr from the remote host.
 // addr is resolved using net.ResolveTCPAddr before connection. 
@@ -38,8 +183,8 @@ func (c *ClientConn) DialTCP(n string, laddr, raddr *net.TCPAddr) (net.Conn, err
 	if err != nil {
 		return nil, err
 	}
-	return &tcpchanconn{
-		tcpchan: ch,
+	return &tcpChanConn{
+		tcpChan: ch,
 		laddr:   laddr,
 		raddr:   raddr,
 	}, nil
@@ -59,7 +204,7 @@ type channelOpenDirectMsg struct {
 
 // dial opens a direct-tcpip connection to the remote server. laddr and raddr are passed as
 // strings and are expected to be resolveable at the remote end.
-func (c *ClientConn) dial(laddr string, lport int, raddr string, rport int) (*tcpchan, error) {
+func (c *ClientConn) dial(laddr string, lport int, raddr string, rport int) (*tcpChan, error) {
 	ch := c.newChan(c.transport)
 	if err := c.writePacket(marshal(msgChannelOpen, channelOpenDirectMsg{
 		ChanType:      "direct-tcpip",
@@ -78,39 +223,39 @@ func (c *ClientConn) dial(laddr string, lport int, raddr string, rport int) (*tc
 		c.chanlist.remove(ch.id)
 		return nil, fmt.Errorf("ssh: unable to open direct tcpip connection: %v", err)
 	}
-	return &tcpchan{
+	return &tcpChan{
 		clientChan: ch,
 		Reader:     ch.stdout,
 		Writer:     ch.stdin,
 	}, nil
 }
 
-type tcpchan struct {
+type tcpChan struct {
 	*clientChan // the backing channel
 	io.Reader
 	io.Writer
 }
 
-// tcpchanconn fulfills the net.Conn interface without 
-// the tcpchan having to hold laddr or raddr directly.
-type tcpchanconn struct {
-	*tcpchan
+// tcpChanConn fulfills the net.Conn interface without 
+// the tcpChan having to hold laddr or raddr directly.
+type tcpChanConn struct {
+	*tcpChan
 	laddr, raddr net.Addr
 }
 
 // LocalAddr returns the local network address.
-func (t *tcpchanconn) LocalAddr() net.Addr {
+func (t *tcpChanConn) LocalAddr() net.Addr {
 	return t.laddr
 }
 
 // RemoteAddr returns the remote network address.
-func (t *tcpchanconn) RemoteAddr() net.Addr {
+func (t *tcpChanConn) RemoteAddr() net.Addr {
 	return t.raddr
 }
 
 // SetDeadline sets the read and write deadlines associated
 // with the connection.
-func (t *tcpchanconn) SetDeadline(deadline time.Time) error {
+func (t *tcpChanConn) SetDeadline(deadline time.Time) error {
 	if err := t.SetReadDeadline(deadline); err != nil {
 		return err
 	}
@@ -121,12 +266,12 @@ func (t *tcpchanconn) SetDeadline(deadline time.Time) error {
 // A zero value for t means Read will not time out.
 // After the deadline, the error from Read will implement net.Error
 // with Timeout() == true.
-func (t *tcpchanconn) SetReadDeadline(deadline time.Time) error {
-	return errors.New("ssh: tcpchan: deadline not supported")
+func (t *tcpChanConn) SetReadDeadline(deadline time.Time) error {
+	return errors.New("ssh: tcpChan: deadline not supported")
 }
 
 // SetWriteDeadline exists to satisfy the net.Conn interface
 // but is not implemented by this type.  It always returns an error.
-func (t *tcpchanconn) SetWriteDeadline(deadline time.Time) error {
-	return errors.New("ssh: tcpchan: deadline not supported")
+func (t *tcpChanConn) SetWriteDeadline(deadline time.Time) error {
+	return errors.New("ssh: tcpChan: deadline not supported")
 }
