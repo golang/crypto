@@ -301,7 +301,7 @@ func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
 			c.sendConnectionFailed(msg.PeersId)
 			return
 		}
-		l, ok := c.forwardList.Lookup(laddr)
+		l, ok := c.forwardList.lookup(laddr)
 		if !ok {
 			fmt.Println("could not find forward list entry for", laddr)
 			// Section 7.2, implementations MUST reject suprious incoming

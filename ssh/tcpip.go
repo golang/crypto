@@ -58,7 +58,7 @@ func (c *ClientConn) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
 	}
 
 	// register this forward
-	ch := c.forwardList.Add(laddr)
+	ch := c.forwardList.add(laddr)
 	return &tcpListener{laddr, c, ch}, nil
 }
 
@@ -82,7 +82,7 @@ type forward struct {
 	raddr *net.TCPAddr // the raddr of the incoming connection
 }
 
-func (l *forwardList) Add(addr *net.TCPAddr) chan forward {
+func (l *forwardList) add(addr *net.TCPAddr) chan forward {
 	l.Lock()
 	defer l.Unlock()
 	f := forwardEntry{
@@ -93,7 +93,7 @@ func (l *forwardList) Add(addr *net.TCPAddr) chan forward {
 	return f.c
 }
 
-func (l *forwardList) Remove(addr *net.TCPAddr) {
+func (l *forwardList) remove(addr *net.TCPAddr) {
 	l.Lock()
 	defer l.Unlock()
 	for i, f := range l.entries {
@@ -104,7 +104,7 @@ func (l *forwardList) Remove(addr *net.TCPAddr) {
 	}
 }
 
-func (l *forwardList) Lookup(addr *net.TCPAddr) (chan forward, bool) {
+func (l *forwardList) lookup(addr *net.TCPAddr) (chan forward, bool) {
 	l.Lock()
 	defer l.Unlock()
 	for _, f := range l.entries {
@@ -146,7 +146,7 @@ func (l *tcpListener) Close() error {
 		l.laddr.IP.String(),
 		uint32(l.laddr.Port),
 	}
-	l.conn.forwardList.Remove(l.laddr)
+	l.conn.forwardList.remove(l.laddr)
 	if _, err := l.conn.sendGlobalRequest(m); err != nil {
 		return err
 	}
