@@ -177,6 +177,16 @@ type globalRequestMsg struct {
 	WantReply bool
 }
 
+// See RFC 4254, section 4
+type globalRequestSuccessMsg struct {
+	Data []byte `ssh:"rest"`
+}
+
+// See RFC 4254, section 4
+type globalRequestFailureMsg struct {
+	Data []byte `ssh:"rest"`
+}
+
 // See RFC 4254, section 5.2
 type windowAdjustMsg struct {
 	PeersId         uint32
@@ -584,9 +594,9 @@ func decode(packet []byte) interface{} {
 	case msgGlobalRequest:
 		msg = new(globalRequestMsg)
 	case msgRequestSuccess:
-		msg = new(channelRequestSuccessMsg)
+		msg = new(globalRequestSuccessMsg)
 	case msgRequestFailure:
-		msg = new(channelRequestFailureMsg)
+		msg = new(globalRequestFailureMsg)
 	case msgChannelOpen:
 		msg = new(channelOpenMsg)
 	case msgChannelOpenConfirm:

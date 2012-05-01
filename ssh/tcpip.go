@@ -13,30 +13,15 @@ import (
 	"time"
 )
 
-var (
-	// TODO(dfc) relax this restriction
-	errNoPort = errors.New("A port number must be supplied")
-)
-
 // Listen requests the remote peer open a listening socket 
 // on addr. Incoming connections will be available by calling
 // Accept on the returned net.Listener.
 func (c *ClientConn) Listen(n, addr string) (net.Listener, error) {
-	raddr, err := net.ResolveTCPAddr(n, addr)
+	laddr, err := net.ResolveTCPAddr(n, addr)
 	if err != nil {
 		return nil, err
 	}
-	return c.ListenTCP(raddr)
-}
-
-// ListenTCP requests the remote peer open a listening socket 
-// on raddr. Incoming connections will be available by calling
-// Accept on the returned net.Listener.
-func (c *ClientConn) ListenTCP(raddr *net.TCPAddr) (net.Listener, error) {
-	if raddr.Port == 0 {
-		return nil, errNoPort
-	}
-	return c.listen(raddr)
+	return c.ListenTCP(laddr)
 }
 
 // RFC 4254 7.1
@@ -47,21 +32,34 @@ type channelForwardMsg struct {
 	rport     uint32
 }
 
-func (c *ClientConn) listen(addr *net.TCPAddr) (net.Listener, error) {
+// ListenTCP requests the remote peer open a listening socket 
+// on laddr. Incoming connections will be available by calling
+// Accept on the returned net.Listener.
+func (c *ClientConn) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
 	m := channelForwardMsg{
 		"tcpip-forward",
-		false, // can't handle reply message from remote yet
-		addr.IP.String(),
-		uint32(addr.Port),
+		true, // sendGlobalRequest waits for a reply
+		laddr.IP.String(),
+		uint32(laddr.Port),
 	}
-	// register this forward
-	ch := c.forwardList.Add(addr)
 	// send message
-	if err := c.writePacket(marshal(msgGlobalRequest, m)); err != nil {
-		c.forwardList.Remove(addr)
+	resp, err := c.sendGlobalRequest(m)
+	if err != nil {
 		return nil, err
 	}
-	return &tcpListener{addr, c, ch}, nil
+	// fixup laddr. If the original port was 0, then the remote side will
+	// supply one in the resp.
+	if laddr.Port == 0 {
+		port, _, ok := parseUint32(resp.Data)
+		if !ok {
+			return nil, errors.New("unable to parse response")
+		}
+		laddr.Port = int(port)
+	}
+
+	// register this forward
+	ch := c.forwardList.Add(laddr)
+	return &tcpListener{laddr, c, ch}, nil
 }
 
 // forwardList stores a mapping between remote 
@@ -144,12 +142,15 @@ func (l *tcpListener) Accept() (net.Conn, error) {
 func (l *tcpListener) Close() error {
 	m := channelForwardMsg{
 		"cancel-tcpip-forward",
-		false, // TODO(dfc) process reply
+		true,
 		l.laddr.IP.String(),
 		uint32(l.laddr.Port),
 	}
 	l.conn.forwardList.Remove(l.laddr)
-	return l.conn.writePacket(marshal(msgGlobalRequest, m))
+	if _, err := l.conn.sendGlobalRequest(m); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Addr returns the listener's network address.

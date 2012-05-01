@@ -23,14 +23,21 @@ type ClientConn struct {
 	*transport
 	config      *ClientConfig
 	chanlist    // channels associated with this connection
-	forwardList // forwared tcpip connections from the remote side
+	forwardList // forwarded tcpip connections from the remote side
+	globalRequest
+}
+
+type globalRequest struct {
+	sync.Mutex
+	response chan interface{}
 }
 
 // Client returns a new SSH client connection using c as the underlying transport.
 func Client(c net.Conn, config *ClientConfig) (*ClientConn, error) {
 	conn := &ClientConn{
-		transport: newTransport(c, config.rand()),
-		config:    config,
+		transport:     newTransport(c, config.rand()),
+		config:        config,
+		globalRequest: globalRequest{response: make(chan interface{}, 1)},
 	}
 	if err := conn.handshake(); err != nil {
 		conn.Close()
@@ -273,6 +280,8 @@ func (c *ClientConn) mainLoop() {
 					// invalid window update
 					return
 				}
+			case *globalRequestSuccessMsg, *globalRequestFailureMsg:
+				c.globalRequest.response <- msg
 			case *disconnectMsg:
 				return
 			default:
@@ -286,22 +295,24 @@ func (c *ClientConn) mainLoop() {
 func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
 	switch msg.ChanType {
 	case "forwarded-tcpip":
-		addr, err := parseAddr(msg.TypeSpecificData)
-		if err != nil {
+		laddr, rest, ok := parseTCPAddr(msg.TypeSpecificData)
+		if !ok {
 			// invalid request
-			m := channelOpenFailureMsg{
-				PeersId:  msg.PeersId,
-				Reason:   ConnectionFailed,
-				Message:  fmt.Sprintf("invalid request: %v", err),
-				Language: "en_US.UTF-8",
-			}
-			c.writePacket(marshal(msgChannelOpenFailure, m))
+			c.sendConnectionFailed(msg.PeersId)
 			return
 		}
-		l, ok := c.forwardList.Lookup(addr)
+		l, ok := c.forwardList.Lookup(laddr)
 		if !ok {
+			fmt.Println("could not find forward list entry for", laddr)
 			// Section 7.2, implementations MUST reject suprious incoming
 			// connections.
+			c.sendConnectionFailed(msg.PeersId)
+			return
+		}
+		raddr, rest, ok := parseTCPAddr(rest)
+		if !ok {
+			// invalid request
+			c.sendConnectionFailed(msg.PeersId)
 			return
 		}
 		ch := c.newChan(c.transport)
@@ -315,7 +326,7 @@ func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
 			MaxPacketSize: 1 << 15, // RFC 4253 6.1
 		}
 		c.writePacket(marshal(msgChannelOpenConfirm, m))
-		l <- forward{ch, addr}
+		l <- forward{ch, raddr}
 	default:
 		// unknown channel type
 		m := channelOpenFailureMsg{
@@ -328,23 +339,51 @@ func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
 	}
 }
 
-// parseAddr parses the originating address from the remote into a *net.TCPAddr. 
+// sendGlobalRequest sends a global request message as specified
+// in RFC4254 section 4. To correctly synchronise messages, a lock
+// is held internally until a response is returned.
+func (c *ClientConn) sendGlobalRequest(m interface{}) (*globalRequestSuccessMsg, error) {
+	c.globalRequest.Lock()
+	defer c.globalRequest.Unlock()
+	if err := c.writePacket(marshal(msgGlobalRequest, m)); err != nil {
+		return nil, err
+	}
+	r := <-c.globalRequest.response
+	if r, ok := r.(*globalRequestSuccessMsg); ok {
+		return r, nil
+	}
+	return nil, errors.New("request failed")
+}
+
+// sendConnectionFailed rejects an incoming channel identified 
+// by peersId.
+func (c *ClientConn) sendConnectionFailed(peersId uint32) error {
+	m := channelOpenFailureMsg{
+		PeersId:  peersId,
+		Reason:   ConnectionFailed,
+		Message:  "invalid request",
+		Language: "en_US.UTF-8",
+	}
+	return c.writePacket(marshal(msgChannelOpenFailure, m))
+}
+
+// parseTCPAddr parses the originating address from the remote into a *net.TCPAddr. 
 // RFC 4254 section 7.2 is mute on what to do if parsing fails but the forwardlist
 // requires a valid *net.TCPAddr to operate, so we enforce that restriction here.
-func parseAddr(b []byte) (*net.TCPAddr, error) {
+func parseTCPAddr(b []byte) (*net.TCPAddr, []byte, bool) {
 	addr, b, ok := parseString(b)
 	if !ok {
-		return nil, ParseError{msgChannelOpen}
+		return nil, b, false
 	}
-	port, _, ok := parseUint32(b)
+	port, b, ok := parseUint32(b)
 	if !ok {
-		return nil, ParseError{msgChannelOpen}
+		return nil, b, false
 	}
 	ip := net.ParseIP(string(addr))
 	if ip == nil {
-		return nil, ParseError{msgChannelOpen}
+		return nil, b, false
 	}
-	return &net.TCPAddr{ip, int(port)}, nil
+	return &net.TCPAddr{ip, int(port)}, b, true
 }
 
 // Dial connects to the given network address using net.Dial and
