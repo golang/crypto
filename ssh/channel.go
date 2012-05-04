@@ -70,7 +70,7 @@ const (
 	ResourceShortage
 )
 
-type channel struct {
+type serverChan struct {
 	// immutable once created
 	chanType  string
 	extraData []byte
@@ -81,7 +81,7 @@ type channel struct {
 	dead        bool
 
 	serverConn            *ServerConn
-	myId, theirId         uint32
+	localId, remoteId     uint32
 	myWindow, theirWindow uint32
 	maxPacketSize         uint32
 	err                   error
@@ -95,7 +95,7 @@ type channel struct {
 	cond *sync.Cond
 }
 
-func (c *channel) Accept() error {
+func (c *serverChan) Accept() error {
 	c.serverConn.lock.Lock()
 	defer c.serverConn.lock.Unlock()
 
@@ -104,15 +104,15 @@ func (c *channel) Accept() error {
 	}
 
 	confirm := channelOpenConfirmMsg{
-		PeersId:       c.theirId,
-		MyId:          c.myId,
+		PeersId:       c.remoteId,
+		MyId:          c.localId,
 		MyWindow:      c.myWindow,
 		MaxPacketSize: c.maxPacketSize,
 	}
 	return c.serverConn.writePacket(marshal(msgChannelOpenConfirm, confirm))
 }
 
-func (c *channel) Reject(reason RejectionReason, message string) error {
+func (c *serverChan) Reject(reason RejectionReason, message string) error {
 	c.serverConn.lock.Lock()
 	defer c.serverConn.lock.Unlock()
 
@@ -121,7 +121,7 @@ func (c *channel) Reject(reason RejectionReason, message string) error {
 	}
 
 	reject := channelOpenFailureMsg{
-		PeersId:  c.theirId,
+		PeersId:  c.remoteId,
 		Reason:   reason,
 		Message:  message,
 		Language: "en",
@@ -129,7 +129,7 @@ func (c *channel) Reject(reason RejectionReason, message string) error {
 	return c.serverConn.writePacket(marshal(msgChannelOpenFailure, reject))
 }
 
-func (c *channel) handlePacket(packet interface{}) {
+func (c *serverChan) handlePacket(packet interface{}) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -157,7 +157,7 @@ func (c *channel) handlePacket(packet interface{}) {
 	}
 }
 
-func (c *channel) handleData(data []byte) {
+func (c *serverChan) handleData(data []byte) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -182,7 +182,7 @@ func (c *channel) handleData(data []byte) {
 	c.cond.Signal()
 }
 
-func (c *channel) Stderr() io.Writer {
+func (c *serverChan) Stderr() io.Writer {
 	return extendedDataChannel{c: c, t: extendedDataStderr}
 }
 
@@ -190,7 +190,7 @@ func (c *channel) Stderr() io.Writer {
 // data of the given type.
 type extendedDataChannel struct {
 	t extendedDataTypeCode
-	c *channel
+	c *serverChan
 }
 
 func (edc extendedDataChannel) Write(data []byte) (n int, err error) {
@@ -208,7 +208,7 @@ func (edc extendedDataChannel) Write(data []byte) (n int, err error) {
 
 		packet := make([]byte, 1+4+4+4+len(todo))
 		packet[0] = msgChannelExtendedData
-		marshalUint32(packet[1:], c.theirId)
+		marshalUint32(packet[1:], c.remoteId)
 		marshalUint32(packet[5:], uint32(edc.t))
 		marshalUint32(packet[9:], uint32(len(todo)))
 		copy(packet[13:], todo)
@@ -228,12 +228,12 @@ func (edc extendedDataChannel) Write(data []byte) (n int, err error) {
 	return
 }
 
-func (c *channel) Read(data []byte) (n int, err error) {
+func (c *serverChan) Read(data []byte) (n int, err error) {
 	n, err, windowAdjustment := c.read(data)
 
 	if windowAdjustment > 0 {
 		packet := marshal(msgChannelWindowAdjust, windowAdjustMsg{
-			PeersId:         c.theirId,
+			PeersId:         c.remoteId,
 			AdditionalBytes: windowAdjustment,
 		})
 		c.serverConn.lock.Lock()
@@ -247,7 +247,7 @@ func (c *channel) Read(data []byte) (n int, err error) {
 	return
 }
 
-func (c *channel) read(data []byte) (n int, err error, windowAdjustment uint32) {
+func (c *serverChan) read(data []byte) (n int, err error, windowAdjustment uint32) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -299,7 +299,7 @@ func (c *channel) read(data []byte) (n int, err error, windowAdjustment uint32) 
 
 // getWindowSpace takes, at most, max bytes of space from the peer's window. It
 // returns the number of bytes actually reserved.
-func (c *channel) getWindowSpace(max uint32) (uint32, error) {
+func (c *serverChan) getWindowSpace(max uint32) (uint32, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
@@ -324,7 +324,7 @@ func (c *channel) getWindowSpace(max uint32) (uint32, error) {
 	return taken, nil
 }
 
-func (c *channel) Write(data []byte) (n int, err error) {
+func (c *serverChan) Write(data []byte) (n int, err error) {
 	for len(data) > 0 {
 		var space uint32
 		if space, err = c.getWindowSpace(uint32(len(data))); err != nil {
@@ -338,7 +338,7 @@ func (c *channel) Write(data []byte) (n int, err error) {
 
 		packet := make([]byte, 1+4+4+len(todo))
 		packet[0] = msgChannelData
-		marshalUint32(packet[1:], c.theirId)
+		marshalUint32(packet[1:], c.remoteId)
 		marshalUint32(packet[5:], uint32(len(todo)))
 		copy(packet[9:], todo)
 
@@ -357,7 +357,7 @@ func (c *channel) Write(data []byte) (n int, err error) {
 	return
 }
 
-func (c *channel) Close() error {
+func (c *serverChan) Close() error {
 	c.serverConn.lock.Lock()
 	defer c.serverConn.lock.Unlock()
 
@@ -371,12 +371,12 @@ func (c *channel) Close() error {
 	c.weClosed = true
 
 	closeMsg := channelCloseMsg{
-		PeersId: c.theirId,
+		PeersId: c.remoteId,
 	}
 	return c.serverConn.writePacket(marshal(msgChannelClose, closeMsg))
 }
 
-func (c *channel) AckRequest(ok bool) error {
+func (c *serverChan) AckRequest(ok bool) error {
 	c.serverConn.lock.Lock()
 	defer c.serverConn.lock.Unlock()
 
@@ -386,21 +386,21 @@ func (c *channel) AckRequest(ok bool) error {
 
 	if !ok {
 		ack := channelRequestFailureMsg{
-			PeersId: c.theirId,
+			PeersId: c.remoteId,
 		}
 		return c.serverConn.writePacket(marshal(msgChannelFailure, ack))
 	}
 
 	ack := channelRequestSuccessMsg{
-		PeersId: c.theirId,
+		PeersId: c.remoteId,
 	}
 	return c.serverConn.writePacket(marshal(msgChannelSuccess, ack))
 }
 
-func (c *channel) ChannelType() string {
+func (c *serverChan) ChannelType() string {
 	return c.chanType
 }
 
-func (c *channel) ExtraData() []byte {
+func (c *serverChan) ExtraData() []byte {
 	return c.extraData
 }

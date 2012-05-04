@@ -209,7 +209,7 @@ func (c *ClientConn) dial(laddr string, lport int, raddr string, rport int) (*tc
 	ch := c.newChan(c.transport)
 	if err := c.writePacket(marshal(msgChannelOpen, channelOpenDirectMsg{
 		ChanType:      "direct-tcpip",
-		PeersId:       ch.id,
+		PeersId:       ch.localId,
 		PeersWindow:   1 << 14,
 		MaxPacketSize: 1 << 15, // RFC 4253 6.1
 		raddr:         raddr,
@@ -217,11 +217,11 @@ func (c *ClientConn) dial(laddr string, lport int, raddr string, rport int) (*tc
 		laddr:         laddr,
 		lport:         uint32(lport),
 	})); err != nil {
-		c.chanlist.remove(ch.id)
+		c.chanList.remove(ch.localId)
 		return nil, err
 	}
 	if err := ch.waitForChannelOpenResponse(); err != nil {
-		c.chanlist.remove(ch.id)
+		c.chanList.remove(ch.localId)
 		return nil, fmt.Errorf("ssh: unable to open direct tcpip connection: %v", err)
 	}
 	return &tcpChan{

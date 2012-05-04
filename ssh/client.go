@@ -22,7 +22,7 @@ var clientVersion = []byte("SSH-2.0-Go\r\n")
 type ClientConn struct {
 	*transport
 	config      *ClientConfig
-	chanlist    // channels associated with this connection
+	chanList    // channels associated with this connection
 	forwardList // forwarded tcpip connections from the remote side
 	globalRequest
 }
@@ -217,20 +217,20 @@ func (c *ClientConn) mainLoop() {
 				// malformed data packet
 				return
 			}
-			peersId := uint32(packet[1])<<24 | uint32(packet[2])<<16 | uint32(packet[3])<<8 | uint32(packet[4])
+			remoteId := uint32(packet[1])<<24 | uint32(packet[2])<<16 | uint32(packet[3])<<8 | uint32(packet[4])
 			length := uint32(packet[5])<<24 | uint32(packet[6])<<16 | uint32(packet[7])<<8 | uint32(packet[8])
 			packet = packet[9:]
 
 			if length != uint32(len(packet)) {
 				return
 			}
-			c.getChan(peersId).stdout.handleData(packet)
+			c.getChan(remoteId).stdout.handleData(packet)
 		case msgChannelExtendedData:
 			if len(packet) < 13 {
 				// malformed data packet
 				return
 			}
-			peersId := uint32(packet[1])<<24 | uint32(packet[2])<<16 | uint32(packet[3])<<8 | uint32(packet[4])
+			remoteId := uint32(packet[1])<<24 | uint32(packet[2])<<16 | uint32(packet[3])<<8 | uint32(packet[4])
 			datatype := uint32(packet[5])<<24 | uint32(packet[6])<<16 | uint32(packet[7])<<8 | uint32(packet[8])
 			length := uint32(packet[9])<<24 | uint32(packet[10])<<16 | uint32(packet[11])<<8 | uint32(packet[12])
 			packet = packet[13:]
@@ -242,7 +242,7 @@ func (c *ClientConn) mainLoop() {
 			// for stderr on interactive sessions. Other data types are
 			// silently discarded.
 			if datatype == 1 {
-				c.getChan(peersId).stderr.handleData(packet)
+				c.getChan(remoteId).stderr.handleData(packet)
 			}
 		default:
 			switch msg := decode(packet).(type) {
@@ -262,7 +262,7 @@ func (c *ClientConn) mainLoop() {
 					ch.weClosed = true
 					ch.sendClose()
 				}
-				c.chanlist.remove(msg.PeersId)
+				c.chanList.remove(msg.PeersId)
 			case *channelEOFMsg:
 				ch := c.getChan(msg.PeersId)
 				ch.stdout.eof()
@@ -316,12 +316,12 @@ func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
 			return
 		}
 		ch := c.newChan(c.transport)
-		ch.peersId = msg.PeersId
+		ch.remoteId = msg.PeersId
 		ch.stdin.win.add(msg.PeersWindow)
 
 		m := channelOpenConfirmMsg{
-			PeersId:       ch.peersId,
-			MyId:          ch.id,
+			PeersId:       ch.remoteId,
+			MyId:          ch.localId,
 			MyWindow:      1 << 14,
 			MaxPacketSize: 1 << 15, // RFC 4253 6.1
 		}
@@ -356,10 +356,10 @@ func (c *ClientConn) sendGlobalRequest(m interface{}) (*globalRequestSuccessMsg,
 }
 
 // sendConnectionFailed rejects an incoming channel identified 
-// by peersId.
-func (c *ClientConn) sendConnectionFailed(peersId uint32) error {
+// by remoteId.
+func (c *ClientConn) sendConnectionFailed(remoteId uint32) error {
 	m := channelOpenFailureMsg{
-		PeersId:  peersId,
+		PeersId:  remoteId,
 		Reason:   ConnectionFailed,
 		Message:  "invalid request",
 		Language: "en_US.UTF-8",
@@ -426,22 +426,22 @@ func (c *ClientConfig) rand() io.Reader {
 // over a single SSH connection.
 type clientChan struct {
 	packetWriter
-	id, peersId uint32
-	stdin       *chanWriter      // receives window adjustments
-	stdout      *chanReader      // receives the payload of channelData messages
-	stderr      *chanReader      // receives the payload of channelExtendedData messages
-	msg         chan interface{} // incoming messages
-	theyClosed  bool             // indicates the close msg has been received from the remote side
-	weClosed    bool             // incidates the close msg has been sent from our side
+	localId, remoteId uint32
+	stdin             *chanWriter      // receives window adjustments
+	stdout            *chanReader      // receives the payload of channelData messages
+	stderr            *chanReader      // receives the payload of channelExtendedData messages
+	msg               chan interface{} // incoming messages
+	theyClosed        bool             // indicates the close msg has been received from the remote side
+	weClosed          bool             // incidates the close msg has been sent from our side
 }
 
 // newClientChan returns a partially constructed *clientChan
-// using the local id provided. To be usable clientChan.peersId
+// using the local id provided. To be usable clientChan.remoteId
 // needs to be assigned once known.
-func newClientChan(t *transport, id uint32) *clientChan {
+func newClientChan(t *transport, localId uint32) *clientChan {
 	c := &clientChan{
 		packetWriter: t,
-		id:           id,
+		localId:      localId,
 		msg:          make(chan interface{}, 16),
 	}
 	c.stdin = &chanWriter{
@@ -460,12 +460,12 @@ func newClientChan(t *transport, id uint32) *clientChan {
 }
 
 // waitForChannelOpenResponse, if successful, fills out
-// the peerId and records any initial window advertisement.
+// the remoteId and records any initial window advertisement.
 func (c *clientChan) waitForChannelOpenResponse() error {
 	switch msg := (<-c.msg).(type) {
 	case *channelOpenConfirmMsg:
-		// fixup peersId field
-		c.peersId = msg.MyId
+		// fixup remoteId field
+		c.remoteId = msg.MyId
 		c.stdin.win.add(msg.MyWindow)
 		return nil
 	case *channelOpenFailureMsg:
@@ -477,20 +477,20 @@ func (c *clientChan) waitForChannelOpenResponse() error {
 // sendEOF sends EOF to the server. RFC 4254 Section 5.3
 func (c *clientChan) sendEOF() error {
 	return c.writePacket(marshal(msgChannelEOF, channelEOFMsg{
-		PeersId: c.peersId,
+		PeersId: c.remoteId,
 	}))
 }
 
 // sendClose signals the intent to close the channel.
 func (c *clientChan) sendClose() error {
 	return c.writePacket(marshal(msgChannelClose, channelCloseMsg{
-		PeersId: c.peersId,
+		PeersId: c.remoteId,
 	}))
 }
 
 func (c *clientChan) sendWindowAdj(n int) error {
 	msg := windowAdjustMsg{
-		PeersId:         c.peersId,
+		PeersId:         c.remoteId,
 		AdditionalBytes: uint32(n),
 	}
 	return c.writePacket(marshal(msgChannelWindowAdjust, msg))
@@ -506,17 +506,17 @@ func (c *clientChan) Close() error {
 }
 
 // Thread safe channel list.
-type chanlist struct {
+type chanList struct {
 	// protects concurrent access to chans
 	sync.Mutex
-	// chans are indexed by the local id of the channel, clientChan.id.
+	// chans are indexed by the local id of the channel, clientChan.localId.
 	// The PeersId value of messages received by ClientConn.mainLoop is
 	// used to locate the right local clientChan in this slice.
 	chans []*clientChan
 }
 
 // Allocate a new ClientChan with the next avail local id.
-func (c *chanlist) newChan(t *transport) *clientChan {
+func (c *chanList) newChan(t *transport) *clientChan {
 	c.Lock()
 	defer c.Unlock()
 	for i := range c.chans {
@@ -532,7 +532,7 @@ func (c *chanlist) newChan(t *transport) *clientChan {
 	return ch
 }
 
-func (c *chanlist) getChan(id uint32) *clientChan {
+func (c *chanList) getChan(id uint32) *clientChan {
 	c.Lock()
 	defer c.Unlock()
 	if id >= uint32(len(c.chans)) {
@@ -541,13 +541,13 @@ func (c *chanlist) getChan(id uint32) *clientChan {
 	return c.chans[int(id)]
 }
 
-func (c *chanlist) remove(id uint32) {
+func (c *chanList) remove(id uint32) {
 	c.Lock()
 	defer c.Unlock()
 	c.chans[int(id)] = nil
 }
 
-func (c *chanlist) closeAll() {
+func (c *chanList) closeAll() {
 	c.Lock()
 	defer c.Unlock()
 
@@ -575,10 +575,10 @@ func (w *chanWriter) Write(data []byte) (written int, err error) {
 		// n cannot be larger than 2^31 as len(data) cannot
 		// be larger than 2^31
 		n := int(w.win.reserve(uint32(len(data))))
-		peersId := w.clientChan.peersId
+		remoteId := w.clientChan.remoteId
 		packet := []byte{
 			msgChannelData,
-			byte(peersId >> 24), byte(peersId >> 16), byte(peersId >> 8), byte(peersId),
+			byte(remoteId >> 24), byte(remoteId >> 16), byte(remoteId >> 8), byte(remoteId),
 			byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n),
 		}
 		if err = w.clientChan.writePacket(append(packet, data[:n]...)); err != nil {

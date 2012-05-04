@@ -89,7 +89,7 @@ type setenvRequest struct {
 // command executed by Shell or Run.
 func (s *Session) Setenv(name, value string) error {
 	req := setenvRequest{
-		PeersId:   s.peersId,
+		PeersId:   s.remoteId,
 		Request:   "env",
 		WantReply: true,
 		Name:      name,
@@ -120,7 +120,7 @@ type ptyRequestMsg struct {
 // RequestPty requests the association of a pty with the session on the remote host.
 func (s *Session) RequestPty(term string, h, w int) error {
 	req := ptyRequestMsg{
-		PeersId:   s.peersId,
+		PeersId:   s.remoteId,
 		Request:   "pty-req",
 		WantReply: true,
 		Term:      term,
@@ -148,7 +148,7 @@ type signalMsg struct {
 // sig is one of the SIG* constants.
 func (s *Session) Signal(sig Signal) error {
 	req := signalMsg{
-		PeersId:   s.peersId,
+		PeersId:   s.remoteId,
 		Request:   "signal",
 		WantReply: false,
 		Signal:    string(sig),
@@ -172,7 +172,7 @@ func (s *Session) Start(cmd string) error {
 		return errors.New("ssh: session already started")
 	}
 	req := execMsg{
-		PeersId:   s.peersId,
+		PeersId:   s.remoteId,
 		Request:   "exec",
 		WantReply: true,
 		Command:   cmd,
@@ -212,7 +212,7 @@ func (s *Session) Shell() error {
 		return errors.New("ssh: session already started")
 	}
 	req := channelRequestMsg{
-		PeersId:   s.peersId,
+		PeersId:   s.remoteId,
 		Request:   "shell",
 		WantReply: true,
 	}
@@ -434,15 +434,15 @@ func (c *ClientConn) NewSession() (*Session, error) {
 	ch := c.newChan(c.transport)
 	if err := c.writePacket(marshal(msgChannelOpen, channelOpenMsg{
 		ChanType:      "session",
-		PeersId:       ch.id,
+		PeersId:       ch.localId,
 		PeersWindow:   1 << 14,
 		MaxPacketSize: 1 << 15, // RFC 4253 6.1
 	})); err != nil {
-		c.chanlist.remove(ch.id)
+		c.chanList.remove(ch.localId)
 		return nil, err
 	}
 	if err := ch.waitForChannelOpenResponse(); err != nil {
-		c.chanlist.remove(ch.id)
+		c.chanList.remove(ch.localId)
 		return nil, fmt.Errorf("ssh: unable to open session: %v", err)
 	}
 	return &Session{

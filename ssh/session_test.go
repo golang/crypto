@@ -15,7 +15,7 @@ import (
 	"code.google.com/p/go.crypto/ssh/terminal"
 )
 
-type serverType func(*channel)
+type serverType func(*serverChan)
 
 // dial constructs a new test server and returns a *ClientConn.
 func dial(handler serverType, t *testing.T) *ClientConn {
@@ -59,7 +59,7 @@ func dial(handler serverType, t *testing.T) *ClientConn {
 				continue
 			}
 			ch.Accept()
-			go handler(ch.(*channel))
+			go handler(ch.(*serverChan))
 		}
 		t.Log("done")
 	}()
@@ -311,7 +311,7 @@ type exitSignalMsg struct {
 	Lang       string
 }
 
-func newServerShell(ch *channel, prompt string) *ServerTerminal {
+func newServerShell(ch *serverChan, prompt string) *ServerTerminal {
 	term := terminal.NewTerminal(ch, prompt)
 	return &ServerTerminal{
 		Term:    term,
@@ -319,7 +319,7 @@ func newServerShell(ch *channel, prompt string) *ServerTerminal {
 	}
 }
 
-func exitStatusZeroHandler(ch *channel) {
+func exitStatusZeroHandler(ch *serverChan) {
 	defer ch.Close()
 	// this string is returned to stdout
 	shell := newServerShell(ch, "> ")
@@ -327,14 +327,14 @@ func exitStatusZeroHandler(ch *channel) {
 	sendStatus(0, ch)
 }
 
-func exitStatusNonZeroHandler(ch *channel) {
+func exitStatusNonZeroHandler(ch *serverChan) {
 	defer ch.Close()
 	shell := newServerShell(ch, "> ")
 	shell.ReadLine()
 	sendStatus(15, ch)
 }
 
-func exitSignalAndStatusHandler(ch *channel) {
+func exitSignalAndStatusHandler(ch *serverChan) {
 	defer ch.Close()
 	shell := newServerShell(ch, "> ")
 	shell.ReadLine()
@@ -342,27 +342,27 @@ func exitSignalAndStatusHandler(ch *channel) {
 	sendSignal("TERM", ch)
 }
 
-func exitSignalHandler(ch *channel) {
+func exitSignalHandler(ch *serverChan) {
 	defer ch.Close()
 	shell := newServerShell(ch, "> ")
 	shell.ReadLine()
 	sendSignal("TERM", ch)
 }
 
-func exitSignalUnknownHandler(ch *channel) {
+func exitSignalUnknownHandler(ch *serverChan) {
 	defer ch.Close()
 	shell := newServerShell(ch, "> ")
 	shell.ReadLine()
 	sendSignal("SYS", ch)
 }
 
-func exitWithoutSignalOrStatus(ch *channel) {
+func exitWithoutSignalOrStatus(ch *serverChan) {
 	defer ch.Close()
 	shell := newServerShell(ch, "> ")
 	shell.ReadLine()
 }
 
-func shellHandler(ch *channel) {
+func shellHandler(ch *serverChan) {
 	defer ch.Close()
 	// this string is returned to stdout
 	shell := newServerShell(ch, "golang")
@@ -370,9 +370,9 @@ func shellHandler(ch *channel) {
 	sendStatus(0, ch)
 }
 
-func sendStatus(status uint32, ch *channel) {
+func sendStatus(status uint32, ch *serverChan) {
 	msg := exitStatusMsg{
-		PeersId:   ch.theirId,
+		PeersId:   ch.remoteId,
 		Request:   "exit-status",
 		WantReply: false,
 		Status:    status,
@@ -380,9 +380,9 @@ func sendStatus(status uint32, ch *channel) {
 	ch.serverConn.writePacket(marshal(msgChannelRequest, msg))
 }
 
-func sendSignal(signal string, ch *channel) {
+func sendSignal(signal string, ch *serverChan) {
 	sig := exitSignalMsg{
-		PeersId:    ch.theirId,
+		PeersId:    ch.remoteId,
 		Request:    "exit-signal",
 		WantReply:  false,
 		Signal:     signal,
@@ -393,7 +393,7 @@ func sendSignal(signal string, ch *channel) {
 	ch.serverConn.writePacket(marshal(msgChannelRequest, sig))
 }
 
-func sendInvalidRecord(ch *channel) {
+func sendInvalidRecord(ch *serverChan) {
 	defer ch.Close()
 	packet := make([]byte, 1+4+4+1)
 	packet[0] = msgChannelData

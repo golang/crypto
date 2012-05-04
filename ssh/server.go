@@ -98,7 +98,7 @@ type ServerConn struct {
 	*transport
 	config *ServerConfig
 
-	channels   map[uint32]*channel
+	channels   map[uint32]*serverChan
 	nextChanId uint32
 
 	// lock protects err and also allows Channels to serialise their writes
@@ -123,7 +123,7 @@ type ServerConn struct {
 func Server(c net.Conn, config *ServerConfig) *ServerConn {
 	conn := &ServerConn{
 		transport: newTransport(c, config.rand()),
-		channels:  make(map[uint32]*channel),
+		channels:  make(map[uint32]*serverChan),
 		config:    config,
 	}
 	return conn
@@ -526,9 +526,9 @@ func (s *ServerConn) Accept() (Channel, error) {
 				// malformed data packet
 				return nil, ParseError{msgChannelData}
 			}
-			peersId := uint32(packet[1])<<24 | uint32(packet[2])<<16 | uint32(packet[3])<<8 | uint32(packet[4])
+			remoteId := uint32(packet[1])<<24 | uint32(packet[2])<<16 | uint32(packet[3])<<8 | uint32(packet[4])
 			s.lock.Lock()
-			c, ok := s.channels[peersId]
+			c, ok := s.channels[remoteId]
 			if !ok {
 				s.lock.Unlock()
 				continue
@@ -541,9 +541,9 @@ func (s *ServerConn) Accept() (Channel, error) {
 		default:
 			switch msg := decode(packet).(type) {
 			case *channelOpenMsg:
-				c := new(channel)
+				c := new(serverChan)
 				c.chanType = msg.ChanType
-				c.theirId = msg.PeersId
+				c.remoteId = msg.PeersId
 				c.theirWindow = msg.PeersWindow
 				c.maxPacketSize = msg.MaxPacketSize
 				c.extraData = msg.TypeSpecificData
@@ -553,9 +553,9 @@ func (s *ServerConn) Accept() (Channel, error) {
 				c.pendingData = make([]byte, c.myWindow)
 
 				s.lock.Lock()
-				c.myId = s.nextChanId
+				c.localId = s.nextChanId
 				s.nextChanId++
-				s.channels[c.myId] = c
+				s.channels[c.localId] = c
 				s.lock.Unlock()
 				return c, nil
 
