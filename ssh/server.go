@@ -101,9 +101,8 @@ type ServerConn struct {
 	channels   map[uint32]*serverChan
 	nextChanId uint32
 
-	// lock protects err and also allows Channels to serialise their writes
-	// to out.
-	lock sync.RWMutex
+	// lock protects err and channels.
+	lock sync.Mutex
 	err  error
 
 	// cachedPubKeys contains the cache results of tests for public keys.
@@ -121,12 +120,11 @@ type ServerConn struct {
 // Server returns a new SSH server connection
 // using c as the underlying transport.
 func Server(c net.Conn, config *ServerConfig) *ServerConn {
-	conn := &ServerConn{
+	return &ServerConn{
 		transport: newTransport(c, config.rand()),
 		channels:  make(map[uint32]*serverChan),
 		config:    config,
 	}
-	return conn
 }
 
 // kexDH performs Diffie-Hellman key agreement on a ServerConnection. The
@@ -500,6 +498,7 @@ const defaultWindowSize = 32768
 // Accept reads and processes messages on a ServerConn. It must be called
 // in order to demultiplex messages to any resulting Channels.
 func (s *ServerConn) Accept() (Channel, error) {
+	// TODO(dfc) s.lock is not held here so visibility of s.err is not guarenteed.
 	if s.err != nil {
 		return nil, s.err
 	}
@@ -512,6 +511,7 @@ func (s *ServerConn) Accept() (Channel, error) {
 			s.err = err
 			s.lock.Unlock()
 
+			// TODO(dfc) s.lock protects s.channels but isn't being held here.
 			for _, c := range s.channels {
 				c.dead = true
 				c.handleData(nil)
@@ -541,17 +541,20 @@ func (s *ServerConn) Accept() (Channel, error) {
 		default:
 			switch msg := decode(packet).(type) {
 			case *channelOpenMsg:
-				c := new(serverChan)
-				c.chanType = msg.ChanType
-				c.remoteId = msg.PeersId
-				c.theirWindow = msg.PeersWindow
-				c.maxPacketSize = msg.MaxPacketSize
-				c.extraData = msg.TypeSpecificData
-				c.myWindow = defaultWindowSize
-				c.serverConn = s
-				c.cond = sync.NewCond(&c.lock)
-				c.pendingData = make([]byte, c.myWindow)
-
+				c := &serverChan{
+					channel: channel{
+						conn:     s,
+						remoteId: msg.PeersId,
+					},
+					theirWindow:   msg.PeersWindow,
+					chanType:      msg.ChanType,
+					maxPacketSize: msg.MaxPacketSize,
+					extraData:     msg.TypeSpecificData,
+					myWindow:      defaultWindowSize,
+					serverConn:    s,
+					cond:          sync.NewCond(new(sync.Mutex)),
+					pendingData:   make([]byte, defaultWindowSize),
+				}
 				s.lock.Lock()
 				c.localId = s.nextChanId
 				s.nextChanId++
@@ -625,18 +628,6 @@ type Listener struct {
 	config   *ServerConfig
 }
 
-// Accept waits for and returns the next incoming SSH connection.
-// The receiver should call Handshake() in another goroutine 
-// to avoid blocking the accepter.
-func (l *Listener) Accept() (*ServerConn, error) {
-	c, err := l.listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-	conn := Server(c, l.config)
-	return conn, nil
-}
-
 // Addr returns the listener's network address.
 func (l *Listener) Addr() net.Addr {
 	return l.listener.Addr()
@@ -645,6 +636,17 @@ func (l *Listener) Addr() net.Addr {
 // Close closes the listener.
 func (l *Listener) Close() error {
 	return l.listener.Close()
+}
+
+// Accept waits for and returns the next incoming SSH connection.
+// The receiver should call Handshake() in another goroutine 
+// to avoid blocking the accepter.
+func (l *Listener) Accept() (*ServerConn, error) {
+	c, err := l.listener.Accept()
+	if err != nil {
+		return nil, err
+	}
+	return Server(c, l.config), nil
 }
 
 // Listen creates an SSH listener accepting connections on

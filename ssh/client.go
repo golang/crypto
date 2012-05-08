@@ -425,36 +425,35 @@ func (c *ClientConfig) rand() io.Reader {
 // A clientChan represents a single RFC 4254 channel that is multiplexed
 // over a single SSH connection.
 type clientChan struct {
-	packetWriter
-	localId, remoteId uint32
-	stdin             *chanWriter      // receives window adjustments
-	stdout            *chanReader      // receives the payload of channelData messages
-	stderr            *chanReader      // receives the payload of channelExtendedData messages
-	msg               chan interface{} // incoming messages
-	theyClosed        bool             // indicates the close msg has been received from the remote side
-	weClosed          bool             // incidates the close msg has been sent from our side
+	channel
+	stdin  *chanWriter
+	stdout *chanReader
+	stderr *chanReader
+	msg    chan interface{}
 }
 
 // newClientChan returns a partially constructed *clientChan
 // using the local id provided. To be usable clientChan.remoteId
 // needs to be assigned once known.
-func newClientChan(t *transport, localId uint32) *clientChan {
+func newClientChan(cc conn, id uint32) *clientChan {
 	c := &clientChan{
-		packetWriter: t,
-		localId:      localId,
-		msg:          make(chan interface{}, 16),
+		channel: channel{
+			conn:    cc,
+			localId: id,
+		},
+		msg: make(chan interface{}, 16),
 	}
 	c.stdin = &chanWriter{
-		win:        &window{Cond: sync.NewCond(new(sync.Mutex))},
-		clientChan: c,
+		win:     &window{Cond: sync.NewCond(new(sync.Mutex))},
+		channel: &c.channel,
 	}
 	c.stdout = &chanReader{
-		data:       make(chan []byte, 16),
-		clientChan: c,
+		data:    make(chan []byte, 16),
+		channel: &c.channel,
 	}
 	c.stderr = &chanReader{
-		data:       make(chan []byte, 16),
-		clientChan: c,
+		data:    make(chan []byte, 16),
+		channel: &c.channel,
 	}
 	return c
 }
@@ -472,28 +471,6 @@ func (c *clientChan) waitForChannelOpenResponse() error {
 		return errors.New(safeString(msg.Message))
 	}
 	return errors.New("ssh: unexpected packet")
-}
-
-// sendEOF sends EOF to the server. RFC 4254 Section 5.3
-func (c *clientChan) sendEOF() error {
-	return c.writePacket(marshal(msgChannelEOF, channelEOFMsg{
-		PeersId: c.remoteId,
-	}))
-}
-
-// sendClose signals the intent to close the channel.
-func (c *clientChan) sendClose() error {
-	return c.writePacket(marshal(msgChannelClose, channelCloseMsg{
-		PeersId: c.remoteId,
-	}))
-}
-
-func (c *clientChan) sendWindowAdj(n int) error {
-	msg := windowAdjustMsg{
-		PeersId:         c.remoteId,
-		AdditionalBytes: uint32(n),
-	}
-	return c.writePacket(marshal(msgChannelWindowAdjust, msg))
 }
 
 // Close closes the channel. This does not close the underlying connection.
@@ -565,8 +542,8 @@ func (c *chanList) closeAll() {
 
 // A chanWriter represents the stdin of a remote process.
 type chanWriter struct {
-	win        *window
-	clientChan *clientChan // the channel backing this writer
+	win *window
+	*channel
 }
 
 // Write writes data to the remote process's standard input.
@@ -575,13 +552,13 @@ func (w *chanWriter) Write(data []byte) (written int, err error) {
 		// n cannot be larger than 2^31 as len(data) cannot
 		// be larger than 2^31
 		n := int(w.win.reserve(uint32(len(data))))
-		remoteId := w.clientChan.remoteId
+		remoteId := w.remoteId
 		packet := []byte{
 			msgChannelData,
 			byte(remoteId >> 24), byte(remoteId >> 16), byte(remoteId >> 8), byte(remoteId),
 			byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n),
 		}
-		if err = w.clientChan.writePacket(append(packet, data[:n]...)); err != nil {
+		if err = w.writePacket(append(packet, data[:n]...)); err != nil {
 			break
 		}
 		data = data[n:]
@@ -598,7 +575,7 @@ func min(a, b int) int {
 }
 
 func (w *chanWriter) Close() error {
-	return w.clientChan.sendEOF()
+	return w.sendEOF()
 }
 
 // A chanReader represents stdout or stderr of a remote process.
@@ -608,7 +585,7 @@ type chanReader struct {
 	// it unable to receive new messages from the remote side.
 	data       chan []byte // receives data from remote
 	dataClosed bool        // protects data from being closed twice
-	clientChan *clientChan // the channel backing this reader
+	*channel               // the channel backing this reader
 	buf        []byte
 }
 
@@ -635,7 +612,7 @@ func (r *chanReader) Read(data []byte) (int, error) {
 		if len(r.buf) > 0 {
 			n := copy(data, r.buf)
 			r.buf = r.buf[n:]
-			return n, r.clientChan.sendWindowAdj(n)
+			return n, r.sendWindowAdj(n)
 		}
 		r.buf, ok = <-r.data
 		if !ok {

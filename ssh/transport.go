@@ -23,25 +23,14 @@ const (
 	minPaddingSize     = 4 // TODO(huin) should this be configurable?
 )
 
-// filteredConn reduces the set of methods exposed when embeddeding
-// a net.Conn inside ssh.transport.
-// TODO(dfc) suggestions for a better name will be warmly received.
-type filteredConn interface {
-	// Close closes the connection.
-	Close() error
-
-	// LocalAddr returns the local network address.
-	LocalAddr() net.Addr
-
-	// RemoteAddr returns the remote network address.
-	RemoteAddr() net.Addr
-}
-
-// Types implementing packetWriter provide the ability to send packets to
-// an SSH peer.
-type packetWriter interface {
+// conn represents an ssh transport that implements packet based
+// operations.
+type conn interface {
 	// Encrypt and send a packet of data to the remote peer.
 	writePacket(packet []byte) error
+
+	// Close closes the connection.
+	Close() error
 }
 
 // transport represents the SSH connection to the remote peer.
@@ -49,7 +38,7 @@ type transport struct {
 	reader
 	writer
 
-	filteredConn
+	net.Conn
 }
 
 // reader represents the incoming connection state.
@@ -58,9 +47,9 @@ type reader struct {
 	common
 }
 
-// writer represnts the outgoing connection state.
+// writer represents the outgoing connection state.
 type writer struct {
-	*sync.Mutex // protects writer.Writer from concurrent writes
+	sync.Mutex // protects writer.Writer from concurrent writes
 	*bufio.Writer
 	rand io.Reader
 	common
@@ -230,12 +219,11 @@ func newTransport(conn net.Conn, rand io.Reader) *transport {
 		writer: writer{
 			Writer: bufio.NewWriter(conn),
 			rand:   rand,
-			Mutex:  new(sync.Mutex),
 			common: common{
 				cipher: noneCipher{},
 			},
 		},
-		filteredConn: conn,
+		Conn: conn,
 	}
 }
 
