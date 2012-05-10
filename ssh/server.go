@@ -543,18 +543,19 @@ func (s *ServerConn) Accept() (Channel, error) {
 			case *channelOpenMsg:
 				c := &serverChan{
 					channel: channel{
-						conn:     s,
-						remoteId: msg.PeersId,
+						conn:      s,
+						remoteId:  msg.PeersId,
+						remoteWin: window{Cond: newCond()},
 					},
-					theirWindow:   msg.PeersWindow,
 					chanType:      msg.ChanType,
 					maxPacketSize: msg.MaxPacketSize,
 					extraData:     msg.TypeSpecificData,
 					myWindow:      defaultWindowSize,
 					serverConn:    s,
-					cond:          sync.NewCond(new(sync.Mutex)),
+					cond:          newCond(),
 					pendingData:   make([]byte, defaultWindowSize),
 				}
+				c.remoteWin.add(msg.PeersWindow)
 				s.lock.Lock()
 				c.localId = s.nextChanId
 				s.nextChanId++

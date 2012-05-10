@@ -285,3 +285,50 @@ func appendU32(buf []byte, n uint32) []byte {
 func appendInt(buf []byte, n int) []byte {
 	return appendU32(buf, uint32(n))
 }
+
+// newCond is a helper to hide the fact that there is no usable zero 
+// value for sync.Cond.
+func newCond() *sync.Cond { return sync.NewCond(new(sync.Mutex)) }
+
+// window represents the buffer available to clients 
+// wishing to write to a channel.
+type window struct {
+	*sync.Cond
+	win uint32 // RFC 4254 5.2 says the window size can grow to 2^32-1
+}
+
+// add adds win to the amount of window available
+// for consumers.
+func (w *window) add(win uint32) bool {
+	if win == 0 {
+		return false
+	}
+	w.L.Lock()
+	if w.win+win < win {
+		w.L.Unlock()
+		return false
+	}
+	w.win += win
+	// It is unusual that multiple goroutines would be attempting to reserve
+	// window space, but not guaranteed. Use broadcast to notify all waiters 
+	// that additional window is available.
+	w.Broadcast()
+	w.L.Unlock()
+	return true
+}
+
+// reserve reserves win from the available window capacity.
+// If no capacity remains, reserve will block. reserve may
+// return less than requested.
+func (w *window) reserve(win uint32) uint32 {
+	w.L.Lock()
+	for w.win == 0 {
+		w.Wait()
+	}
+	if w.win < win {
+		win = w.win
+	}
+	w.win -= win
+	w.L.Unlock()
+	return win
+}

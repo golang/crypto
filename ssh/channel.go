@@ -73,6 +73,7 @@ const (
 type channel struct {
 	conn              // the underlying transport
 	localId, remoteId uint32
+	remoteWin         window
 
 	theyClosed  bool // indicates the close msg has been received from the remote side
 	weClosed    bool // incidates the close msg has been sent from our side
@@ -118,10 +119,10 @@ type serverChan struct {
 	chanType  string
 	extraData []byte
 
-	serverConn            *ServerConn
-	myWindow, theirWindow uint32
-	maxPacketSize         uint32
-	err                   error
+	serverConn    *ServerConn
+	myWindow      uint32
+	maxPacketSize uint32
+	err           error
 
 	pendingRequests []ChannelRequest
 	pendingData     []byte
@@ -180,8 +181,9 @@ func (c *serverChan) handlePacket(packet interface{}) {
 		c.theySentEOF = true
 		c.cond.Signal()
 	case *windowAdjustMsg:
-		c.theirWindow += packet.AdditionalBytes
-		c.cond.Signal()
+		if !c.remoteWin.add(packet.AdditionalBytes) {
+			panic("illegal window update")
+		}
 	default:
 		panic("unknown packet type")
 	}
@@ -230,7 +232,6 @@ func (edc extendedDataChannel) Write(data []byte) (n int, err error) {
 		if space, err = c.getWindowSpace(uint32(len(data))); err != nil {
 			return 0, err
 		}
-
 		todo := data
 		if uint32(len(todo)) > space {
 			todo = todo[:space]
@@ -321,28 +322,18 @@ func (c *serverChan) read(data []byte) (n int, err error, windowAdjustment uint3
 // getWindowSpace takes, at most, max bytes of space from the peer's window. It
 // returns the number of bytes actually reserved.
 func (c *serverChan) getWindowSpace(max uint32) (uint32, error) {
+	var err error
+	// TODO(dfc) This lock and check of c.weClosed is necessary because unlike
+	// clientChan, c.weClosed is observed by more than one goroutine.
 	c.cond.L.Lock()
-	defer c.cond.L.Unlock()
-
-	for {
-		if c.dead || c.weClosed {
-			return 0, io.EOF
-		}
-
-		if c.theirWindow > 0 {
-			break
-		}
-
-		c.cond.Wait()
+	if c.dead || c.weClosed {
+		err = io.EOF
 	}
-
-	taken := c.theirWindow
-	if taken > max {
-		taken = max
+	c.cond.L.Unlock()
+	if err != nil {
+		return 0, err
 	}
-
-	c.theirWindow -= taken
-	return taken, nil
+	return c.remoteWin.reserve(max), nil
 }
 
 func (c *serverChan) Write(data []byte) (n int, err error) {
@@ -351,7 +342,6 @@ func (c *serverChan) Write(data []byte) (n int, err error) {
 		if space, err = c.getWindowSpace(uint32(len(data))); err != nil {
 			return 0, err
 		}
-
 		todo := data
 		if uint32(len(todo)) > space {
 			todo = todo[:space]
