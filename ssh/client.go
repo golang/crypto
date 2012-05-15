@@ -224,7 +224,7 @@ func (c *ClientConn) mainLoop() {
 			if length != uint32(len(packet)) {
 				return
 			}
-			c.getChan(remoteId).stdout.handleData(packet)
+			c.getChan(remoteId).stdout.write(packet)
 		case msgChannelExtendedData:
 			if len(packet) < 13 {
 				// malformed data packet
@@ -242,7 +242,7 @@ func (c *ClientConn) mainLoop() {
 			// for stderr on interactive sessions. Other data types are
 			// silently discarded.
 			if datatype == 1 {
-				c.getChan(remoteId).stderr.handleData(packet)
+				c.getChan(remoteId).stderr.write(packet)
 			}
 		default:
 			switch msg := decode(packet).(type) {
@@ -448,12 +448,12 @@ func newClientChan(cc conn, id uint32) *clientChan {
 		channel: &c.channel,
 	}
 	c.stdout = &chanReader{
-		data:    make(chan []byte, 16),
 		channel: &c.channel,
+		buffer:  newBuffer(),
 	}
 	c.stderr = &chanReader{
-		data:    make(chan []byte, 16),
 		channel: &c.channel,
+		buffer:  newBuffer(),
 	}
 	return c
 }
@@ -579,44 +579,18 @@ func (w *chanWriter) Close() error {
 
 // A chanReader represents stdout or stderr of a remote process.
 type chanReader struct {
-	// TODO(dfc) a fixed size channel may not be the right data structure.
-	// If writes to this channel block, they will block mainLoop, making
-	// it unable to receive new messages from the remote side.
-	data       chan []byte // receives data from remote
-	dataClosed bool        // protects data from being closed twice
-	*channel               // the channel backing this reader
-	buf        []byte
-}
-
-// eof signals to the consumer that there is no more data to be received.
-func (r *chanReader) eof() {
-	if !r.dataClosed {
-		r.dataClosed = true
-		close(r.data)
-	}
-}
-
-// handleData sends buf to the reader's consumer. If r.data is closed
-// the data will be silently discarded
-func (r *chanReader) handleData(buf []byte) {
-	if !r.dataClosed {
-		r.data <- buf
-	}
+	*channel // the channel backing this reader
+	*buffer
 }
 
 // Read reads data from the remote process's stdout or stderr.
-func (r *chanReader) Read(data []byte) (int, error) {
-	var ok bool
-	for {
-		if len(r.buf) > 0 {
-			n := copy(data, r.buf)
-			r.buf = r.buf[n:]
-			return n, r.sendWindowAdj(n)
+func (r *chanReader) Read(buf []byte) (int, error) {
+	n, err := r.buffer.Read(buf)
+	if err != nil {
+		if err == io.EOF {
+			return n, err
 		}
-		r.buf, ok = <-r.data
-		if !ok {
-			return 0, io.EOF
-		}
+		return 0, err
 	}
-	panic("unreachable")
+	return n, r.sendWindowAdj(n)
 }
