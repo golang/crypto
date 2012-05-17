@@ -61,7 +61,7 @@ func (c ChannelRequest) Error() string {
 
 // RejectionReason is an enumeration used when rejecting channel creation
 // requests. See RFC 4254, section 5.1.
-type RejectionReason int
+type RejectionReason uint32
 
 const (
 	Prohibited RejectionReason = iota + 1

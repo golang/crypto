@@ -40,6 +40,7 @@ var messageTypes = []interface{}{
 	&userAuthRequestMsg{},
 	&channelOpenMsg{},
 	&channelOpenConfirmMsg{},
+	&channelOpenFailureMsg{},
 	&channelRequestMsg{},
 	&channelRequestSuccessMsg{},
 }
@@ -122,6 +123,13 @@ func (*kexDHInitMsg) Generate(rand *rand.Rand, size int) reflect.Value {
 	dhi := &kexDHInitMsg{}
 	dhi.X = randomInt(rand)
 	return reflect.ValueOf(dhi)
+}
+
+// TODO(dfc) maybe this can be removed in the future if testing/quick can handle
+// derived basic types.
+func (RejectionReason) Generate(rand *rand.Rand, size int) reflect.Value {
+	m := RejectionReason(Prohibited)
+	return reflect.ValueOf(m)
 }
 
 var (
