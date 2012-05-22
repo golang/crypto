@@ -300,8 +300,9 @@ type window struct {
 // add adds win to the amount of window available
 // for consumers.
 func (w *window) add(win uint32) bool {
+	// a zero sized window adjust is a noop.
 	if win == 0 {
-		return false
+		return true
 	}
 	w.L.Lock()
 	if w.win+win < win {

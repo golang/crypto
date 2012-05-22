@@ -294,6 +294,50 @@ func TestInvalidServerMessage(t *testing.T) {
 	defer session.Close()
 }
 
+// In the wild some clients (and servers) send zero sized window updates. 
+// Test that the client can continue after receiving a zero sized update.
+func TestClientZeroWindowAdjust(t *testing.T) {
+	conn := dial(sendZeroWindowAdjust, t)
+	defer conn.Close()
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("Unable to request new session: %s", err)
+	}
+	defer session.Close()
+
+	if err := session.Shell(); err != nil {
+		t.Fatalf("Unable to execute command: %s", err)
+	}
+	err = session.Wait()
+	if err != nil {
+		t.Fatalf("expected nil but got %s", err)
+	}
+}
+
+// In the wild some clients (and servers) send zero sized window updates. 
+// Test that the server can continue after receiving a zero size update.
+func TestServerZeroWindowAdjust(t *testing.T) {
+	conn := dial(exitStatusZeroHandler, t)
+	defer conn.Close()
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("Unable to request new session: %s", err)
+	}
+	defer session.Close()
+
+	if err := session.Shell(); err != nil {
+		t.Fatalf("Unable to execute command: %s", err)
+	}
+
+	// send a bogus zero sized window update
+	session.clientChan.sendWindowAdj(0)
+
+	err = session.Wait()
+	if err != nil {
+		t.Fatalf("expected nil but got %s", err)
+	}
+}
+
 type exitStatusMsg struct {
 	PeersId   uint32
 	Request   string
@@ -402,4 +446,13 @@ func sendInvalidRecord(ch *serverChan) {
 	packet[9] = 42
 
 	ch.serverConn.writePacket(packet)
+}
+
+func sendZeroWindowAdjust(ch *serverChan) {
+	defer ch.Close()
+	// send a bogus zero sized window update
+	ch.sendWindowAdj(0)
+	shell := newServerShell(ch, "> ")
+	shell.ReadLine()
+	sendStatus(0, ch)
 }
