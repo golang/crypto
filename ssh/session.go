@@ -85,6 +85,14 @@ type setenvRequest struct {
 	Value     string
 }
 
+// RFC 4254 Section 6.5.
+type subsystemRequestMsg struct {
+	PeersId   uint32
+	Request   string
+	WantReply bool
+	Subsystem string
+}
+
 // Setenv sets an environment variable that will be applied to any
 // command executed by Shell or Run.
 func (s *Session) Setenv(name, value string) error {
@@ -129,6 +137,21 @@ func (s *Session) RequestPty(term string, h, w int) error {
 		Width:     uint32(w * 8),
 		Height:    uint32(h * 8),
 		Modelist:  emptyModelist,
+	}
+	if err := s.writePacket(marshal(msgChannelRequest, req)); err != nil {
+		return err
+	}
+	return s.waitForResponse()
+}
+
+// RequestSubsystem requests the association of a subsystem with the session on the remote host.
+// A subsystem is a predefined command that runs in the background when the ssh session is initiated 
+func (s *Session) RequestSubsystem(subsystem string) error {
+	req := subsystemRequestMsg{
+		PeersId:   s.remoteId,
+		Request:   "subsystem",
+		WantReply: true,
+		Subsystem: subsystem,
 	}
 	if err := s.writePacket(marshal(msgChannelRequest, req)); err != nil {
 		return err
