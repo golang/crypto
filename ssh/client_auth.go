@@ -5,6 +5,7 @@
 package ssh
 
 import (
+	"errors"
 	"fmt"
 	"io"
 )
@@ -319,4 +320,52 @@ func handleAuthResponse(t *transport) (bool, []string, error) {
 		}
 	}
 	panic("unreachable")
+}
+
+// ClientAuthKeyring returns a ClientAuth using public key authentication via
+// an agent.
+func ClientAuthAgent(agent *AgentClient) ClientAuth {
+	return ClientAuthKeyring(&agentKeyring{agent: agent})
+}
+
+// agentKeyring implements ClientKeyring.
+type agentKeyring struct {
+	agent *AgentClient
+	keys  []*AgentKey
+}
+
+func (kr *agentKeyring) Key(i int) (key interface{}, err error) {
+	if kr.keys == nil {
+		if kr.keys, err = kr.agent.RequestIdentities(); err != nil {
+			return
+		}
+	}
+	if i >= len(kr.keys) {
+		return
+	}
+	return kr.keys[i].Key()
+}
+
+func (kr *agentKeyring) Sign(i int, rand io.Reader, data []byte) (sig []byte, err error) {
+	var key interface{}
+	if key, err = kr.Key(i); err != nil {
+		return
+	}
+	if key == nil {
+		return nil, errors.New("ssh: key index out of range")
+	}
+	if sig, err = kr.agent.SignRequest(key, data); err != nil {
+		return
+	}
+
+	// Unmarshal the signature. 
+
+	var ok bool
+	if _, sig, ok = parseString(sig); !ok {
+		return nil, errors.New("ssh: malformed signature response from agent")
+	}
+	if sig, _, ok = parseString(sig); !ok {
+		return nil, errors.New("ssh: malformed signature response from agent")
+	}
+	return sig, nil
 }
