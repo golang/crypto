@@ -83,7 +83,7 @@ type hashed struct {
 
 // GenerateFromPassword returns the bcrypt hash of the password at the given
 // cost. If the cost given is less than MinCost, the cost will be set to
-// MinCost, instead. Use CompareHashAndPassword, as defined in this package,
+// DefaultCost, instead. Use CompareHashAndPassword, as defined in this package,
 // to compare the returned hashed password with its cleartext version.
 func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
 	p, err := newFromPassword(password, cost)
