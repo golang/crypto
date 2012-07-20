@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/pem"
 	"errors"
 	"io"
@@ -548,14 +549,14 @@ func (s *ServerConn) Accept() (Channel, error) {
 				// malformed data packet
 				return nil, ParseError{msgChannelData}
 			}
-			remoteId := uint32(packet[1])<<24 | uint32(packet[2])<<16 | uint32(packet[3])<<8 | uint32(packet[4])
+			remoteId := binary.BigEndian.Uint32(packet[1:5])
 			s.lock.Lock()
 			c, ok := s.channels[remoteId]
 			if !ok {
 				s.lock.Unlock()
 				continue
 			}
-			if length := int(packet[5])<<24 | int(packet[6])<<16 | int(packet[7])<<8 | int(packet[8]); length > 0 {
+			if length := binary.BigEndian.Uint32(packet[5:9]); length > 0 {
 				packet = packet[9:]
 				c.handleData(packet[:length])
 			}

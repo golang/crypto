@@ -9,6 +9,7 @@ import (
 	"crypto"
 	"crypto/cipher"
 	"crypto/subtle"
+	"encoding/binary"
 	"errors"
 	"hash"
 	"io"
@@ -90,7 +91,7 @@ func (r *reader) readOnePacket() ([]byte, error) {
 		macSize = uint32(r.mac.Size())
 	}
 
-	length := uint32(lengthBytes[0])<<24 | uint32(lengthBytes[1])<<16 | uint32(lengthBytes[2])<<8 | uint32(lengthBytes[3])
+	length := binary.BigEndian.Uint32(lengthBytes[0:4])
 	paddingLength := uint32(lengthBytes[4])
 
 	if length <= paddingLength+1 {

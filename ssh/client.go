@@ -7,6 +7,7 @@ package ssh
 import (
 	"crypto"
 	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -212,8 +213,8 @@ func (c *ClientConn) mainLoop() {
 				// malformed data packet
 				return
 			}
-			remoteId := uint32(packet[1])<<24 | uint32(packet[2])<<16 | uint32(packet[3])<<8 | uint32(packet[4])
-			length := uint32(packet[5])<<24 | uint32(packet[6])<<16 | uint32(packet[7])<<8 | uint32(packet[8])
+			remoteId := binary.BigEndian.Uint32(packet[1:5])
+			length := binary.BigEndian.Uint32(packet[5:9])
 			packet = packet[9:]
 
 			if length != uint32(len(packet)) {
@@ -229,9 +230,9 @@ func (c *ClientConn) mainLoop() {
 				// malformed data packet
 				return
 			}
-			remoteId := uint32(packet[1])<<24 | uint32(packet[2])<<16 | uint32(packet[3])<<8 | uint32(packet[4])
-			datatype := uint32(packet[5])<<24 | uint32(packet[6])<<16 | uint32(packet[7])<<8 | uint32(packet[8])
-			length := uint32(packet[9])<<24 | uint32(packet[10])<<16 | uint32(packet[11])<<8 | uint32(packet[12])
+			remoteId := binary.BigEndian.Uint32(packet[1:5])
+			datatype := binary.BigEndian.Uint32(packet[5:9])
+			length := binary.BigEndian.Uint32(packet[9:13])
 			packet = packet[13:]
 
 			if length != uint32(len(packet)) {
