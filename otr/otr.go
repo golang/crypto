@@ -50,7 +50,11 @@ const (
 )
 
 // QueryMessage can be sent to a peer to start an OTR conversation.
-var QueryMessage = []byte("?OTRv2?")
+var QueryMessage = "?OTRv2?"
+
+// ErrorPrefix can be used to make an OTR error by appending an error message
+// to it.
+var ErrorPrefix = "?OTR Error:"
 
 var (
 	fragmentPartSeparator = []byte(",")
@@ -398,6 +402,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 			switch inTLV.typ {
 			case tlvTypeDisconnected:
 				change = ConversationEnded
+				c.state = stateFinished
 				break EachTLV
 			case tlvTypeSMP1, tlvTypeSMP2, tlvTypeSMP3, tlvTypeSMP4, tlvTypeSMPAbort, tlvTypeSMP1WithQuestion:
 				var reply tlv
@@ -485,6 +490,22 @@ func (c *Conversation) Authenticate(question string, mutualSecret []byte) (toSen
 		toSend = append(toSend, c.encode(c.generateData(nil, &out))...)
 	}
 	return
+}
+
+// End ends a secure conversation by generating a termination message for
+// the peer and switches to unencrypted communication.
+func (c *Conversation) End() (toSend [][]byte) {
+	switch c.state {
+	case statePlaintext:
+		return nil
+	case stateEncrypted:
+		c.state = statePlaintext
+		return c.encode(c.generateData(nil, &tlv{typ: tlvTypeDisconnected}))
+	case stateFinished:
+		c.state = statePlaintext
+		return nil
+	}
+	panic("unreachable")
 }
 
 var fragmentError = errors.New("otr: invalid OTR fragment")
