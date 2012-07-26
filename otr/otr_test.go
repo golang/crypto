@@ -137,7 +137,7 @@ func TestConversation(t *testing.T) {
 	var out []byte
 	var aliceChange, bobChange SecurityChange
 	var err error
-	alicesMessage = append(alicesMessage, QueryMessage)
+	alicesMessage = append(alicesMessage, []byte(QueryMessage))
 
 	for round := 0; len(alicesMessage) > 0 || len(bobsMessage) > 0; round++ {
 		bobsMessage = nil
@@ -311,7 +311,7 @@ func TestAgainstLibOTR(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	out.Write(QueryMessage)
+	out.Write([]byte(QueryMessage))
 	out.Write([]byte("\n"))
 	var expectedText = []byte("test message")
 
