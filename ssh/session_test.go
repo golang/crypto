@@ -9,6 +9,7 @@ package ssh
 import (
 	"bytes"
 	"io"
+	"io/ioutil"
 	"net"
 	"testing"
 
@@ -338,6 +339,26 @@ func TestServerZeroWindowAdjust(t *testing.T) {
 	}
 }
 
+// Verify that we never send a packet larger than maxpacket.
+func TestClientStdinRespectsMaxPacketSize(t *testing.T) {
+	conn := dial(discardHandler, t)
+	defer conn.Close()
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("Unable to request new session: %s", err)
+	}
+	defer session.Close()
+	if err := session.Shell(); err != nil {
+		t.Fatalf("Unable to execute command: %s", err)
+	}
+	// try to stuff 128k of data into a 32k hole.
+	const size = 128 * 1024
+	n, err := session.clientChan.stdin.Write(make([]byte, size))
+	if n != size || err != nil {
+		t.Fatalf("failed to write: %d, %v", n, err)
+	}
+}
+
 type exitStatusMsg struct {
 	PeersId   uint32
 	Request   string
@@ -455,4 +476,14 @@ func sendZeroWindowAdjust(ch *serverChan) {
 	shell := newServerShell(ch, "> ")
 	shell.ReadLine()
 	sendStatus(0, ch)
+}
+
+func discardHandler(ch *serverChan) {
+	defer ch.Close()
+	// grow the window to avoid being fooled by
+	// the initial 1 << 14 window.
+	ch.sendWindowAdj(1024 * 1024)
+	shell := newServerShell(ch, "> ")
+	shell.ReadLine()
+	io.Copy(ioutil.Discard, ch.serverConn)
 }

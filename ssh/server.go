@@ -569,14 +569,15 @@ func (s *ServerConn) Accept() (Channel, error) {
 						conn:      s,
 						remoteId:  msg.PeersId,
 						remoteWin: window{Cond: newCond()},
+						// TODO(dfc) assert this param is < 2^31.
+						maxPacketSize: msg.MaxPacketSize,
 					},
-					chanType:      msg.ChanType,
-					maxPacketSize: msg.MaxPacketSize,
-					extraData:     msg.TypeSpecificData,
-					myWindow:      defaultWindowSize,
-					serverConn:    s,
-					cond:          newCond(),
-					pendingData:   make([]byte, defaultWindowSize),
+					chanType:    msg.ChanType,
+					extraData:   msg.TypeSpecificData,
+					myWindow:    defaultWindowSize,
+					serverConn:  s,
+					cond:        newCond(),
+					pendingData: make([]byte, defaultWindowSize),
 				}
 				c.remoteWin.add(msg.PeersWindow)
 				s.lock.Lock()

@@ -499,6 +499,8 @@ func (c *clientChan) waitForChannelOpenResponse() error {
 	case *channelOpenConfirmMsg:
 		// fixup remoteId field
 		c.remoteId = msg.MyId
+		// TODO(dfc) asset this is < 2^31.
+		c.maxPacketSize = msg.MaxPacketSize
 		c.remoteWin.add(msg.MyWindow)
 		return nil
 	case *channelOpenFailureMsg:
@@ -582,9 +584,10 @@ type chanWriter struct {
 // Write writes data to the remote process's standard input.
 func (w *chanWriter) Write(data []byte) (written int, err error) {
 	for len(data) > 0 {
-		// n cannot be larger than 2^31 as len(data) cannot
-		// be larger than 2^31
-		n := int(w.remoteWin.reserve(uint32(len(data))))
+		// never send more data than maxPacketSize even if
+		// there is sufficent window.
+		n := min(int(w.maxPacketSize), len(data))
+		n = int(w.remoteWin.reserve(uint32(n)))
 		remoteId := w.remoteId
 		packet := []byte{
 			msgChannelData,

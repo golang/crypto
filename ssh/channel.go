@@ -74,6 +74,7 @@ type channel struct {
 	conn              // the underlying transport
 	localId, remoteId uint32
 	remoteWin         window
+	maxPacketSize     uint32
 
 	theyClosed  bool // indicates the close msg has been received from the remote side
 	weClosed    bool // incidates the close msg has been sent from our side
@@ -119,10 +120,9 @@ type serverChan struct {
 	chanType  string
 	extraData []byte
 
-	serverConn    *ServerConn
-	myWindow      uint32
-	maxPacketSize uint32
-	err           error
+	serverConn *ServerConn
+	myWindow   uint32
+	err        error
 
 	pendingRequests []ChannelRequest
 	pendingData     []byte
