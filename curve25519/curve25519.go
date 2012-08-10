@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package curve25519
-
 // We have a implementation in amd64 assembly so this code is only run on
 // non-amd64 platforms.
 // +build !amd64
+
+package curve25519
 
 import (
 	"math/big"
