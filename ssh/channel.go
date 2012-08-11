@@ -408,3 +408,121 @@ func (c *serverChan) ChannelType() string {
 func (c *serverChan) ExtraData() []byte {
 	return c.extraData
 }
+
+// A clientChan represents a single RFC 4254 channel multiplexed 
+// over a SSH connection.
+type clientChan struct {
+	channel
+	stdin  *chanWriter
+	stdout *chanReader
+	stderr *chanReader
+	msg    chan interface{}
+}
+
+// newClientChan returns a partially constructed *clientChan
+// using the local id provided. To be usable clientChan.remoteId
+// needs to be assigned once known.
+func newClientChan(cc conn, id uint32) *clientChan {
+	c := &clientChan{
+		channel: channel{
+			conn:      cc,
+			localId:   id,
+			remoteWin: window{Cond: newCond()},
+		},
+		msg: make(chan interface{}, 16),
+	}
+	c.stdin = &chanWriter{
+		channel: &c.channel,
+	}
+	c.stdout = &chanReader{
+		channel: &c.channel,
+		buffer:  newBuffer(),
+	}
+	c.stderr = &chanReader{
+		channel: &c.channel,
+		buffer:  newBuffer(),
+	}
+	return c
+}
+
+// waitForChannelOpenResponse, if successful, fills out
+// the remoteId and records any initial window advertisement.
+func (c *clientChan) waitForChannelOpenResponse() error {
+	switch msg := (<-c.msg).(type) {
+	case *channelOpenConfirmMsg:
+		// fixup remoteId field
+		c.remoteId = msg.MyId
+		// TODO(dfc) asset this is < 2^31.
+		c.maxPacketSize = msg.MaxPacketSize
+		c.remoteWin.add(msg.MyWindow)
+		return nil
+	case *channelOpenFailureMsg:
+		return errors.New(safeString(msg.Message))
+	}
+	return errors.New("ssh: unexpected packet")
+}
+
+// Close closes the channel. This does not close the underlying connection.
+func (c *clientChan) Close() error {
+	if !c.weClosed {
+		c.weClosed = true
+		return c.sendClose()
+	}
+	return nil
+}
+
+// A chanWriter represents the stdin of a remote process.
+type chanWriter struct {
+	*channel
+}
+
+// Write writes data to the remote process's standard input.
+func (w *chanWriter) Write(data []byte) (written int, err error) {
+	for len(data) > 0 {
+		// never send more data than maxPacketSize even if
+		// there is sufficent window.
+		n := min(int(w.maxPacketSize), len(data))
+		n = int(w.remoteWin.reserve(uint32(n)))
+		remoteId := w.remoteId
+		packet := []byte{
+			msgChannelData,
+			byte(remoteId >> 24), byte(remoteId >> 16), byte(remoteId >> 8), byte(remoteId),
+			byte(n >> 24), byte(n >> 16), byte(n >> 8), byte(n),
+		}
+		if err = w.writePacket(append(packet, data[:n]...)); err != nil {
+			break
+		}
+		data = data[n:]
+		written += n
+	}
+	return
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func (w *chanWriter) Close() error {
+	return w.sendEOF()
+}
+
+// A chanReader represents stdout or stderr of a remote process.
+type chanReader struct {
+	*channel // the channel backing this reader
+	*buffer
+}
+
+// Read reads data from the remote process's stdout or stderr.
+func (r *chanReader) Read(buf []byte) (int, error) {
+	n, err := r.buffer.Read(buf)
+	if err != nil {
+		if err == io.EOF {
+			return n, err
+		}
+		return 0, err
+	}
+	return n, r.sendWindowAdj(n)
+}
