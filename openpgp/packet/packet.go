@@ -11,6 +11,7 @@ import (
 	"code.google.com/p/go.crypto/openpgp/errors"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/des"
 	"io"
 	"math/big"
 )
@@ -400,6 +401,7 @@ func (pka PublicKeyAlgorithm) CanSign() bool {
 type CipherFunction uint8
 
 const (
+	Cipher3DES   CipherFunction = 2
 	CipherCAST5  CipherFunction = 3
 	CipherAES128 CipherFunction = 7
 	CipherAES192 CipherFunction = 8
@@ -409,6 +411,8 @@ const (
 // KeySize returns the key size, in bytes, of cipher.
 func (cipher CipherFunction) KeySize() int {
 	switch cipher {
+	case Cipher3DES:
+		return 24
 	case CipherCAST5:
 		return cast5.KeySize
 	case CipherAES128:
@@ -424,6 +428,8 @@ func (cipher CipherFunction) KeySize() int {
 // blockSize returns the block size, in bytes, of cipher.
 func (cipher CipherFunction) blockSize() int {
 	switch cipher {
+	case Cipher3DES:
+		return des.BlockSize
 	case CipherCAST5:
 		return 8
 	case CipherAES128, CipherAES192, CipherAES256:
@@ -435,6 +441,8 @@ func (cipher CipherFunction) blockSize() int {
 // new returns a fresh instance of the given cipher.
 func (cipher CipherFunction) new(key []byte) (block cipher.Block) {
 	switch cipher {
+	case Cipher3DES:
+		block, _ = des.NewTripleDESCipher(key)
 	case CipherCAST5:
 		block, _ = cast5.NewCipher(key)
 	case CipherAES128, CipherAES192, CipherAES256:
