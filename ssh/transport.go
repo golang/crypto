@@ -19,9 +19,6 @@ import (
 
 const (
 	packetSizeMultiple = 16 // TODO(huin) this should be determined by the cipher.
-	minPacketSize      = 16
-	maxPacketSize      = 36000
-	minPaddingSize     = 4 // TODO(huin) should this be configurable?
 )
 
 // conn represents an ssh transport that implements packet based
@@ -96,9 +93,6 @@ func (r *reader) readOnePacket() ([]byte, error) {
 
 	if length <= paddingLength+1 {
 		return nil, errors.New("ssh: invalid packet length")
-	}
-	if length > maxPacketSize {
-		return nil, errors.New("ssh: packet too large")
 	}
 
 	packet := make([]byte, length-1+macSize)
@@ -196,11 +190,8 @@ func (w *writer) writePacket(packet []byte) error {
 		}
 	}
 
-	if err := w.Flush(); err != nil {
-		return err
-	}
 	w.seqNum++
-	return err
+	return w.Flush()
 }
 
 // Send a message to the remote peer

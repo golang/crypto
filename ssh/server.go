@@ -564,13 +564,15 @@ func (s *ServerConn) Accept() (Channel, error) {
 		default:
 			switch msg := decode(packet).(type) {
 			case *channelOpenMsg:
+				if msg.MaxPacketSize < minPacketLength || msg.MaxPacketSize > 1<<31 {
+					return nil, errors.New("ssh: invalid MaxPacketSize from peer")
+				}
 				c := &serverChan{
 					channel: channel{
 						conn:      s,
 						remoteId:  msg.PeersId,
 						remoteWin: window{Cond: newCond()},
-						// TODO(dfc) assert this param is < 2^31.
-						maxPacketSize: msg.MaxPacketSize,
+						maxPacket: msg.MaxPacketSize,
 					},
 					chanType:    msg.ChanType,
 					extraData:   msg.TypeSpecificData,

@@ -6,6 +6,7 @@ package ssh
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 )
@@ -14,8 +15,13 @@ import (
 // section 5.2.
 type extendedDataTypeCode uint32
 
-// extendedDataStderr is the extended data type that is used for stderr.
-const extendedDataStderr extendedDataTypeCode = 1
+const (
+	// extendedDataStderr is the extended data type that is used for stderr.
+	extendedDataStderr extendedDataTypeCode = 1
+
+	// minPacketLength defines the smallest valid packet
+	minPacketLength = 9
+)
 
 // A Channel is an ordered, reliable, duplex stream that is multiplexed over an
 // SSH connection. Channel.Read can return a ChannelRequest as an error.
@@ -74,7 +80,7 @@ type channel struct {
 	conn              // the underlying transport
 	localId, remoteId uint32
 	remoteWin         window
-	maxPacketSize     uint32
+	maxPacket         uint32
 
 	theyClosed  bool // indicates the close msg has been received from the remote side
 	weClosed    bool // incidates the close msg has been sent from our side
@@ -114,6 +120,13 @@ func (c *channel) sendChannelOpenFailure(reason RejectionReason, message string)
 	return c.writePacket(marshal(msgChannelOpenFailure, reject))
 }
 
+func (c *channel) writePacket(b []byte) error {
+	if uint32(len(b)) > c.maxPacket {
+		return fmt.Errorf("ssh: cannot write %d bytes, maxPacket is %d bytes", len(b), c.maxPacket)
+	}
+	return c.conn.writePacket(b)
+}
+
 type serverChan struct {
 	channel
 	// immutable once created
@@ -144,7 +157,7 @@ func (c *serverChan) Accept() error {
 		PeersId:       c.remoteId,
 		MyId:          c.localId,
 		MyWindow:      c.myWindow,
-		MaxPacketSize: c.maxPacketSize,
+		MaxPacketSize: c.maxPacket,
 	}
 	return c.writePacket(marshal(msgChannelOpenConfirm, confirm))
 }
@@ -450,10 +463,12 @@ func newClientChan(cc conn, id uint32) *clientChan {
 func (c *clientChan) waitForChannelOpenResponse() error {
 	switch msg := (<-c.msg).(type) {
 	case *channelOpenConfirmMsg:
+		if msg.MaxPacketSize < minPacketLength || msg.MaxPacketSize > 1<<31 {
+			return errors.New("ssh: invalid MaxPacketSize from peer")
+		}
 		// fixup remoteId field
 		c.remoteId = msg.MyId
-		// TODO(dfc) asset this is < 2^31.
-		c.maxPacketSize = msg.MaxPacketSize
+		c.maxPacket = msg.MaxPacketSize
 		c.remoteWin.add(msg.MyWindow)
 		return nil
 	case *channelOpenFailureMsg:
@@ -478,10 +493,11 @@ type chanWriter struct {
 
 // Write writes data to the remote process's standard input.
 func (w *chanWriter) Write(data []byte) (written int, err error) {
+	const headerLength = 9 // 1 byte message type, 4 bytes remoteId, 4 bytes data length
 	for len(data) > 0 {
-		// never send more data than maxPacketSize even if
+		// never send more data than maxPacket even if
 		// there is sufficent window.
-		n := min(int(w.maxPacketSize), len(data))
+		n := min(int(w.maxPacket-headerLength), len(data))
 		n = int(w.remoteWin.reserve(uint32(n)))
 		remoteId := w.remoteId
 		packet := []byte{
