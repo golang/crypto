@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"sync"
+	"sync/atomic"
 )
 
 // extendedDataTypeCode identifies an OpenSSL extended data type. See RFC 4254,
@@ -81,11 +82,7 @@ type channel struct {
 	localId, remoteId uint32
 	remoteWin         window
 	maxPacket         uint32
-
-	theyClosed  bool // indicates the close msg has been received from the remote side
-	weClosed    bool // incidates the close msg has been sent from our side
-	theySentEOF bool // used by serverChan
-	dead        bool // used by ServerChan to force close
+	isclosed          uint32 // atomic bool, non zero if true
 }
 
 func (c *channel) sendWindowAdj(n int) error {
@@ -94,13 +91,6 @@ func (c *channel) sendWindowAdj(n int) error {
 		AdditionalBytes: uint32(n),
 	}
 	return c.writePacket(marshal(msgChannelWindowAdjust, msg))
-}
-
-// sendClose signals the intent to close the channel.
-func (c *channel) sendClose() error {
-	return c.writePacket(marshal(msgChannelClose, channelCloseMsg{
-		PeersId: c.remoteId,
-	}))
 }
 
 // sendEOF sends EOF to the server. RFC 4254 Section 5.3
@@ -121,10 +111,21 @@ func (c *channel) sendChannelOpenFailure(reason RejectionReason, message string)
 }
 
 func (c *channel) writePacket(b []byte) error {
+	if c.closed() {
+		return io.EOF
+	}
 	if uint32(len(b)) > c.maxPacket {
 		return fmt.Errorf("ssh: cannot write %d bytes, maxPacket is %d bytes", len(b), c.maxPacket)
 	}
 	return c.conn.writePacket(b)
+}
+
+func (c *channel) closed() bool {
+	return atomic.LoadUint32(&c.isclosed) > 0
+}
+
+func (c *channel) setClosed() bool {
+	return atomic.CompareAndSwapUint32(&c.isclosed, 0, 1)
 }
 
 type serverChan struct {
@@ -133,9 +134,13 @@ type serverChan struct {
 	chanType  string
 	extraData []byte
 
-	serverConn *ServerConn
-	myWindow   uint32
-	err        error
+	serverConn  *ServerConn
+	myWindow    uint32
+	weClosed    bool // incidates the close msg has been sent from our side
+	theyClosed  bool // indicates the close msg has been received from the remote side
+	theySentEOF bool
+	dead        bool
+	err         error
 
 	pendingRequests []ChannelRequest
 	pendingData     []byte
@@ -393,6 +398,13 @@ func (c *serverChan) Close() error {
 	return c.sendClose()
 }
 
+// sendClose signals the intent to close the channel.
+func (c *serverChan) sendClose() error {
+	return c.writePacket(marshal(msgChannelClose, channelCloseMsg{
+		PeersId: c.remoteId,
+	}))
+}
+
 func (c *serverChan) AckRequest(ok bool) error {
 	c.serverConn.lock.Lock()
 	defer c.serverConn.lock.Unlock()
@@ -477,13 +489,17 @@ func (c *clientChan) waitForChannelOpenResponse() error {
 	return errors.New("ssh: unexpected packet")
 }
 
-// Close closes the channel. This does not close the underlying connection.
 func (c *clientChan) Close() error {
-	if !c.weClosed {
-		c.weClosed = true
-		return c.sendClose()
+	if !c.setClosed() {
+		return errors.New("ssh: channel already closed")
 	}
-	return nil
+	c.stdout.eof()
+	c.stderr.eof()
+	close(c.msg)
+	// TODO(dfc) step around channel.writePacket() because closed() is now true
+	return c.channel.conn.writePacket(marshal(msgChannelClose, channelCloseMsg{
+		PeersId: c.remoteId,
+	}))
 }
 
 // A chanWriter represents the stdin of a remote process.

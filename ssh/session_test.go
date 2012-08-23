@@ -380,6 +380,54 @@ func TestServerStdoutRespectsMaxPacketSize(t *testing.T) {
 	}
 }
 
+// TODO(dfc) currently writes succeed after Close()
+func testClientCannotSendAfterEOF(t *testing.T) {
+	conn := dial(shellHandler, t)
+	defer conn.Close()
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("Unable to request new session: %v", err)
+	}
+	defer session.Close()
+	in, err := session.StdinPipe()
+	if err != nil {
+		t.Fatalf("Unable to connect channel stdin: %v", err)
+	}
+	if err := session.Shell(); err != nil {
+		t.Fatalf("Unable to execute command: %v", err)
+	}
+	if err := in.Close(); err != nil {
+		t.Fatalf("Unable to close stdin: %v", err)
+	}
+	if _, err := in.Write([]byte("foo")); err == nil {
+		t.Fatalf("Session write should fail")
+	}
+}
+
+func TestClientCannotSendAfterClose(t *testing.T) {
+	conn := dial(shellHandler, t)
+	defer conn.Close()
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("Unable to request new session: %v", err)
+	}
+	defer session.Close()
+	in, err := session.StdinPipe()
+	if err != nil {
+		t.Fatalf("Unable to connect channel stdin: %v", err)
+	}
+	if err := session.Shell(); err != nil {
+		t.Fatalf("Unable to execute command: %v", err)
+	}
+	// close underlying channel
+	if err := session.channel.Close(); err != nil {
+		t.Fatalf("Unable to close session: %v", err)
+	}
+	if _, err := in.Write([]byte("foo")); err == nil {
+		t.Fatalf("Session write should fail")
+	}
+}
+
 type exitStatusMsg struct {
 	PeersId   uint32
 	Request   string

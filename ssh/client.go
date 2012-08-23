@@ -269,14 +269,9 @@ func (c *ClientConn) mainLoop() {
 				if !ok {
 					return
 				}
-				ch.theyClosed = true
-				ch.stdout.eof()
-				ch.stderr.eof()
-				close(ch.msg)
-				if !ch.weClosed {
-					ch.weClosed = true
-					ch.sendClose()
-				}
+				ch.Close()
+				// TODO(dfc) may need to optimisically remove the 
+				// channel before closing
 				c.chanList.remove(msg.PeersId)
 			case *channelEOFMsg:
 				ch, ok := c.getChan(msg.PeersId)
@@ -506,10 +501,6 @@ func (c *chanList) closeAll() {
 		if ch == nil {
 			continue
 		}
-
-		ch.theyClosed = true
-		ch.stdout.eof()
-		ch.stderr.eof()
-		close(ch.msg)
+		ch.Close()
 	}
 }

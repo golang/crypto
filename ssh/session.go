@@ -370,7 +370,7 @@ func (s *Session) stdin() {
 	}
 	s.copyFuncs = append(s.copyFuncs, func() error {
 		_, err := io.Copy(s.clientChan.stdin, s.Stdin)
-		if err1 := s.clientChan.stdin.Close(); err == nil {
+		if err1 := s.clientChan.stdin.Close(); err == nil && err1 != io.EOF {
 			err = err1
 		}
 		return err
