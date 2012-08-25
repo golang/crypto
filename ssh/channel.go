@@ -244,10 +244,11 @@ type extendedDataChannel struct {
 }
 
 func (edc extendedDataChannel) Write(data []byte) (n int, err error) {
+	const headerLength = 13 // 1 byte message type, 4 bytes remoteId, 4 bytes extended message type, 4 bytes data length
 	c := edc.c
 	for len(data) > 0 {
-		var space uint32
-		if space, err = c.getWindowSpace(uint32(len(data))); err != nil {
+		space := uint32(min(int(c.maxPacket-headerLength), len(data)))
+		if space, err = c.getWindowSpace(space); err != nil {
 			return 0, err
 		}
 		todo := data
@@ -255,7 +256,7 @@ func (edc extendedDataChannel) Write(data []byte) (n int, err error) {
 			todo = todo[:space]
 		}
 
-		packet := make([]byte, 1+4+4+4+len(todo))
+		packet := make([]byte, headerLength+len(todo))
 		packet[0] = msgChannelExtendedData
 		marshalUint32(packet[1:], c.remoteId)
 		marshalUint32(packet[5:], uint32(edc.t))
@@ -355,9 +356,10 @@ func (c *serverChan) getWindowSpace(max uint32) (uint32, error) {
 }
 
 func (c *serverChan) Write(data []byte) (n int, err error) {
+	const headerLength = 9 // 1 byte message type, 4 bytes remoteId, 4 bytes data length
 	for len(data) > 0 {
-		var space uint32
-		if space, err = c.getWindowSpace(uint32(len(data))); err != nil {
+		space := uint32(min(int(c.maxPacket-headerLength), len(data)))
+		if space, err = c.getWindowSpace(space); err != nil {
 			return 0, err
 		}
 		todo := data
@@ -365,7 +367,7 @@ func (c *serverChan) Write(data []byte) (n int, err error) {
 			todo = todo[:space]
 		}
 
-		packet := make([]byte, 1+4+4+len(todo))
+		packet := make([]byte, headerLength+len(todo))
 		packet[0] = msgChannelData
 		marshalUint32(packet[1:], c.remoteId)
 		marshalUint32(packet[5:], uint32(len(todo)))
