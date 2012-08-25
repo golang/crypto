@@ -380,8 +380,11 @@ func TestServerStdoutRespectsMaxPacketSize(t *testing.T) {
 	}
 }
 
-// TODO(dfc) currently writes succeed after Close()
-func testClientCannotSendAfterEOF(t *testing.T) {
+func TestClientCannotSendAfterEOF(t *testing.T) {
+	// TODO(dfc) currently writes succeed after Close()
+	t.Logf("test skipped")
+	return
+
 	conn := dial(shellHandler, t)
 	defer conn.Close()
 	session, err := conn.NewSession()
@@ -405,7 +408,7 @@ func testClientCannotSendAfterEOF(t *testing.T) {
 }
 
 func TestClientCannotSendAfterClose(t *testing.T) {
-	conn := dial(shellHandler, t)
+	conn := dial(exitWithoutSignalOrStatus, t)
 	defer conn.Close()
 	session, err := conn.NewSession()
 	if err != nil {
@@ -457,21 +460,21 @@ func exitStatusZeroHandler(ch *serverChan, t *testing.T) {
 	defer ch.Close()
 	// this string is returned to stdout
 	shell := newServerShell(ch, "> ")
-	shell.ReadLine()
+	readLine(shell, t)
 	sendStatus(0, ch, t)
 }
 
 func exitStatusNonZeroHandler(ch *serverChan, t *testing.T) {
 	defer ch.Close()
 	shell := newServerShell(ch, "> ")
-	shell.ReadLine()
+	readLine(shell, t)
 	sendStatus(15, ch, t)
 }
 
 func exitSignalAndStatusHandler(ch *serverChan, t *testing.T) {
 	defer ch.Close()
 	shell := newServerShell(ch, "> ")
-	shell.ReadLine()
+	readLine(shell, t)
 	sendStatus(15, ch, t)
 	sendSignal("TERM", ch, t)
 }
@@ -479,29 +482,35 @@ func exitSignalAndStatusHandler(ch *serverChan, t *testing.T) {
 func exitSignalHandler(ch *serverChan, t *testing.T) {
 	defer ch.Close()
 	shell := newServerShell(ch, "> ")
-	shell.ReadLine()
+	readLine(shell, t)
 	sendSignal("TERM", ch, t)
 }
 
 func exitSignalUnknownHandler(ch *serverChan, t *testing.T) {
 	defer ch.Close()
 	shell := newServerShell(ch, "> ")
-	shell.ReadLine()
+	readLine(shell, t)
 	sendSignal("SYS", ch, t)
 }
 
 func exitWithoutSignalOrStatus(ch *serverChan, t *testing.T) {
 	defer ch.Close()
 	shell := newServerShell(ch, "> ")
-	shell.ReadLine()
+	readLine(shell, t)
 }
 
 func shellHandler(ch *serverChan, t *testing.T) {
 	defer ch.Close()
 	// this string is returned to stdout
 	shell := newServerShell(ch, "golang")
-	shell.ReadLine()
+	readLine(shell, t)
 	sendStatus(0, ch, t)
+}
+
+func readLine(shell *ServerTerminal, t *testing.T) {
+	if _, err := shell.ReadLine(); err != nil && err != io.EOF {
+		t.Fatalf("unable to read line: %v", err)
+	}
 }
 
 func sendStatus(status uint32, ch *serverChan, t *testing.T) {
@@ -549,7 +558,7 @@ func sendZeroWindowAdjust(ch *serverChan, t *testing.T) {
 	// send a bogus zero sized window update
 	ch.sendWindowAdj(0)
 	shell := newServerShell(ch, "> ")
-	shell.ReadLine()
+	readLine(shell, t)
 	sendStatus(0, ch, t)
 }
 
@@ -559,7 +568,7 @@ func discardHandler(ch *serverChan, t *testing.T) {
 	// the initial 1 << 14 window.
 	ch.sendWindowAdj(1024 * 1024)
 	shell := newServerShell(ch, "> ")
-	shell.ReadLine()
+	readLine(shell, t)
 	io.Copy(ioutil.Discard, ch.serverConn)
 }
 
@@ -569,7 +578,7 @@ func largeSendHandler(ch *serverChan, t *testing.T) {
 	// the initial 1 << 14 window.
 	ch.sendWindowAdj(1024 * 1024)
 	shell := newServerShell(ch, "> ")
-	shell.ReadLine()
+	readLine(shell, t)
 	// try to send more than the 32k window
 	// will allow
 	if err := ch.writePacket(make([]byte, 128*1024)); err == nil {
