@@ -249,7 +249,8 @@ func (c *ClientConn) mainLoop() {
 				ch.stderr.write(packet)
 			}
 		default:
-			switch msg := decode(packet).(type) {
+			msg := decode(packet)
+			switch msg := msg.(type) {
 			case *channelOpenMsg:
 				c.handleChanOpen(msg)
 			case *channelOpenConfirmMsg:
@@ -270,8 +271,7 @@ func (c *ClientConn) mainLoop() {
 					return
 				}
 				ch.Close()
-				// TODO(dfc) may need to optimisically remove the 
-				// channel before closing
+				close(ch.msg)
 				c.chanList.remove(msg.PeersId)
 			case *channelEOFMsg:
 				ch, ok := c.getChan(msg.PeersId)
@@ -502,5 +502,6 @@ func (c *chanList) closeAll() {
 			continue
 		}
 		ch.Close()
+		close(ch.msg)
 	}
 }

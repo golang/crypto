@@ -47,7 +47,7 @@ func dial(handler serverType, t *testing.T) *ClientConn {
 		done := make(chan struct{})
 		for {
 			ch, err := conn.Accept()
-			if err == io.EOF {
+			if err == io.EOF || err == io.ErrUnexpectedEOF {
 				return
 			}
 			// We sometimes get ECONNRESET rather than EOF.
@@ -389,10 +389,6 @@ func TestServerStdoutRespectsMaxPacketSize(t *testing.T) {
 }
 
 func TestClientCannotSendAfterEOF(t *testing.T) {
-	// TODO(dfc) currently writes succeed after Close()
-	t.Logf("test skipped")
-	return
-
 	conn := dial(exitWithoutSignalOrStatus, t)
 	defer conn.Close()
 	session, err := conn.NewSession()
@@ -628,10 +624,6 @@ func discardHandler(ch *serverChan, t *testing.T) {
 	// grow the window to avoid being fooled by
 	// the initial 1 << 14 window.
 	ch.sendWindowAdj(1024 * 1024)
-	// TODO(dfc) io.Copy can return a non EOF error here
-	// because closed channel errors can leak here if the
-	// read from ch causes a window adjustment after the 
-	// remote has signaled close.
 	io.Copy(ioutil.Discard, ch)
 }
 

@@ -536,7 +536,7 @@ func (s *ServerConn) Accept() (Channel, error) {
 
 			// TODO(dfc) s.lock protects s.channels but isn't being held here.
 			for _, c := range s.channels {
-				c.dead = true
+				c.setDead()
 				c.handleData(nil)
 			}
 
