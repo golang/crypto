@@ -19,6 +19,14 @@ import (
 
 const (
 	packetSizeMultiple = 16 // TODO(huin) this should be determined by the cipher.
+
+	// RFC 4253 section 6.1 defines a minimum packet size of 32768 that implementations
+	// MUST be able to process (plus a few more kilobytes for padding and mac). The RFC
+	// indicates implementations SHOULD be able to handle larger packet sizes, but then
+	// waffles on about reasonable limits. 
+	//	
+	// OpenSSH caps their maxPacket at 256kb so we choose to do the same.
+	maxPacket = 256 * 1024
 )
 
 // conn represents an ssh transport that implements packet based
@@ -92,7 +100,11 @@ func (r *reader) readOnePacket() ([]byte, error) {
 	paddingLength := uint32(lengthBytes[4])
 
 	if length <= paddingLength+1 {
-		return nil, errors.New("ssh: invalid packet length")
+		return nil, errors.New("ssh: invalid packet length, packet too small")
+	}
+
+	if length > maxPacket {
+		return nil, errors.New("ssh: invalid packet length, packet too large")
 	}
 
 	packet := make([]byte, length-1+macSize)
@@ -132,6 +144,9 @@ func (t *transport) readPacket() ([]byte, error) {
 
 // Encrypt and send a packet of data to the remote peer.
 func (w *writer) writePacket(packet []byte) error {
+	if len(packet) > maxPacket {
+		return errors.New("ssh: packet too large")
+	}
 	w.Mutex.Lock()
 	defer w.Mutex.Unlock()
 

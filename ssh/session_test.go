@@ -435,6 +435,16 @@ func TestClientCannotSendAfterClose(t *testing.T) {
 	}
 }
 
+func TestClientCannotSendHugePacket(t *testing.T) {
+	// client and server use the same transport write code so this
+	// test suffices for both.
+	conn := dial(shellHandler, t)
+	defer conn.Close()
+	if err := conn.transport.writePacket(make([]byte, maxPacket*2)); err == nil {
+		t.Fatalf("huge packet write should fail")
+	}
+}
+
 // windowTestBytes is the number of bytes that we'll send to the SSH server.
 const windowTestBytes = 16000 * 200
 
