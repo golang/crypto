@@ -7,8 +7,8 @@ package curve25519
 // These functions are implemented in the .s files. The names of the functions
 // in the rest of the file are also taken from the SUPERCOP sources to help
 // people following along.
-func cswap(*[5]uint64, uint64)
-func ladderstep(*[5][5]uint64)
+func cswap(inout *[5]uint64, v uint64)
+func ladderstep(inout *[5][5]uint64)
 func freeze(inout *[5]uint64)
 func mul(dest, a, b *[5]uint64)
 func square(out, in *[5]uint64)

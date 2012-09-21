@@ -9,7 +9,7 @@
 TEXT ·salsa2020XORKeyStream(SB),0,$512-40
 	MOVQ out+0(FP),DI
 	MOVQ in+8(FP),SI
-	MOVQ inlen+16(FP),DX
+	MOVQ n+16(FP),DX
 	MOVQ nonce+24(FP),CX
 	MOVQ key+32(FP),R8
 

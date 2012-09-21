@@ -7,8 +7,8 @@
 
 // func square(dest, src *[5]uint64)
 TEXT ·square(SB),7,$96-16
-	MOVQ dest+0(FP), DI
-	MOVQ src+8(FP), SI
+	MOVQ out+0(FP), DI
+	MOVQ in+8(FP), SI
 
 	MOVQ SP,R11
 	MOVQ $31,CX
