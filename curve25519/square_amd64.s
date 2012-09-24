@@ -5,7 +5,7 @@
 // This code was translated into a form compatible with 6a from the public
 // domain sources in SUPERCOP: http://bench.cr.yp.to/supercop.html
 
-// func square(dest, src *[5]uint64)
+// func square(out, in *[5]uint64)
 TEXT ·square(SB),7,$96-16
 	MOVQ out+0(FP), DI
 	MOVQ in+8(FP), SI
