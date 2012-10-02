@@ -434,7 +434,7 @@ func (c *serverChan) ExtraData() []byte {
 	return c.extraData
 }
 
-// A clientChan represents a single RFC 4254 channel multiplexed 
+// A clientChan represents a single RFC 4254 channel multiplexed
 // over a SSH connection.
 type clientChan struct {
 	channel
@@ -502,8 +502,8 @@ func (c *clientChan) Close() error {
 // A chanWriter represents the stdin of a remote process.
 type chanWriter struct {
 	*channel
-	// indicates the writer has been closed. eof is owned by the 
-	// caller of Write/Close. 
+	// indicates the writer has been closed. eof is owned by the
+	// caller of Write/Close.
 	eof bool
 }
 
@@ -562,5 +562,12 @@ func (r *chanReader) Read(buf []byte) (int, error) {
 		}
 		return 0, err
 	}
-	return n, r.sendWindowAdj(n)
+	err = r.sendWindowAdj(n)
+	if err == io.EOF && n > 0 {
+		// sendWindowAdjust can return io.EOF if the remote peer has
+		// closed the connection, however we want to defer forwarding io.EOF to the
+		// caller of Read until the buffer has been drained.
+		err = nil
+	}
+	return n, err
 }
