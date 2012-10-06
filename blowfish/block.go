@@ -14,7 +14,7 @@ func ExpandKey(key []byte, c *Cipher) {
 	for i := 0; i < 18; i++ {
 		var d uint32
 		for k := 0; k < 4; k++ {
-			d = d<<8 | uint32(key[j])&0x000000FF
+			d = d<<8 | uint32(key[j])
 			j++
 			if j >= len(key) {
 				j = 0
@@ -53,26 +53,24 @@ func ExpandKey(key []byte, c *Cipher) {
 // and specializing it here is useful.
 func expandKeyWithSalt(key []byte, salt []byte, c *Cipher) {
 	j := 0
-	expandedKey := make([]uint32, 18)
 	for i := 0; i < 18; i++ {
 		var d uint32
 		for k := 0; k < 4; k++ {
-			d = d<<8 | uint32(key[j])&0x000000FF
+			d = d<<8 | uint32(key[j])
 			j++
 			if j >= len(key) {
 				j = 0
 			}
 		}
-		expandedKey[i] = d
 		c.p[i] ^= d
 	}
 
 	j = 0
-	expandedSalt := make([]uint32, 18)
-	for i := 0; i < 18; i++ {
+	var expandedSalt [4]uint32
+	for i := range expandedSalt {
 		var d uint32
 		for k := 0; k < 4; k++ {
-			d = d<<8 | uint32(salt[j])&0x000000FF
+			d = d<<8 | uint32(salt[j])
 			j++
 			if j >= len(salt) {
 				j = 0
