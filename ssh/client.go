@@ -412,7 +412,7 @@ func parseTCPAddr(b []byte) (*net.TCPAddr, []byte, bool) {
 	if ip == nil {
 		return nil, b, false
 	}
-	return &net.TCPAddr{ip, int(port)}, b, true
+	return &net.TCPAddr{IP: ip, Port: int(port)}, b, true
 }
 
 // Dial connects to the given network address using net.Dial and
