@@ -139,6 +139,13 @@ func TestConversation(t *testing.T) {
 	var err error
 	alicesMessage = append(alicesMessage, []byte(QueryMessage))
 
+	if alice.IsEncrypted() {
+		t.Error("Alice believes that the conversation is secure before we've started")
+	}
+	if bob.IsEncrypted() {
+		t.Error("Bob believes that the conversation is secure before we've started")
+	}
+
 	for round := 0; len(alicesMessage) > 0 || len(bobsMessage) > 0; round++ {
 		bobsMessage = nil
 		for i, msg := range alicesMessage {
@@ -178,6 +185,13 @@ func TestConversation(t *testing.T) {
 
 	if !bytes.Equal(alice.SSID[:], bob.SSID[:]) {
 		t.Errorf("Session identifiers don't match. Alice has %x, Bob has %x", alice.SSID[:], bob.SSID[:])
+	}
+
+	if !alice.IsEncrypted() {
+		t.Error("Alice doesn't believe that the conversation is secure")
+	}
+	if !bob.IsEncrypted() {
+		t.Error("Bob doesn't believe that the conversation is secure")
 	}
 
 	var testMessage = []byte("hello Bob")

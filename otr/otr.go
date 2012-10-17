@@ -508,6 +508,13 @@ func (c *Conversation) End() (toSend [][]byte) {
 	panic("unreachable")
 }
 
+// IsEncrypted returns true if a message passed to Send would be encrypted
+// before transmission. This result remains valid until the next call to
+// Receive or End, which may change the state of the Conversation.
+func (c *Conversation) IsEncrypted() bool {
+	return c.state == stateEncrypted
+}
+
 var fragmentError = errors.New("otr: invalid OTR fragment")
 
 // processFragment processes a fragmented OTR message and possibly returns a
