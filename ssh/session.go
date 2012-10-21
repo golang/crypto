@@ -48,6 +48,68 @@ var signals = map[Signal]int{
 	SIGTERM: 15,
 }
 
+type TerminalModes map[uint8]uint32
+
+// POSIX terminal mode flags as listed in RFC 4254 Section 8.
+const (
+	tty_OP_END    = 0
+	VINTR         = 1
+	VQUIT         = 2
+	VERASE        = 3
+	VKILL         = 4
+	VEOF          = 5
+	VEOL          = 6
+	VEOL2         = 7
+	VSTART        = 8
+	VSTOP         = 9
+	VSUSP         = 10
+	VDSUSP        = 11
+	VREPRINT      = 12
+	VWERASE       = 13
+	VLNEXT        = 14
+	VFLUSH        = 15
+	VSWTCH        = 16
+	VSTATUS       = 17
+	VDISCARD      = 18
+	IGNPAR        = 30
+	PARMRK        = 31
+	INPCK         = 32
+	ISTRIP        = 33
+	INLCR         = 34
+	IGNCR         = 35
+	ICRNL         = 36
+	IUCLC         = 37
+	IXON          = 38
+	IXANY         = 39
+	IXOFF         = 40
+	IMAXBEL       = 41
+	ISIG          = 50
+	ICANON        = 51
+	XCASE         = 52
+	ECHO          = 53
+	ECHOE         = 54
+	ECHOK         = 55
+	ECHONL        = 56
+	NOFLSH        = 57
+	TOSTOP        = 58
+	IEXTEN        = 59
+	ECHOCTL       = 60
+	ECHOKE        = 61
+	PENDIN        = 62
+	OPOST         = 70
+	OLCUC         = 71
+	ONLCR         = 72
+	OCRNL         = 73
+	ONOCR         = 74
+	ONLRET        = 75
+	CS7           = 90
+	CS8           = 91
+	PARENB        = 92
+	PARODD        = 93
+	TTY_OP_ISPEED = 128
+	TTY_OP_OSPEED = 129
+)
+
 // A Session represents a connection to a remote command or shell.
 type Session struct {
 	// Stdin specifies the remote process's standard input.
@@ -109,9 +171,6 @@ func (s *Session) Setenv(name, value string) error {
 	return s.waitForResponse()
 }
 
-// An empty mode list, see RFC 4254 Section 8.
-var emptyModelist = "\x00"
-
 // RFC 4254 Section 6.2.
 type ptyRequestMsg struct {
 	PeersId   uint32
@@ -126,7 +185,13 @@ type ptyRequestMsg struct {
 }
 
 // RequestPty requests the association of a pty with the session on the remote host.
-func (s *Session) RequestPty(term string, h, w int) error {
+func (s *Session) RequestPty(term string, h, w int, termmodes TerminalModes) error {
+	var tm []byte
+	for k, v := range termmodes {
+		tm = append(tm, k)
+		tm = appendU32(tm, v)
+	}
+	tm = append(tm, tty_OP_END)
 	req := ptyRequestMsg{
 		PeersId:   s.remoteId,
 		Request:   "pty-req",
@@ -136,7 +201,7 @@ func (s *Session) RequestPty(term string, h, w int) error {
 		Rows:      uint32(h),
 		Width:     uint32(w * 8),
 		Height:    uint32(h * 8),
-		Modelist:  emptyModelist,
+		Modelist:  string(tm),
 	}
 	if err := s.writePacket(marshal(msgChannelRequest, req)); err != nil {
 		return err

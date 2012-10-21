@@ -10,8 +10,11 @@ package test
 
 import (
 	"bytes"
+	"code.google.com/p/go.crypto/ssh"
 	"io"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestRunCommandSuccess(t *testing.T) {
@@ -97,5 +100,76 @@ func TestFuncLargeRead(t *testing.T) {
 
 	if n != 2048 {
 		t.Fatalf("Expected %d bytes but read only %d from remote command", 2048, n)
+	}
+}
+
+func TestInvalidTerminalMode(t *testing.T) {
+	server := newServer(t)
+	defer server.Shutdown()
+	conn := server.Dial()
+	defer conn.Close()
+
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("session failed: %v", err)
+	}
+	defer session.Close()
+
+	if err = session.RequestPty("vt100", 80, 40, ssh.TerminalModes{255: 1984}); err == nil {
+		t.Fatalf("req-pty failed: successful request with invalid mode")
+	}
+}
+
+func TestValidTerminalMode(t *testing.T) {
+	server := newServer(t)
+	defer server.Shutdown()
+	conn := server.Dial()
+	defer conn.Close()
+
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("session failed: %v", err)
+	}
+	defer session.Close()
+
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		t.Fatalf("unable to acquire stdout pipe: %s", err)
+	}
+
+	stdin, err := session.StdinPipe()
+	if err != nil {
+		t.Fatalf("unable to acquire stdin pipe: %s", err)
+	}
+
+	tm := ssh.TerminalModes{ssh.ECHO: 0}
+	if err = session.RequestPty("xterm", 80, 40, tm); err != nil {
+		t.Fatalf("req-pty failed: %s", err)
+	}
+
+	err = session.Shell()
+	if err != nil {
+		t.Fatalf("session failed: %s", err)
+	}
+
+	stdin.Write([]byte("stty -a && exit\n"))
+
+	rc := make(chan string)
+	go func() {
+		var buf bytes.Buffer
+		if _, err := io.Copy(&buf, stdout); err != nil {
+			t.Fatalf("reading failed: %s", err)
+		}
+		rc <- buf.String()
+	}()
+
+	result := ""
+	select {
+	case result = <-rc:
+	case <-time.After(1 * time.Second):
+	}
+
+	if !strings.Contains(result, "-echo") {
+		t.Fatalf("terminal mode failure: expected '%s'", "-echo")
 	}
 }

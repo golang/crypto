@@ -149,3 +149,39 @@ func ExampleClientConn_Listen() {
 		fmt.Fprintf(resp, "Hello world!\n")
 	}))
 }
+
+func ExampleSession_RequestPty() {
+	// Create client config
+	config := &ClientConfig{
+		User: "username",
+		Auth: []ClientAuth{
+			ClientAuthPassword(password("password")),
+		},
+	}
+	// Connect to ssh server
+	conn, err := Dial("tcp", "localhost:22", config)
+	if err != nil {
+		log.Fatalf("unable to connect: %s", err)
+	}
+	defer conn.Close()
+	// Create a session
+	session, err := conn.NewSession()
+	if err != nil {
+		log.Fatalf("unable to create session: %s", err)
+	}
+	defer session.Close()
+	// Set up terminal modes
+	modes := TerminalModes{
+		ECHO:          0,     // disable echoing
+		TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
+		TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
+	}
+	// Request pseudo terminal
+	if err := session.RequestPty("xterm", 80, 40, modes); err != nil {
+		log.Fatalf("request for pseudo terminal failed: %s", err)
+	}
+	// Start remote shell
+	if err := session.Shell(); err != nil {
+		log.Fatalf("failed to start shell: %s", err)
+	}
+}
