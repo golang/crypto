@@ -276,3 +276,23 @@ func TestClientHMAC(t *testing.T) {
 		c.Close()
 	}
 }
+
+// issue 4285.
+func TestClientUnsupportedCipher(t *testing.T) {
+	kc := new(keychain)
+	kc.keys = append(kc.keys, rsakey)
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []ClientAuth{
+			ClientAuthKeyring(kc),
+		},
+		Crypto: CryptoConfig{
+			Ciphers: []string{"aes128-cbc"}, // not currently supported
+		},
+	}
+	c, err := Dial("tcp", newMockAuthServer(t), config)
+	if err == nil {
+		t.Errorf("expected no ciphers in common")
+		c.Close()
+	}
+}

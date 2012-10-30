@@ -27,7 +27,7 @@ func TestTCPIPHTTPS(t *testing.T) {
 func doTest(t *testing.T, url string) {
 	server := newServer(t)
 	defer server.Shutdown()
-	conn := server.Dial()
+	conn := server.Dial(clientConfig())
 	defer conn.Close()
 
 	tr := &http.Transport{

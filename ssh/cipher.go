@@ -74,6 +74,9 @@ var DefaultCipherOrder = []string{
 	"arcfour256", "arcfour128",
 }
 
+// cipherModes documents properties of supported ciphers. Ciphers not included
+// are not supported and will not be negotiated, even if explicitly requested in
+// ClientConfig.Crypto.Ciphers.
 var cipherModes = map[string]*cipherMode{
 	// Ciphers from RFC4344, which introduced many CTR-based ciphers. Algorithms
 	// are defined in the order specified in the RFC.

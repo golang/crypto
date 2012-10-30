@@ -9,6 +9,7 @@ package test
 // functional test harness for unix.
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/dsa"
 	"crypto/rsa"
@@ -40,7 +41,7 @@ Pidfile {{.Dir}}/sshd.pid
 KeyRegenerationInterval 3600
 ServerKeyBits 768
 SyslogFacility AUTH
-LogLevel INFO
+LogLevel DEBUG2
 LoginGraceTime 120
 PermitRootLogin no
 StrictModes no
@@ -146,29 +147,13 @@ type server struct {
 	cleanup    func() // executed during Shutdown
 	configfile string
 	cmd        *exec.Cmd
+	output     bytes.Buffer // holds stderr from sshd process
 }
 
-func (s *server) Dial() *ssh.ClientConn {
-	s.cmd = exec.Command("sshd", "-f", s.configfile, "-i")
-	stdin, err := s.cmd.StdinPipe()
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	stdout, err := s.cmd.StdoutPipe()
-	if err != nil {
-		s.t.Fatal(err)
-	}
-	s.cmd.Stderr = os.Stderr
-	err = s.cmd.Start()
-	if err != nil {
-		s.Shutdown()
-		s.t.Fatal(err)
-	}
-
+func clientConfig() *ssh.ClientConfig {
 	user, err := user.Current()
 	if err != nil {
-		s.Shutdown()
-		s.t.Fatal(err)
+		panic(err)
 	}
 	kc := new(keychain)
 	kc.keys = append(kc.keys, rsakey)
@@ -178,8 +163,29 @@ func (s *server) Dial() *ssh.ClientConn {
 			ssh.ClientAuthKeyring(kc),
 		},
 	}
+	return config
+}
+
+func (s *server) Dial(config *ssh.ClientConfig) *ssh.ClientConn {
+	s.cmd = exec.Command("sshd", "-f", s.configfile, "-i")
+	stdin, err := s.cmd.StdinPipe()
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	stdout, err := s.cmd.StdoutPipe()
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	s.cmd.Stderr = os.Stderr // &s.output
+	err = s.cmd.Start()
+	if err != nil {
+		s.t.FailNow()
+		s.Shutdown()
+		s.t.Fatal(err)
+	}
 	conn, err := ssh.Client(&client{stdin, stdout}, config)
 	if err != nil {
+		s.t.FailNow()
 		s.Shutdown()
 		s.t.Fatal(err)
 	}
@@ -189,6 +195,10 @@ func (s *server) Dial() *ssh.ClientConn {
 func (s *server) Shutdown() {
 	if err := s.cmd.Process.Kill(); err != nil {
 		s.t.Error(err)
+	}
+	if s.t.Failed() {
+		// log any output from sshd process
+		s.t.Log(s.output.String())
 	}
 	s.cleanup()
 }

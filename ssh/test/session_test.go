@@ -20,7 +20,7 @@ import (
 func TestRunCommandSuccess(t *testing.T) {
 	server := newServer(t)
 	defer server.Shutdown()
-	conn := server.Dial()
+	conn := server.Dial(clientConfig())
 	defer conn.Close()
 
 	session, err := conn.NewSession()
@@ -37,7 +37,7 @@ func TestRunCommandSuccess(t *testing.T) {
 func TestRunCommandFailed(t *testing.T) {
 	server := newServer(t)
 	defer server.Shutdown()
-	conn := server.Dial()
+	conn := server.Dial(clientConfig())
 	defer conn.Close()
 
 	session, err := conn.NewSession()
@@ -54,7 +54,7 @@ func TestRunCommandFailed(t *testing.T) {
 func TestRunCommandWeClosed(t *testing.T) {
 	server := newServer(t)
 	defer server.Shutdown()
-	conn := server.Dial()
+	conn := server.Dial(clientConfig())
 	defer conn.Close()
 
 	session, err := conn.NewSession()
@@ -74,7 +74,7 @@ func TestRunCommandWeClosed(t *testing.T) {
 func TestFuncLargeRead(t *testing.T) {
 	server := newServer(t)
 	defer server.Shutdown()
-	conn := server.Dial()
+	conn := server.Dial(clientConfig())
 	defer conn.Close()
 
 	session, err := conn.NewSession()
@@ -106,7 +106,7 @@ func TestFuncLargeRead(t *testing.T) {
 func TestInvalidTerminalMode(t *testing.T) {
 	server := newServer(t)
 	defer server.Shutdown()
-	conn := server.Dial()
+	conn := server.Dial(clientConfig())
 	defer conn.Close()
 
 	session, err := conn.NewSession()
@@ -123,7 +123,7 @@ func TestInvalidTerminalMode(t *testing.T) {
 func TestValidTerminalMode(t *testing.T) {
 	server := newServer(t)
 	defer server.Shutdown()
-	conn := server.Dial()
+	conn := server.Dial(clientConfig())
 	defer conn.Close()
 
 	session, err := conn.NewSession()

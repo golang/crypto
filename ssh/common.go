@@ -8,8 +8,8 @@ import (
 	"crypto/dsa"
 	"crypto/rsa"
 	"errors"
+	"fmt"
 	"math/big"
-	"strconv"
 	"sync"
 )
 
@@ -77,7 +77,7 @@ type UnexpectedMessageError struct {
 }
 
 func (u UnexpectedMessageError) Error() string {
-	return "ssh: unexpected message type " + strconv.Itoa(int(u.got)) + " (expected " + strconv.Itoa(int(u.expected)) + ")"
+	return fmt.Sprintf("ssh: unexpected message type %d (expected %d)", u.got, u.expected)
 }
 
 // ParseError results from a malformed SSH message.
@@ -86,7 +86,7 @@ type ParseError struct {
 }
 
 func (p ParseError) Error() string {
-	return "ssh: parse error in message type " + strconv.Itoa(int(p.msgType))
+	return fmt.Sprintf("ssh: parse error in message type %d", p.msgType)
 }
 
 type handshakeMagics struct {
@@ -102,7 +102,18 @@ func findCommonAlgorithm(clientAlgos []string, serverAlgos []string) (commonAlgo
 			}
 		}
 	}
+	return
+}
 
+func findCommonCipher(clientCiphers []string, serverCiphers []string) (commonCipher string, ok bool) {
+	for _, clientCipher := range clientCiphers {
+		for _, serverCipher := range serverCiphers {
+			// reject the cipher if we have no cipherModes definition
+			if clientCipher == serverCipher && cipherModes[clientCipher] != nil {
+				return clientCipher, true
+			}
+		}
+	}
 	return
 }
 
@@ -117,12 +128,12 @@ func findAgreedAlgorithms(transport *transport, clientKexInit, serverKexInit *ke
 		return
 	}
 
-	transport.writer.cipherAlgo, ok = findCommonAlgorithm(clientKexInit.CiphersClientServer, serverKexInit.CiphersClientServer)
+	transport.writer.cipherAlgo, ok = findCommonCipher(clientKexInit.CiphersClientServer, serverKexInit.CiphersClientServer)
 	if !ok {
 		return
 	}
 
-	transport.reader.cipherAlgo, ok = findCommonAlgorithm(clientKexInit.CiphersServerClient, serverKexInit.CiphersServerClient)
+	transport.reader.cipherAlgo, ok = findCommonCipher(clientKexInit.CiphersServerClient, serverKexInit.CiphersServerClient)
 	if !ok {
 		return
 	}
