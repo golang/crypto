@@ -76,7 +76,7 @@ var magicCipherData = []byte{
 type hashed struct {
 	hash  []byte
 	salt  []byte
-	cost  uint32 // allowed range is MinCost to MaxCost
+	cost  int // allowed range is MinCost to MaxCost
 	major byte
 	minor byte
 }
@@ -94,8 +94,7 @@ func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
 }
 
 // CompareHashAndPassword compares a bcrypt hashed password with its possible
-// plaintext equivalent. Note: Using bytes.Equal for this job is
-// insecure. Returns nil on success, or an error on failure.
+// plaintext equivalent. Returns nil on success, or an error on failure.
 func CompareHashAndPassword(hashedPassword, password []byte) error {
 	p, err := newFromHash(hashedPassword)
 	if err != nil {
@@ -115,6 +114,18 @@ func CompareHashAndPassword(hashedPassword, password []byte) error {
 	return ErrMismatchedHashAndPassword
 }
 
+// Cost returns the hashing cost used to create the given hashed
+// password. When, in the future, the hashing cost of a password system needs
+// to be increased in order to adjust for greater computational power, this
+// function allows one to establish which passwords need to be updated.
+func Cost(hashedPassword []byte) (int, error) {
+	p, err := newFromHash(hashedPassword)
+	if err != nil {
+		return 0, err
+	}
+	return p.cost, nil
+}
+
 func newFromPassword(password []byte, cost int) (*hashed, error) {
 	if cost < MinCost {
 		cost = DefaultCost
@@ -127,7 +138,7 @@ func newFromPassword(password []byte, cost int) (*hashed, error) {
 	if err != nil {
 		return nil, err
 	}
-	p.cost = uint32(cost)
+	p.cost = cost
 
 	unencodedSalt := make([]byte, maxSaltSize)
 	_, err = io.ReadFull(rand.Reader, unencodedSalt)
@@ -172,11 +183,11 @@ func newFromHash(hashedSecret []byte) (*hashed, error) {
 	return p, nil
 }
 
-func bcrypt(password []byte, cost uint32, salt []byte) ([]byte, error) {
+func bcrypt(password []byte, cost int, salt []byte) ([]byte, error) {
 	cipherData := make([]byte, len(magicCipherData))
 	copy(cipherData, magicCipherData)
 
-	c, err := expensiveBlowfishSetup(password, cost, salt)
+	c, err := expensiveBlowfishSetup(password, uint32(cost), salt)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +277,7 @@ func (p *hashed) decodeCost(sbytes []byte) (int, error) {
 	if err != nil {
 		return -1, err
 	}
-	p.cost = uint32(cost)
+	p.cost = cost
 	return 3, nil
 }
 

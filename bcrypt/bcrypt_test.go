@@ -6,6 +6,7 @@ package bcrypt
 
 import (
 	"bytes"
+	"fmt"
 	"testing"
 )
 
@@ -117,6 +118,28 @@ func TestUnpaddedBase64Encoding(t *testing.T) {
 }
 
 func TestCost(t *testing.T) {
+	suffix := "XajjQvNhvvRt5GSeFk1xFe5l47dONXg781AmZtd869sO8zfsHuw7C"
+	for _, vers := range []string{"2a", "2"} {
+		for _, cost := range []int{4, 10} {
+			s := fmt.Sprintf("$%s$%02d$%s", vers, cost, suffix)
+			h := []byte(s)
+			actual, err := Cost(h)
+			if err != nil {
+				t.Errorf("Cost, error: %s", err)
+				continue
+			}
+			if actual != cost {
+				t.Errorf("Cost, expected: %d, actual: %d", cost, actual)
+			}
+		}
+	}
+	_, err := Cost([]byte("$a$a$" + suffix))
+	if err == nil {
+		t.Errorf("Cost, malformed but no error returned")
+	}
+}
+
+func TestCostValidationInHash(t *testing.T) {
 	if testing.Short() {
 		return
 	}
@@ -125,7 +148,7 @@ func TestCost(t *testing.T) {
 
 	for c := 0; c < MinCost; c++ {
 		p, _ := newFromPassword(pass, c)
-		if p.cost != uint32(DefaultCost) {
+		if p.cost != DefaultCost {
 			t.Errorf("newFromPassword should default costs below %d to %d, but was %d", MinCost, DefaultCost, p.cost)
 		}
 	}
