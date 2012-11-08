@@ -193,8 +193,10 @@ func (s *server) Dial(config *ssh.ClientConfig) *ssh.ClientConn {
 }
 
 func (s *server) Shutdown() {
-	if err := s.cmd.Process.Kill(); err != nil {
-		s.t.Error(err)
+	if s.cmd.Process != nil {
+		if err := s.cmd.Process.Kill(); err != nil {
+			s.t.Error(err)
+		}
 	}
 	if s.t.Failed() {
 		// log any output from sshd process
