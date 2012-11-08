@@ -5,6 +5,8 @@
 // This code was translated into a form compatible with 6a from the public
 // domain sources in SUPERCOP: http://bench.cr.yp.to/supercop.html
 
+// +build amd64,!gccgo
+
 // func square(out, in *[5]uint64)
 TEXT ·square(SB),7,$96-16
 	MOVQ out+0(FP), DI

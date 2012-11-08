@@ -3,8 +3,8 @@
 // license that can be found in the LICENSE file.
 
 // We have a implementation in amd64 assembly so this code is only run on
-// non-amd64 platforms.
-// +build !amd64
+// non-amd64 platforms.  The amd64 assembly does not support gccgo.
+// +build !amd64 gccgo
 
 package curve25519
 

@@ -5,6 +5,8 @@
 // This code was translated into a form compatible with 6a from the public
 // domain sources in SUPERCOP: http://bench.cr.yp.to/supercop.html
 
+// +build amd64,!gccgo
+
 // func freeze(inout *[5]uint64)
 TEXT ·freeze(SB),7,$96-8
 	MOVQ inout+0(FP), DI

@@ -5,6 +5,8 @@
 // This code was translated into a form compatible with 6a from the public
 // domain sources in SUPERCOP: http://bench.cr.yp.to/supercop.html
 
+// +build amd64,!gccgo
+
 DATA ·SCALE(SB)/8, $0x37F4000000000000
 GLOBL ·SCALE(SB), $8
 DATA ·TWO32(SB)/8, $0x41F0000000000000
