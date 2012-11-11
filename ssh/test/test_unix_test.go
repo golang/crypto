@@ -150,15 +150,26 @@ type server struct {
 	output     bytes.Buffer // holds stderr from sshd process
 }
 
-func clientConfig() *ssh.ClientConfig {
-	user, err := user.Current()
-	if err != nil {
-		panic(err)
+func username() string {
+	var username string
+	if user, err := user.Current(); err == nil {
+		username = user.Username
+	} else {
+		// user.Current() currently requires cgo. If an error is
+		// returned attempt to get the username from the environment.
+		username = os.Getenv("USER")
 	}
+	if username == "" {
+		panic("Unable to get username")
+	}
+	return username
+}
+
+func clientConfig() *ssh.ClientConfig {
 	kc := new(keychain)
 	kc.keys = append(kc.keys, rsakey)
 	config := &ssh.ClientConfig{
-		User: user.Username,
+		User: username(),
 		Auth: []ssh.ClientAuth{
 			ssh.ClientAuthKeyring(kc),
 		},
