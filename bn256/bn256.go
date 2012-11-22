@@ -129,8 +129,11 @@ func (e *G1) Unmarshal(m []byte) (*G1, bool) {
 		// This is the point at infinity.
 		e.p.y.SetInt64(1)
 		e.p.z.SetInt64(0)
+		e.p.t.SetInt64(0)
 	} else {
 		e.p.z.SetInt64(1)
+		e.p.t.SetInt64(1)
+
 		if !e.p.IsOnCurve() {
 			return nil, false
 		}
@@ -243,11 +246,12 @@ func (e *G2) Unmarshal(m []byte) (*G2, bool) {
 		// This is the point at infinity.
 		e.p.y.SetOne()
 		e.p.z.SetZero()
+		e.p.t.SetZero()
 	} else {
 		e.p.z.SetOne()
+		e.p.t.SetOne()
 
 		if !e.p.IsOnCurve() {
-			println("X")
 			return nil, false
 		}
 	}
