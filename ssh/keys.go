@@ -5,9 +5,20 @@
 package ssh
 
 import (
+	"bytes"
 	"crypto/dsa"
 	"crypto/rsa"
+	"encoding/base64"
 	"math/big"
+)
+
+// Key types supported by OpenSSH 5.9
+const (
+	keyAlgoRSA      = "ssh-rsa"
+	keyAlgoDSA      = "ssh-dss"
+	keyAlgoECDSA256 = "ecdsa-sha2-nistp256"
+	keyAlgoECDSA384 = "ecdsa-sha2-nistp384"
+	keyAlgoECDSA521 = "ecdsa-sha2-nistp521"
 )
 
 // parsePubKey parses a public key according to RFC 4253, section 6.6.
@@ -117,4 +128,176 @@ func marshalPubDSA(key *dsa.PublicKey) []byte {
 	marshalInt(r, key.Y)
 
 	return ret
+}
+
+// parseAuthorizedKey parses a public key in OpenSSH authorized_keys format
+// (see sshd(8) manual page) once the options and key type fields have been
+// removed.
+func parseAuthorizedKey(in []byte) (out interface{}, comment string, ok bool) {
+	in = bytes.TrimSpace(in)
+
+	i := bytes.IndexAny(in, " \t")
+	if i == -1 {
+		i = len(in)
+	}
+	base64Key := in[:i]
+
+	key := make([]byte, base64.StdEncoding.DecodedLen(len(base64Key)))
+	n, err := base64.StdEncoding.Decode(key, base64Key)
+	if err != nil {
+		return
+	}
+	key = key[:n]
+	out, _, ok = parsePubKey(key)
+	if !ok {
+		return nil, "", false
+	}
+	comment = string(bytes.TrimSpace(in[i:]))
+	return
+}
+
+// ParseAuthorizedKeys parses a public key from an authorized_keys
+// file used in OpenSSH according to the sshd(8) manual page.
+func ParseAuthorizedKey(in []byte) (out interface{}, comment string, options []string, rest []byte, ok bool) {
+	for len(in) > 0 {
+		end := bytes.IndexByte(in, '\n')
+		if end != -1 {
+			rest = in[end+1:]
+			in = in[:end]
+		} else {
+			rest = nil
+		}
+
+		end = bytes.IndexByte(in, '\r')
+		if end != -1 {
+			in = in[:end]
+		}
+
+		in = bytes.TrimSpace(in)
+		if len(in) == 0 || in[0] == '#' {
+			in = rest
+			continue
+		}
+
+		i := bytes.IndexAny(in, " \t")
+		if i == -1 {
+			in = rest
+			continue
+		}
+
+		field := string(in[:i])
+		switch field {
+		case keyAlgoRSA, keyAlgoDSA:
+			out, comment, ok = parseAuthorizedKey(in[i:])
+			if ok {
+				return
+			}
+		case keyAlgoECDSA256, keyAlgoECDSA384, keyAlgoECDSA521:
+			// We don't support these keys.
+			in = rest
+			continue
+		case hostAlgoRSACertV01, hostAlgoDSACertV01,
+			hostAlgoECDSA256CertV01, hostAlgoECDSA384CertV01, hostAlgoECDSA521CertV01:
+			// We don't support these certificates.
+			in = rest
+			continue
+		}
+
+		// No key type recognised. Maybe there's an options field at
+		// the beginning.
+		var b byte
+		inQuote := false
+		var candidateOptions []string
+		optionStart := 0
+		for i, b = range in {
+			isEnd := !inQuote && (b == ' ' || b == '\t')
+			if (b == ',' && !inQuote) || isEnd {
+				if i-optionStart > 0 {
+					candidateOptions = append(candidateOptions, string(in[optionStart:i]))
+				}
+				optionStart = i + 1
+			}
+			if isEnd {
+				break
+			}
+			if b == '"' && (i == 0 || (i > 0 && in[i-1] != '\\')) {
+				inQuote = !inQuote
+			}
+		}
+		for i < len(in) && (in[i] == ' ' || in[i] == '\t') {
+			i++
+		}
+		if i == len(in) {
+			// Invalid line: unmatched quote
+			in = rest
+			continue
+		}
+
+		in = in[i:]
+		i = bytes.IndexAny(in, " \t")
+		if i == -1 {
+			in = rest
+			continue
+		}
+
+		field = string(in[:i])
+		switch field {
+		case keyAlgoRSA, keyAlgoDSA:
+			out, comment, ok = parseAuthorizedKey(in[i:])
+			if ok {
+				options = candidateOptions
+				return
+			}
+		}
+
+		in = rest
+		continue
+	}
+
+	return
+}
+
+// ParsePublicKey parses an SSH public key formatted for use in
+// the SSH wire protocol.
+func ParsePublicKey(in []byte) (out interface{}, rest []byte, ok bool) {
+	return parsePubKey(in)
+}
+
+// MarshalAuthorizedKey returns a byte stream suitable for inclusion
+// in an OpenSSH authorized_keys file following the format specified
+// in the sshd(8) manual page.
+func MarshalAuthorizedKey(key interface{}) []byte {
+	b := &bytes.Buffer{}
+	switch keyType := key.(type) {
+	case *rsa.PublicKey:
+		b.WriteString(hostAlgoRSA)
+	case *dsa.PublicKey:
+		b.WriteString(hostAlgoDSA)
+	case *OpenSSHCertV01:
+		switch keyType.Key.(type) {
+		case *rsa.PublicKey:
+			b.WriteString(hostAlgoRSACertV01)
+		case *dsa.PublicKey:
+			b.WriteString(hostAlgoDSACertV01)
+		default:
+			panic("unexpected key type")
+		}
+	default:
+		panic("unexpected key type")
+	}
+
+	b.WriteByte(' ')
+	e := base64.NewEncoder(base64.StdEncoding, b)
+	e.Write(serializePublickey(key))
+	e.Close()
+	b.WriteByte('\n')
+	return b.Bytes()
+}
+
+// MarshalPublicKey serializes a *rsa.PublicKey, *dsa.PublicKey or
+// *OpenSSHCertV01 for use in the SSH wire protocol. It can be used for
+// comparison with the pubkey argument of ServerConfig's PublicKeyCallback as
+// well as for generating an authorized_keys or host_keys file.
+func MarshalPublicKey(key interface{}) []byte {
+	return serializePublickey(key)
 }
