@@ -210,7 +210,7 @@ func (s *Session) RequestPty(term string, h, w int, termmodes TerminalModes) err
 }
 
 // RequestSubsystem requests the association of a subsystem with the session on the remote host.
-// A subsystem is a predefined command that runs in the background when the ssh session is initiated 
+// A subsystem is a predefined command that runs in the background when the ssh session is initiated
 func (s *Session) RequestSubsystem(subsystem string) error {
 	req := subsystemRequestMsg{
 		PeersId:   s.remoteId,

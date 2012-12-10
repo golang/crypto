@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// Listen requests the remote peer open a listening socket 
+// Listen requests the remote peer open a listening socket
 // on addr. Incoming connections will be available by calling
 // Accept on the returned net.Listener.
 func (c *ClientConn) Listen(n, addr string) (net.Listener, error) {
@@ -32,7 +32,7 @@ type channelForwardMsg struct {
 	rport     uint32
 }
 
-// ListenTCP requests the remote peer open a listening socket 
+// ListenTCP requests the remote peer open a listening socket
 // on laddr. Incoming connections will be available by calling
 // Accept on the returned net.Listener.
 func (c *ClientConn) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
@@ -62,14 +62,14 @@ func (c *ClientConn) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
 	return &tcpListener{laddr, c, ch}, nil
 }
 
-// forwardList stores a mapping between remote 
+// forwardList stores a mapping between remote
 // forward requests and the tcpListeners.
 type forwardList struct {
 	sync.Mutex
 	entries []forwardEntry
 }
 
-// forwardEntry represents an established mapping of a laddr on a 
+// forwardEntry represents an established mapping of a laddr on a
 // remote ssh server to a channel connected to a tcpListener.
 type forwardEntry struct {
 	laddr *net.TCPAddr
@@ -159,8 +159,8 @@ func (l *tcpListener) Addr() net.Addr {
 }
 
 // Dial initiates a connection to the addr from the remote host.
-// addr is resolved using net.ResolveTCPAddr before connection. 
-// This could allow an observer to observe the DNS name of the 
+// addr is resolved using net.ResolveTCPAddr before connection.
+// This could allow an observer to observe the DNS name of the
 // remote host. Consider using ssh.DialTCP to avoid this.
 func (c *ClientConn) Dial(n, addr string) (net.Conn, error) {
 	raddr, err := net.ResolveTCPAddr(n, addr)
@@ -237,7 +237,7 @@ type tcpChan struct {
 	io.Writer
 }
 
-// tcpChanConn fulfills the net.Conn interface without 
+// tcpChanConn fulfills the net.Conn interface without
 // the tcpChan having to hold laddr or raddr directly.
 type tcpChanConn struct {
 	*tcpChan

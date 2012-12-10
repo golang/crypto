@@ -272,7 +272,7 @@ func buildDataSignedForAuth(sessionId []byte, req userAuthRequestMsg, algo, pubK
 	return ret
 }
 
-// safeString sanitises s according to RFC 4251, section 9.2. 
+// safeString sanitises s according to RFC 4251, section 9.2.
 // All control characters except tab, carriage return and newline are
 // replaced by 0x20.
 func safeString(s string) string {
@@ -297,11 +297,11 @@ func appendInt(buf []byte, n int) []byte {
 	return appendU32(buf, uint32(n))
 }
 
-// newCond is a helper to hide the fact that there is no usable zero 
+// newCond is a helper to hide the fact that there is no usable zero
 // value for sync.Cond.
 func newCond() *sync.Cond { return sync.NewCond(new(sync.Mutex)) }
 
-// window represents the buffer available to clients 
+// window represents the buffer available to clients
 // wishing to write to a channel.
 type window struct {
 	*sync.Cond
@@ -322,7 +322,7 @@ func (w *window) add(win uint32) bool {
 	}
 	w.win += win
 	// It is unusual that multiple goroutines would be attempting to reserve
-	// window space, but not guaranteed. Use broadcast to notify all waiters 
+	// window space, but not guaranteed. Use broadcast to notify all waiters
 	// that additional window is available.
 	w.Broadcast()
 	w.L.Unlock()

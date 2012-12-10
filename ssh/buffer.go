@@ -50,7 +50,7 @@ func (b *buffer) write(buf []byte) {
 	b.Cond.Signal()
 }
 
-// eof closes the buffer. Reads from the buffer once all 
+// eof closes the buffer. Reads from the buffer once all
 // the data has been consumed will receive os.EOF.
 func (b *buffer) eof() error {
 	b.Cond.L.Lock()
@@ -60,7 +60,7 @@ func (b *buffer) eof() error {
 	return nil
 }
 
-// Read reads data from the internal buffer in buf. 
+// Read reads data from the internal buffer in buf.
 // Reads will block if no data is available, or until
 // the buffer is closed.
 func (b *buffer) Read(buf []byte) (n int, err error) {

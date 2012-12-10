@@ -23,8 +23,8 @@ const (
 	// RFC 4253 section 6.1 defines a minimum packet size of 32768 that implementations
 	// MUST be able to process (plus a few more kilobytes for padding and mac). The RFC
 	// indicates implementations SHOULD be able to handle larger packet sizes, but then
-	// waffles on about reasonable limits. 
-	//	
+	// waffles on about reasonable limits.
+	//
 	// OpenSSH caps their maxPacket at 256kb so we choose to do the same.
 	maxPacket = 256 * 1024
 )

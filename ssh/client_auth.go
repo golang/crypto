@@ -358,7 +358,7 @@ func (kr *agentKeyring) Sign(i int, rand io.Reader, data []byte) (sig []byte, er
 		return
 	}
 
-	// Unmarshal the signature. 
+	// Unmarshal the signature.
 
 	var ok bool
 	if _, sig, ok = parseString(sig); !ok {

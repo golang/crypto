@@ -45,7 +45,7 @@ func ExampleListen() {
 		panic("failed to handshake")
 	}
 
-	// A ServerConn multiplexes several channels, which must 
+	// A ServerConn multiplexes several channels, which must
 	// themselves be Accepted.
 	for {
 		// Accept reads from the connection, demultiplexes packets

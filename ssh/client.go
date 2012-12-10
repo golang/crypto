@@ -384,7 +384,7 @@ func (c *ClientConn) sendGlobalRequest(m interface{}) (*globalRequestSuccessMsg,
 	return nil, errors.New("request failed")
 }
 
-// sendConnectionFailed rejects an incoming channel identified 
+// sendConnectionFailed rejects an incoming channel identified
 // by remoteId.
 func (c *ClientConn) sendConnectionFailed(remoteId uint32) error {
 	m := channelOpenFailureMsg{
@@ -396,7 +396,7 @@ func (c *ClientConn) sendConnectionFailed(remoteId uint32) error {
 	return c.writePacket(marshal(msgChannelOpenFailure, m))
 }
 
-// parseTCPAddr parses the originating address from the remote into a *net.TCPAddr. 
+// parseTCPAddr parses the originating address from the remote into a *net.TCPAddr.
 // RFC 4254 section 7.2 is mute on what to do if parsing fails but the forwardlist
 // requires a valid *net.TCPAddr to operate, so we enforce that restriction here.
 func parseTCPAddr(b []byte) (*net.TCPAddr, []byte, bool) {

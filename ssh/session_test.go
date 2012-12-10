@@ -301,7 +301,7 @@ func TestInvalidServerMessage(t *testing.T) {
 	defer session.Close()
 }
 
-// In the wild some clients (and servers) send zero sized window updates. 
+// In the wild some clients (and servers) send zero sized window updates.
 // Test that the client can continue after receiving a zero sized update.
 func TestClientZeroWindowAdjust(t *testing.T) {
 	conn := dial(sendZeroWindowAdjust, t)
@@ -321,7 +321,7 @@ func TestClientZeroWindowAdjust(t *testing.T) {
 	}
 }
 
-// In the wild some clients (and servers) send zero sized window updates. 
+// In the wild some clients (and servers) send zero sized window updates.
 // Test that the server can continue after receiving a zero size update.
 func TestServerZeroWindowAdjust(t *testing.T) {
 	conn := dial(exitStatusZeroHandler, t)
