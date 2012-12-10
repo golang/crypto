@@ -30,14 +30,6 @@ func (c *Cipher) BlockSize() int {
 	return BlockSize
 }
 
-// Reset zeros the key material in memory.
-func (c *Cipher) Reset() {
-	for i := 0; i < 16; i++ {
-		c.masking[i] = 0
-		c.rotate[i] = 0
-	}
-}
-
 func (c *Cipher) Encrypt(dst, src []byte) {
 	l := uint32(src[0])<<24 | uint32(src[1])<<16 | uint32(src[2])<<8 | uint32(src[3])
 	r := uint32(src[4])<<24 | uint32(src[5])<<16 | uint32(src[6])<<8 | uint32(src[7])

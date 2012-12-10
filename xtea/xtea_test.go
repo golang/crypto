@@ -227,20 +227,3 @@ func TestCipherDecrypt(t *testing.T) {
 		}
 	}
 }
-
-// Test resetting the cipher context
-func TestReset(t *testing.T) {
-	c, err := NewCipher(testKey)
-	if err != nil {
-		t.Errorf("NewCipher(%d bytes) = %s", len(testKey), err)
-		return
-	}
-
-	c.Reset()
-	for i := 0; i < len(c.table); i++ {
-		if c.table[i] != 0 {
-			t.Errorf("Cipher.Reset: Failed to clear Cipher.table[%d]. expected 0, got %08X", i, c.table[i])
-			return
-		}
-	}
-}

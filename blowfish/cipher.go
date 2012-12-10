@@ -81,16 +81,6 @@ func (c *Cipher) Decrypt(dst, src []byte) {
 	dst[4], dst[5], dst[6], dst[7] = byte(r>>24), byte(r>>16), byte(r>>8), byte(r)
 }
 
-// Reset zeros the key data, so that it will no longer
-// appear in the process's memory.
-func (c *Cipher) Reset() {
-	zero(c.p[0:])
-	zero(c.s0[0:])
-	zero(c.s1[0:])
-	zero(c.s2[0:])
-	zero(c.s3[0:])
-}
-
 func initCipher(key []byte, c *Cipher) {
 	copy(c.p[0:], p[0:])
 	copy(c.s0[0:], s0[0:])

@@ -106,19 +106,6 @@ func NewCipher(key []byte) (*Cipher, error) {
 	return c, nil
 }
 
-// Reset zeros the key data, so that it will no longer appear in the process's
-// memory.
-func (c *Cipher) Reset() {
-	for i := range c.k {
-		c.k[i] = 0
-	}
-	for i := range c.s {
-		for j := 0; j < 256; j++ {
-			c.s[i][j] = 0
-		}
-	}
-}
-
 // BlockSize returns the Twofish block size, 16 bytes.
 func (c *Cipher) BlockSize() int { return BlockSize }
 

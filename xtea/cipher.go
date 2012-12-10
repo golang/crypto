@@ -57,13 +57,6 @@ func (c *Cipher) Encrypt(dst, src []byte) { encryptBlock(c, dst, src) }
 // Decrypt decrypts the 8 byte buffer src using the key k and stores the result in dst.
 func (c *Cipher) Decrypt(dst, src []byte) { decryptBlock(c, dst, src) }
 
-// Reset zeros the table, so that it will no longer appear in the process's memory.
-func (c *Cipher) Reset() {
-	for i := 0; i < len(c.table); i++ {
-		c.table[i] = 0
-	}
-}
-
 // initCipher initializes the cipher context by creating a look up table
 // of precalculated values that are based on the key.
 func initCipher(c *Cipher, key []byte) {
