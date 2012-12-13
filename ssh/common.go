@@ -6,6 +6,7 @@ package ssh
 
 import (
 	"crypto/dsa"
+	"crypto/ecdsa"
 	"crypto/rsa"
 	"errors"
 	"fmt"
@@ -191,11 +192,17 @@ func serializeSignature(algoname string, sig []byte) []byte {
 	switch algoname {
 	// The corresponding private key to a public certificate is always a normal
 	// private key.  For signature serialization purposes, ensure we use the
-	// proper ssh-rsa or ssh-dss algo name in case the public cert algo name is passed.
-	case hostAlgoRSACertV01:
+	// proper key algorithm name in case the public cert algorithm name is passed.
+	case certAlgoRSAv01:
 		algoname = "ssh-rsa"
-	case hostAlgoDSACertV01:
+	case certAlgoDSAv01:
 		algoname = "ssh-dss"
+	case certAlgoECDSA256v01:
+		algoname = "ecdsa-sha2-nistp256"
+	case certAlgoECDSA384v01:
+		algoname = "ecdsa-sha2-nistp384"
+	case certAlgoECDSA521v01:
+		algoname = "ecdsa-sha2-nistp521"
 	}
 	length := stringLength(len(algoname))
 	length += stringLength(len(sig))
@@ -216,6 +223,8 @@ func serializePublickey(key interface{}) []byte {
 		pubKeyBytes = marshalPubRSA(key)
 	case *dsa.PublicKey:
 		pubKeyBytes = marshalPubDSA(key)
+	case *ecdsa.PublicKey:
+		pubKeyBytes = marshalPubECDSA(key)
 	case *OpenSSHCertV01:
 		pubKeyBytes = marshalOpenSSHCertV01(key)
 	default:
@@ -236,6 +245,15 @@ func algoName(key interface{}) string {
 		return "ssh-rsa"
 	case *dsa.PublicKey:
 		return "ssh-dss"
+	case *ecdsa.PublicKey:
+		switch key.(*ecdsa.PublicKey).Params().BitSize {
+		case 256:
+			return "ecdsa-sha2-nistp256"
+		case 384:
+			return "ecdsa-sha2-nistp384"
+		case 521:
+			return "ecdsa-sha2-nistp521"
+		}
 	case *OpenSSHCertV01:
 		return algoName(key.(*OpenSSHCertV01).Key) + "-cert-v01@openssh.com"
 	}

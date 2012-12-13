@@ -9,17 +9,18 @@ package ssh
 
 import (
 	"crypto/dsa"
+	"crypto/ecdsa"
 	"crypto/rsa"
 	"time"
 )
 
 // String constants in [PROTOCOL.certkeys] for certificate algorithm names.
 const (
-	hostAlgoRSACertV01      = "ssh-rsa-cert-v01@openssh.com"
-	hostAlgoDSACertV01      = "ssh-dss-cert-v01@openssh.com"
-	hostAlgoECDSA256CertV01 = "ecdsa-sha2-nistp256-cert-v01@openssh.com"
-	hostAlgoECDSA384CertV01 = "ecdsa-sha2-nistp384-cert-v01@openssh.com"
-	hostAlgoECDSA521CertV01 = "ecdsa-sha2-nistp521-cert-v01@openssh.com"
+	certAlgoRSAv01      = "ssh-rsa-cert-v01@openssh.com"
+	certAlgoDSAv01      = "ssh-dss-cert-v01@openssh.com"
+	certAlgoECDSA256v01 = "ecdsa-sha2-nistp256-cert-v01@openssh.com"
+	certAlgoECDSA384v01 = "ecdsa-sha2-nistp384-cert-v01@openssh.com"
+	certAlgoECDSA521v01 = "ecdsa-sha2-nistp521-cert-v01@openssh.com"
 )
 
 // Certificate types are used to specify whether a certificate is for identification
@@ -41,10 +42,12 @@ type tuple struct {
 
 // An OpenSSHCertV01 represents an OpenSSH certificate as defined in
 // [PROTOCOL.certkeys] rev 1.8. Supported formats include
-// ssh-rsa-cert-v01@openssh.com and ssh-dss-cert-v01@openssh.com.
+// ssh-rsa-cert-v01@openssh.com, ssh-dss-cert-v01@openssh.com,
+// ecdsa-sha2-nistp256-cert-v01@openssh.com, ecdsa-sha2-nistp384-cert-v01@openssh.com,
+// and ecdsa-sha2-nistp521-cert-v01@openssh.com.
 type OpenSSHCertV01 struct {
 	Nonce                   []byte
-	Key                     interface{} // rsa or dsa *PublicKey
+	Key                     interface{} // rsa, dsa, or ecdsa *PublicKey
 	Serial                  uint64
 	Type                    uint32
 	KeyId                   string
@@ -65,18 +68,24 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 	}
 
 	switch algo {
-	case hostAlgoRSACertV01:
+	case certAlgoRSAv01:
 		var rsaPubKey *rsa.PublicKey
 		if rsaPubKey, in, ok = parseRSA(in); !ok {
 			return
 		}
 		cert.Key = rsaPubKey
-	case hostAlgoDSACertV01:
+	case certAlgoDSAv01:
 		var dsaPubKey *dsa.PublicKey
 		if dsaPubKey, in, ok = parseDSA(in); !ok {
 			return
 		}
 		cert.Key = dsaPubKey
+	case certAlgoECDSA256v01, certAlgoECDSA384v01, certAlgoECDSA521v01:
+		var ecdsaPubKey *ecdsa.PublicKey
+		if ecdsaPubKey, in, ok = parseECDSA(in); !ok {
+			return
+		}
+		cert.Key = ecdsaPubKey
 	default:
 		ok = false
 		return
@@ -149,6 +158,9 @@ func marshalOpenSSHCertV01(cert *OpenSSHCertV01) []byte {
 	case *dsa.PublicKey:
 		k := cert.Key.(*dsa.PublicKey)
 		pubKey = marshalPubDSA(k)
+	case *ecdsa.PublicKey:
+		k := cert.Key.(*ecdsa.PublicKey)
+		pubKey = marshalPubECDSA(k)
 	default:
 		panic("ssh: unknown public key type in cert")
 	}

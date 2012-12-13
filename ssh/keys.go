@@ -7,6 +7,8 @@ package ssh
 import (
 	"bytes"
 	"crypto/dsa"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"encoding/base64"
 	"math/big"
@@ -29,11 +31,13 @@ func parsePubKey(in []byte) (out interface{}, rest []byte, ok bool) {
 	}
 
 	switch string(algo) {
-	case hostAlgoRSA:
+	case keyAlgoRSA:
 		return parseRSA(in)
-	case hostAlgoDSA:
+	case keyAlgoDSA:
 		return parseDSA(in)
-	case hostAlgoRSACertV01, hostAlgoDSACertV01:
+	case keyAlgoECDSA256, keyAlgoECDSA384, keyAlgoECDSA521:
+		return parseECDSA(in)
+	case certAlgoRSAv01, certAlgoDSAv01, certAlgoECDSA256v01, certAlgoECDSA384v01, certAlgoECDSA521v01:
 		return parseOpenSSHCertV01(in, string(algo))
 	}
 	panic("ssh: unknown public key type")
@@ -86,15 +90,49 @@ func parseDSA(in []byte) (out *dsa.PublicKey, rest []byte, ok bool) {
 	return key, in, ok
 }
 
+// parseECDSA parses an ECDSA key according to RFC 5656, section 3.1.
+func parseECDSA(in []byte) (out *ecdsa.PublicKey, rest []byte, ok bool) {
+	var identifier []byte
+	if identifier, in, ok = parseString(in); !ok {
+		return
+	}
+
+	key := new(ecdsa.PublicKey)
+
+	switch string(identifier) {
+	case "nistp256":
+		key.Curve = elliptic.P256()
+	case "nistp384":
+		key.Curve = elliptic.P384()
+	case "nistp521":
+		key.Curve = elliptic.P521()
+	default:
+		ok = false
+		return
+	}
+
+	var keyBytes []byte
+	if keyBytes, in, ok = parseString(in); !ok {
+		return
+	}
+
+	key.X, key.Y = elliptic.Unmarshal(key.Curve, keyBytes)
+	if key.X == nil || key.Y == nil {
+		ok = false
+		return
+	}
+	return key, in, ok
+}
+
 // marshalPrivRSA serializes an RSA private key according to RFC 4253, section 6.6.
 func marshalPrivRSA(priv *rsa.PrivateKey) []byte {
 	e := new(big.Int).SetInt64(int64(priv.E))
-	length := stringLength(len(hostAlgoRSA))
+	length := stringLength(len(keyAlgoRSA))
 	length += intLength(e)
 	length += intLength(priv.N)
 
 	ret := make([]byte, length)
-	r := marshalString(ret, []byte(hostAlgoRSA))
+	r := marshalString(ret, []byte(keyAlgoRSA))
 	r = marshalInt(r, e)
 	r = marshalInt(r, priv.N)
 
@@ -125,8 +163,32 @@ func marshalPubDSA(key *dsa.PublicKey) []byte {
 	r := marshalInt(ret, key.P)
 	r = marshalInt(r, key.Q)
 	r = marshalInt(r, key.G)
-	marshalInt(r, key.Y)
+	r = marshalInt(r, key.Y)
 
+	return ret
+}
+
+// marshalPubECDSA serializes an ECDSA public key according to RFC 5656, section 3.1.
+func marshalPubECDSA(key *ecdsa.PublicKey) []byte {
+	var identifier []byte
+	switch key.Params().BitSize {
+	case 256:
+		identifier = []byte("nistp256")
+	case 384:
+		identifier = []byte("nistp384")
+	case 521:
+		identifier = []byte("nistp521")
+	default:
+		panic("ssh: unsupported ecdsa key size")
+	}
+	keyBytes := elliptic.Marshal(key.Curve, key.X, key.Y)
+
+	length := stringLength(len(identifier))
+	length += stringLength(len(keyBytes))
+
+	ret := make([]byte, length)
+	r := marshalString(ret, identifier)
+	r = marshalString(r, keyBytes)
 	return ret
 }
 
@@ -196,8 +258,8 @@ func ParseAuthorizedKey(in []byte) (out interface{}, comment string, options []s
 			// We don't support these keys.
 			in = rest
 			continue
-		case hostAlgoRSACertV01, hostAlgoDSACertV01,
-			hostAlgoECDSA256CertV01, hostAlgoECDSA384CertV01, hostAlgoECDSA521CertV01:
+		case certAlgoRSAv01, certAlgoDSAv01,
+			certAlgoECDSA256v01, certAlgoECDSA384v01, certAlgoECDSA521v01:
 			// We don't support these certificates.
 			in = rest
 			continue
@@ -270,15 +332,37 @@ func MarshalAuthorizedKey(key interface{}) []byte {
 	b := &bytes.Buffer{}
 	switch keyType := key.(type) {
 	case *rsa.PublicKey:
-		b.WriteString(hostAlgoRSA)
+		b.WriteString(keyAlgoRSA)
 	case *dsa.PublicKey:
-		b.WriteString(hostAlgoDSA)
+		b.WriteString(keyAlgoDSA)
+	case *ecdsa.PublicKey:
+		switch keyType.Params().BitSize {
+		case 256:
+			b.WriteString(keyAlgoECDSA256)
+		case 384:
+			b.WriteString(keyAlgoECDSA384)
+		case 521:
+			b.WriteString(keyAlgoECDSA521)
+		default:
+			panic("unexpected key type")
+		}
 	case *OpenSSHCertV01:
 		switch keyType.Key.(type) {
 		case *rsa.PublicKey:
-			b.WriteString(hostAlgoRSACertV01)
+			b.WriteString(certAlgoRSAv01)
 		case *dsa.PublicKey:
-			b.WriteString(hostAlgoDSACertV01)
+			b.WriteString(certAlgoDSAv01)
+		case *ecdsa.PublicKey:
+			switch keyType.Key.(*ecdsa.PublicKey).Params().BitSize {
+			case 256:
+				b.WriteString(certAlgoECDSA256v01)
+			case 384:
+				b.WriteString(certAlgoECDSA384v01)
+			case 521:
+				b.WriteString(certAlgoECDSA521v01)
+			default:
+				panic("unexpected key type")
+			}
 		default:
 			panic("unexpected key type")
 		}
