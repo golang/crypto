@@ -4,9 +4,6 @@
 
 package ssh
 
-// References
-//   [PROTOCOL.certkeys]: http://www.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/PROTOCOL.certkeys
-
 import (
 	"crypto/dsa"
 	"crypto/ecdsa"
@@ -16,11 +13,11 @@ import (
 
 // String constants in [PROTOCOL.certkeys] for certificate algorithm names.
 const (
-	certAlgoRSAv01      = "ssh-rsa-cert-v01@openssh.com"
-	certAlgoDSAv01      = "ssh-dss-cert-v01@openssh.com"
-	certAlgoECDSA256v01 = "ecdsa-sha2-nistp256-cert-v01@openssh.com"
-	certAlgoECDSA384v01 = "ecdsa-sha2-nistp384-cert-v01@openssh.com"
-	certAlgoECDSA521v01 = "ecdsa-sha2-nistp521-cert-v01@openssh.com"
+	CertAlgoRSAv01      = "ssh-rsa-cert-v01@openssh.com"
+	CertAlgoDSAv01      = "ssh-dss-cert-v01@openssh.com"
+	CertAlgoECDSA256v01 = "ecdsa-sha2-nistp256-cert-v01@openssh.com"
+	CertAlgoECDSA384v01 = "ecdsa-sha2-nistp384-cert-v01@openssh.com"
+	CertAlgoECDSA521v01 = "ecdsa-sha2-nistp521-cert-v01@openssh.com"
 )
 
 // Certificate types are used to specify whether a certificate is for identification
@@ -41,10 +38,7 @@ type tuple struct {
 }
 
 // An OpenSSHCertV01 represents an OpenSSH certificate as defined in
-// [PROTOCOL.certkeys] rev 1.8. Supported formats include
-// ssh-rsa-cert-v01@openssh.com, ssh-dss-cert-v01@openssh.com,
-// ecdsa-sha2-nistp256-cert-v01@openssh.com, ecdsa-sha2-nistp384-cert-v01@openssh.com,
-// and ecdsa-sha2-nistp521-cert-v01@openssh.com.
+// [PROTOCOL.certkeys]?rev=1.8.
 type OpenSSHCertV01 struct {
 	Nonce                   []byte
 	Key                     interface{} // rsa, dsa, or ecdsa *PublicKey
@@ -68,19 +62,19 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 	}
 
 	switch algo {
-	case certAlgoRSAv01:
+	case CertAlgoRSAv01:
 		var rsaPubKey *rsa.PublicKey
 		if rsaPubKey, in, ok = parseRSA(in); !ok {
 			return
 		}
 		cert.Key = rsaPubKey
-	case certAlgoDSAv01:
+	case CertAlgoDSAv01:
 		var dsaPubKey *dsa.PublicKey
 		if dsaPubKey, in, ok = parseDSA(in); !ok {
 			return
 		}
 		cert.Key = dsaPubKey
-	case certAlgoECDSA256v01, certAlgoECDSA384v01, certAlgoECDSA521v01:
+	case CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01:
 		var ecdsaPubKey *ecdsa.PublicKey
 		if ecdsaPubKey, in, ok = parseECDSA(in); !ok {
 			return

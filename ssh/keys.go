@@ -16,11 +16,11 @@ import (
 
 // Key types supported by OpenSSH 5.9
 const (
-	keyAlgoRSA      = "ssh-rsa"
-	keyAlgoDSA      = "ssh-dss"
-	keyAlgoECDSA256 = "ecdsa-sha2-nistp256"
-	keyAlgoECDSA384 = "ecdsa-sha2-nistp384"
-	keyAlgoECDSA521 = "ecdsa-sha2-nistp521"
+	KeyAlgoRSA      = "ssh-rsa"
+	KeyAlgoDSA      = "ssh-dss"
+	KeyAlgoECDSA256 = "ecdsa-sha2-nistp256"
+	KeyAlgoECDSA384 = "ecdsa-sha2-nistp384"
+	KeyAlgoECDSA521 = "ecdsa-sha2-nistp521"
 )
 
 // parsePubKey parses a public key according to RFC 4253, section 6.6.
@@ -31,13 +31,13 @@ func parsePubKey(in []byte) (out interface{}, rest []byte, ok bool) {
 	}
 
 	switch string(algo) {
-	case keyAlgoRSA:
+	case KeyAlgoRSA:
 		return parseRSA(in)
-	case keyAlgoDSA:
+	case KeyAlgoDSA:
 		return parseDSA(in)
-	case keyAlgoECDSA256, keyAlgoECDSA384, keyAlgoECDSA521:
+	case KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521:
 		return parseECDSA(in)
-	case certAlgoRSAv01, certAlgoDSAv01, certAlgoECDSA256v01, certAlgoECDSA384v01, certAlgoECDSA521v01:
+	case CertAlgoRSAv01, CertAlgoDSAv01, CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01:
 		return parseOpenSSHCertV01(in, string(algo))
 	}
 	panic("ssh: unknown public key type")
@@ -127,12 +127,12 @@ func parseECDSA(in []byte) (out *ecdsa.PublicKey, rest []byte, ok bool) {
 // marshalPrivRSA serializes an RSA private key according to RFC 4253, section 6.6.
 func marshalPrivRSA(priv *rsa.PrivateKey) []byte {
 	e := new(big.Int).SetInt64(int64(priv.E))
-	length := stringLength(len(keyAlgoRSA))
+	length := stringLength(len(KeyAlgoRSA))
 	length += intLength(e)
 	length += intLength(priv.N)
 
 	ret := make([]byte, length)
-	r := marshalString(ret, []byte(keyAlgoRSA))
+	r := marshalString(ret, []byte(KeyAlgoRSA))
 	r = marshalInt(r, e)
 	r = marshalInt(r, priv.N)
 
@@ -249,17 +249,17 @@ func ParseAuthorizedKey(in []byte) (out interface{}, comment string, options []s
 
 		field := string(in[:i])
 		switch field {
-		case keyAlgoRSA, keyAlgoDSA:
+		case KeyAlgoRSA, KeyAlgoDSA:
 			out, comment, ok = parseAuthorizedKey(in[i:])
 			if ok {
 				return
 			}
-		case keyAlgoECDSA256, keyAlgoECDSA384, keyAlgoECDSA521:
+		case KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521:
 			// We don't support these keys.
 			in = rest
 			continue
-		case certAlgoRSAv01, certAlgoDSAv01,
-			certAlgoECDSA256v01, certAlgoECDSA384v01, certAlgoECDSA521v01:
+		case CertAlgoRSAv01, CertAlgoDSAv01,
+			CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01:
 			// We don't support these certificates.
 			in = rest
 			continue
@@ -304,7 +304,7 @@ func ParseAuthorizedKey(in []byte) (out interface{}, comment string, options []s
 
 		field = string(in[:i])
 		switch field {
-		case keyAlgoRSA, keyAlgoDSA:
+		case KeyAlgoRSA, KeyAlgoDSA:
 			out, comment, ok = parseAuthorizedKey(in[i:])
 			if ok {
 				options = candidateOptions
@@ -332,34 +332,34 @@ func MarshalAuthorizedKey(key interface{}) []byte {
 	b := &bytes.Buffer{}
 	switch keyType := key.(type) {
 	case *rsa.PublicKey:
-		b.WriteString(keyAlgoRSA)
+		b.WriteString(KeyAlgoRSA)
 	case *dsa.PublicKey:
-		b.WriteString(keyAlgoDSA)
+		b.WriteString(KeyAlgoDSA)
 	case *ecdsa.PublicKey:
 		switch keyType.Params().BitSize {
 		case 256:
-			b.WriteString(keyAlgoECDSA256)
+			b.WriteString(KeyAlgoECDSA256)
 		case 384:
-			b.WriteString(keyAlgoECDSA384)
+			b.WriteString(KeyAlgoECDSA384)
 		case 521:
-			b.WriteString(keyAlgoECDSA521)
+			b.WriteString(KeyAlgoECDSA521)
 		default:
 			panic("unexpected key type")
 		}
 	case *OpenSSHCertV01:
 		switch keyType.Key.(type) {
 		case *rsa.PublicKey:
-			b.WriteString(certAlgoRSAv01)
+			b.WriteString(CertAlgoRSAv01)
 		case *dsa.PublicKey:
-			b.WriteString(certAlgoDSAv01)
+			b.WriteString(CertAlgoDSAv01)
 		case *ecdsa.PublicKey:
 			switch keyType.Key.(*ecdsa.PublicKey).Params().BitSize {
 			case 256:
-				b.WriteString(certAlgoECDSA256v01)
+				b.WriteString(CertAlgoECDSA256v01)
 			case 384:
-				b.WriteString(certAlgoECDSA384v01)
+				b.WriteString(CertAlgoECDSA384v01)
 			case 521:
-				b.WriteString(certAlgoECDSA521v01)
+				b.WriteString(CertAlgoECDSA521v01)
 			default:
 				panic("unexpected key type")
 			}

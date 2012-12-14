@@ -13,8 +13,7 @@ import (
 )
 
 // These are SSH message type numbers. They are scattered around several
-// documents but many were taken from
-// http://www.iana.org/assignments/ssh-parameters/ssh-parameters.xml#ssh-parameters-1
+// documents but many were taken from [SSH-PARAMETERS].
 const (
 	msgDisconnect     = 1
 	msgIgnore         = 2

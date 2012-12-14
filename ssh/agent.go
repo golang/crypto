@@ -4,9 +4,6 @@
 
 package ssh
 
-// References
-//   PROTOCOL.agent: http://www.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/PROTOCOL.agent
-
 import (
 	"encoding/base64"
 	"errors"
@@ -14,7 +11,7 @@ import (
 	"sync"
 )
 
-// See PROTOCOL.agent, section 3.
+// See [PROTOCOL.agent], section 3.
 const (
 	// 3.2 Requests from client to agent for protocol 2 key operations
 	agentRequestIdentities   = 11
@@ -50,34 +47,34 @@ const maxAgentResponseBytes = 16 << 20
 
 // Agent messages:
 // These structures mirror the wire format of the corresponding ssh agent
-// messages found in PROTOCOL.agent.
+// messages found in [PROTOCOL.agent].
 
 type failureAgentMsg struct{}
 
 type successAgentMsg struct{}
 
-// See PROTOCOL.agent, section 2.5.2.
+// See [PROTOCOL.agent], section 2.5.2.
 type requestIdentitiesAgentMsg struct{}
 
-// See PROTOCOL.agent, section 2.5.2.
+// See [PROTOCOL.agent], section 2.5.2.
 type identitiesAnswerAgentMsg struct {
 	NumKeys uint32
 	Keys    []byte `ssh:"rest"`
 }
 
-// See PROTOCOL.agent, section 2.6.2.
+// See [PROTOCOL.agent], section 2.6.2.
 type signRequestAgentMsg struct {
 	KeyBlob []byte
 	Data    []byte
 	Flags   uint32
 }
 
-// See PROTOCOL.agent, section 2.6.2.
+// See [PROTOCOL.agent], section 2.6.2.
 type signResponseAgentMsg struct {
 	SigBlob []byte
 }
 
-// AgentKey represents a protocol 2 key as defined in PROTOCOL.agent,
+// AgentKey represents a protocol 2 key as defined in [PROTOCOL.agent],
 // section 2.5.2.
 type AgentKey struct {
 	blob    []byte
@@ -127,7 +124,7 @@ func parseAgentKey(in []byte) (out *AgentKey, rest []byte, ok bool) {
 }
 
 // AgentClient provides a means to communicate with an ssh agent process based
-// on the protocol described in PROTOCOL.agent?rev=1.6.
+// on the protocol described in [PROTOCOL.agent]?rev=1.6.
 type AgentClient struct {
 	// conn is typically represented by using a *net.UnixConn
 	conn io.ReadWriter
@@ -175,7 +172,7 @@ func (ac *AgentClient) sendAndReceive(req []byte) (reply interface{}, replyType 
 }
 
 // RequestIdentities queries the agent for protocol 2 keys as defined in
-// PROTOCOL.agent section 2.5.2.
+// [PROTOCOL.agent] section 2.5.2.
 func (ac *AgentClient) RequestIdentities() ([]*AgentKey, error) {
 	req := marshal(agentRequestIdentities, requestIdentitiesAgentMsg{})
 
@@ -207,7 +204,7 @@ func (ac *AgentClient) RequestIdentities() ([]*AgentKey, error) {
 }
 
 // SignRequest requests the signing of data by the agent using a protocol 2 key
-// as defined in PROTOCOL.agent section 2.6.2.  Supported key types include
+// as defined in [PROTOCOL.agent] section 2.6.2.  Supported key types include
 // *rsa.PublicKey, *dsa.PublicKey, *OpenSSHCertV01.
 func (ac *AgentClient) SignRequest(key interface{}, data []byte) ([]byte, error) {
 	req := marshal(agentSignRequest, signRequestAgentMsg{

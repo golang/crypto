@@ -10,5 +10,10 @@ family of application protocols. The most typical application level
 protocol is a remote shell and this is specifically implemented.  However,
 the multiplexed nature of SSH is exposed to users that wish to support
 others.
+
+References:
+  [PROTOCOL.certkeys]: http://www.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/PROTOCOL.certkeys
+  [PROTOCOL.agent]:    http://www.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/PROTOCOL.agent
+  [SSH-PARAMETERS]:    http://www.iana.org/assignments/ssh-parameters/ssh-parameters.xml#ssh-parameters-1
 */
 package ssh
