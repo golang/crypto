@@ -412,3 +412,18 @@ func writeMPIs(w io.Writer, mpis ...parsedMPI) (err error) {
 	}
 	return
 }
+
+// BitLength returns the bit length for the given public key.
+func (pk *PublicKey) BitLength() (bitLength uint16, err error) {
+	switch pk.PubKeyAlgo {
+	case PubKeyAlgoRSA, PubKeyAlgoRSAEncryptOnly, PubKeyAlgoRSASignOnly:
+		bitLength = pk.n.bitLength
+	case PubKeyAlgoDSA:
+		bitLength = pk.p.bitLength
+	case PubKeyAlgoElGamal:
+		bitLength = pk.p.bitLength
+	default:
+		err = errors.InvalidArgumentError("bad public-key algorithm")
+	}
+	return
+}

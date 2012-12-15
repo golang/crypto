@@ -199,9 +199,14 @@ func ReadKeyRing(r io.Reader) (el EntityList, err error) {
 
 	for {
 		var e *Entity
-		e, err = readEntity(packets)
+		e, err = ReadEntity(packets)
 		if err != nil {
+			// TODO: warn about skipped unsupported/unreadable keys
 			if _, ok := err.(errors.UnsupportedError); ok {
+				lastUnsupportedError = err
+				err = readToNextPublicKey(packets)
+			} else if _, ok := err.(errors.StructuralError); ok {
+				// Skip unreadable, badly-formatted keys
 				lastUnsupportedError = err
 				err = readToNextPublicKey(packets)
 			}
@@ -249,9 +254,9 @@ func readToNextPublicKey(packets *packet.Reader) (err error) {
 	panic("unreachable")
 }
 
-// readEntity reads an entity (public key, identities, subkeys etc) from the
+// ReadEntity reads an entity (public key, identities, subkeys etc) from the
 // given Reader.
-func readEntity(packets *packet.Reader) (*Entity, error) {
+func ReadEntity(packets *packet.Reader) (*Entity, error) {
 	e := new(Entity)
 	e.Identities = make(map[string]*Identity)
 
