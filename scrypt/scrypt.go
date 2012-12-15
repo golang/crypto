@@ -76,7 +76,7 @@ func smix(b []byte, r, N int, v, xy []byte) {
 
 // Key derives a key from the password, salt, and cost parameters, returning
 // a byte slice of length keyLen that can be used as cryptographic key.
-// 
+//
 // N is a CPU/memory cost parameter, which must be a power of two greater than 1.
 // r and p must satisfy r * p < 2³⁰. If the parameters do not satisfy the
 // limits, the function returns a nil byte slice and an error.

@@ -57,7 +57,7 @@ func (c *ClientConn) authenticate(session []byte) error {
 }
 
 func keys(m map[string]bool) (s []string) {
-	for k, _ := range m {
+	for k := range m {
 		s = append(s, k)
 	}
 	return

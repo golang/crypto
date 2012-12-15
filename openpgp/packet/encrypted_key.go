@@ -104,7 +104,7 @@ func SerializeEncryptedKey(w io.Writer, pub *PublicKey, cipherFunc CipherFunctio
 	binary.BigEndian.PutUint64(buf[1:9], pub.KeyId)
 	buf[9] = byte(pub.PubKeyAlgo)
 
-	keyBlock := make([]byte, 1 /* cipher type */ +len(key)+2 /* checksum */ )
+	keyBlock := make([]byte, 1 /* cipher type */ +len(key)+2 /* checksum */)
 	keyBlock[0] = byte(cipherFunc)
 	copy(keyBlock[1:], key)
 	checksum := checksumKeyMaterial(key)

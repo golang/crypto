@@ -169,7 +169,7 @@ func TestEncryption(t *testing.T) {
 		}
 
 		buf := new(bytes.Buffer)
-		w, err := Encrypt(buf, kring[:1], signed, nil, /* no hints */ nil)
+		w, err := Encrypt(buf, kring[:1], signed, nil /* no hints */, nil)
 		if err != nil {
 			t.Errorf("#%d: error in Encrypt: %s", i, err)
 			continue
@@ -187,7 +187,7 @@ func TestEncryption(t *testing.T) {
 			continue
 		}
 
-		md, err := ReadMessage(buf, kring, nil, /* no prompt */ nil)
+		md, err := ReadMessage(buf, kring, nil /* no prompt */, nil)
 		if err != nil {
 			t.Errorf("#%d: error reading message: %s", i, err)
 			continue
