@@ -11,7 +11,8 @@ import (
 	"time"
 )
 
-// String constants in [PROTOCOL.certkeys] for certificate algorithm names.
+// These constants from [PROTOCOL.certkeys] represent the algorithm names
+// for certificate types supported by this package.
 const (
 	CertAlgoRSAv01      = "ssh-rsa-cert-v01@openssh.com"
 	CertAlgoDSAv01      = "ssh-dss-cert-v01@openssh.com"

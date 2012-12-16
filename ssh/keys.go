@@ -14,7 +14,8 @@ import (
 	"math/big"
 )
 
-// Key types supported by OpenSSH 5.9
+// These constants represent the algorithm names for key types supported by this
+// package.
 const (
 	KeyAlgoRSA      = "ssh-rsa"
 	KeyAlgoDSA      = "ssh-dss"
@@ -330,46 +331,7 @@ func ParsePublicKey(in []byte) (out interface{}, rest []byte, ok bool) {
 // in the sshd(8) manual page.
 func MarshalAuthorizedKey(key interface{}) []byte {
 	b := &bytes.Buffer{}
-	switch keyType := key.(type) {
-	case *rsa.PublicKey:
-		b.WriteString(KeyAlgoRSA)
-	case *dsa.PublicKey:
-		b.WriteString(KeyAlgoDSA)
-	case *ecdsa.PublicKey:
-		switch keyType.Params().BitSize {
-		case 256:
-			b.WriteString(KeyAlgoECDSA256)
-		case 384:
-			b.WriteString(KeyAlgoECDSA384)
-		case 521:
-			b.WriteString(KeyAlgoECDSA521)
-		default:
-			panic("unexpected key type")
-		}
-	case *OpenSSHCertV01:
-		switch keyType.Key.(type) {
-		case *rsa.PublicKey:
-			b.WriteString(CertAlgoRSAv01)
-		case *dsa.PublicKey:
-			b.WriteString(CertAlgoDSAv01)
-		case *ecdsa.PublicKey:
-			switch keyType.Key.(*ecdsa.PublicKey).Params().BitSize {
-			case 256:
-				b.WriteString(CertAlgoECDSA256v01)
-			case 384:
-				b.WriteString(CertAlgoECDSA384v01)
-			case 521:
-				b.WriteString(CertAlgoECDSA521v01)
-			default:
-				panic("unexpected key type")
-			}
-		default:
-			panic("unexpected key type")
-		}
-	default:
-		panic("unexpected key type")
-	}
-
+	b.WriteString(algoName(key))
 	b.WriteByte(' ')
 	e := base64.NewEncoder(base64.StdEncoding, b)
 	e.Write(serializePublickey(key))
@@ -378,10 +340,10 @@ func MarshalAuthorizedKey(key interface{}) []byte {
 	return b.Bytes()
 }
 
-// MarshalPublicKey serializes a *rsa.PublicKey, *dsa.PublicKey or
-// *OpenSSHCertV01 for use in the SSH wire protocol. It can be used for
-// comparison with the pubkey argument of ServerConfig's PublicKeyCallback as
-// well as for generating an authorized_keys or host_keys file.
+// MarshalPublicKey serializes a supported key or certificate for use by the
+// SSH wire protocol. It can be used for comparison with the pubkey argument
+// of ServerConfig's PublicKeyCallback as well as for generating an
+// authorized_keys or host_keys file.
 func MarshalPublicKey(key interface{}) []byte {
 	return serializePublickey(key)
 }

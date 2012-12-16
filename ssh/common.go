@@ -255,7 +255,21 @@ func algoName(key interface{}) string {
 			return KeyAlgoECDSA521
 		}
 	case *OpenSSHCertV01:
-		return algoName(key.(*OpenSSHCertV01).Key) + "-cert-v01@openssh.com"
+		switch key.(*OpenSSHCertV01).Key.(type) {
+		case *rsa.PublicKey:
+			return CertAlgoRSAv01
+		case *dsa.PublicKey:
+			return CertAlgoDSAv01
+		case *ecdsa.PublicKey:
+			switch key.(*OpenSSHCertV01).Key.(*ecdsa.PublicKey).Params().BitSize {
+			case 256:
+				return CertAlgoECDSA256v01
+			case 384:
+				return CertAlgoECDSA384v01
+			case 521:
+				return CertAlgoECDSA521v01
+			}
+		}
 	}
 	panic("unexpected key type")
 }
