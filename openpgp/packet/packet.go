@@ -7,7 +7,6 @@
 package packet
 
 import (
-	"bytes"
 	"code.google.com/p/go.crypto/cast5"
 	"code.google.com/p/go.crypto/openpgp/errors"
 	"crypto/aes"
@@ -339,23 +338,10 @@ func Read(r io.Reader) (p Packet, err error) {
 		se.MDC = true
 		p = se
 	default:
-		p = new(OpaquePacket)
+		err = errors.UnknownPacketTypeError(tag)
 	}
 	if p != nil {
-		backup := bytes.NewBuffer(nil)
-		// FIXME: this causes large packets to be buffered in memory.
-		// Ideally we would like a better solution here so that huge,
-		// encrypted files could still be handled in a streaming
-		// fashion. Perhaps the encrypted data packet could call a
-		// method on backup that causes it to stop recording.
-		tee := io.TeeReader(contents, backup)
-		err = p.parse(tee)
-		switch err.(type) {
-		case errors.UnsupportedError, errors.UnknownPacketTypeError:
-			p = &OpaquePacket{Tag: uint8(tag), Reason: err}
-			err = nil
-			err = p.parse(io.MultiReader(backup, contents))
-		}
+		err = p.parse(contents)
 	}
 	if err != nil {
 		consumeAll(contents)

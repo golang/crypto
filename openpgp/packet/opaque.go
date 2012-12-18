@@ -46,9 +46,15 @@ func (op *OpaquePacket) Parse() (p Packet, err error) {
 	hdr := bytes.NewBuffer(nil)
 	err = serializeHeader(hdr, packetType(op.Tag), len(op.Contents))
 	if err != nil {
+		op.Reason = err
 		return op, err
 	}
-	return Read(io.MultiReader(hdr, bytes.NewBuffer(op.Contents)))
+	p, err = Read(io.MultiReader(hdr, bytes.NewBuffer(op.Contents)))
+	if err != nil {
+		op.Reason = err
+		p = op
+	}
+	return
 }
 
 // OpaqueReader reads OpaquePackets from an io.Reader.
