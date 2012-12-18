@@ -404,7 +404,13 @@ func (s *Session) wait() error {
 				}
 				wm.lang = safeString(string(lang))
 			default:
-				return fmt.Errorf("wait: unexpected channel request: %v", msg)
+				// This handles keepalives and matches
+				// OpenSSH's behaviour.
+				if msg.WantReply {
+					s.writePacket(marshal(msgChannelFailure, channelRequestFailureMsg{
+						PeersId: s.remoteId,
+					}))
+				}
 			}
 		default:
 			return fmt.Errorf("wait: unexpected packet %T received: %v", msg, msg)

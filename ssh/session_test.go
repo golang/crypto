@@ -498,6 +498,24 @@ func TestServerWindow(t *testing.T) {
 	}
 }
 
+// Verify the client can handle a keepalive packet from the server.
+func TestClientHandlesKeepalives(t *testing.T) {
+	conn := dial(channelKeepaliveSender, t)
+	defer conn.Close()
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+	if err := session.Shell(); err != nil {
+		t.Fatalf("Unable to execute command: %v", err)
+	}
+	err = session.Wait()
+	if err != nil {
+		t.Fatalf("expected nil but got: %v", err)
+	}
+}
+
 type exitStatusMsg struct {
 	PeersId   uint32
 	Request   string
@@ -686,4 +704,19 @@ func copyNRandomly(title string, dst io.Writer, src io.Reader, n int) (int, erro
 		}
 	}
 	return written, nil
+}
+
+func channelKeepaliveSender(ch *serverChan, t *testing.T) {
+	defer ch.Close()
+	shell := newServerShell(ch, "> ")
+	readLine(shell, t)
+	msg := channelRequestMsg{
+		PeersId:   ch.remoteId,
+		Request:   "keepalive@openssh.com",
+		WantReply: true,
+	}
+	if err := ch.writePacket(marshal(msgChannelRequest, msg)); err != nil {
+		t.Errorf("unable to send channel keepalive request: %v", err)
+	}
+	sendStatus(0, ch, t)
 }

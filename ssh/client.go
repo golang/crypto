@@ -309,6 +309,12 @@ func (c *ClientConn) mainLoop() {
 					// invalid window update
 					return
 				}
+			case *globalRequestMsg:
+				// This handles keepalive messages and matches
+				// the behaviour of OpenSSH.
+				if msg.WantReply {
+					c.writePacket(marshal(msgRequestFailure, globalRequestFailureMsg{}))
+				}
 			case *globalRequestSuccessMsg, *globalRequestFailureMsg:
 				c.globalRequest.response <- msg
 			case *disconnectMsg:
