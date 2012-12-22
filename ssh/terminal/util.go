@@ -53,6 +53,17 @@ func MakeRaw(fd int) (*State, error) {
 	return &oldState, nil
 }
 
+// GetState returns the current state of a terminal which may be useful to
+// restore the terminal after a signal.
+func GetState(fd int) (*State, error) {
+	var oldState State
+	if _, _, err := syscall.Syscall6(syscall.SYS_IOCTL, uintptr(fd), uintptr(syscall.TCGETS), uintptr(unsafe.Pointer(&oldState.termios)), 0, 0, 0); err != 0 {
+		return nil, err
+	}
+
+	return &oldState, nil
+}
+
 // Restore restores the terminal connected to the given file descriptor to a
 // previous state.
 func Restore(fd int, state *State) error {
@@ -81,6 +92,8 @@ func ReadPassword(fd int) ([]byte, error) {
 
 	newState := oldState
 	newState.Lflag &^= syscall.ECHO
+	newState.Lflag |= syscall.ICANON | syscall.ISIG
+	newState.Iflag |= syscall.ICRNL
 	if _, _, err := syscall.Syscall6(syscall.SYS_IOCTL, uintptr(fd), uintptr(syscall.TCSETS), uintptr(unsafe.Pointer(&newState)), 0, 0, 0); err != 0 {
 		return nil, err
 	}
