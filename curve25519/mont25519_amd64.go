@@ -9,10 +9,25 @@ package curve25519
 // These functions are implemented in the .s files. The names of the functions
 // in the rest of the file are also taken from the SUPERCOP sources to help
 // people following along.
+
+//go:noescape
+
 func cswap(inout *[5]uint64, v uint64)
+
+//go:noescape
+
 func ladderstep(inout *[5][5]uint64)
+
+//go:noescape
+
 func freeze(inout *[5]uint64)
+
+//go:noescape
+
 func mul(dest, a, b *[5]uint64)
+
+//go:noescape
+
 func square(out, in *[5]uint64)
 
 // mladder uses a Montgomery ladder to calculate (xr/zr) *= s.
