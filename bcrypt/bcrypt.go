@@ -220,8 +220,9 @@ func expensiveBlowfishSetup(key []byte, cost uint32, salt []byte) (*blowfish.Cip
 		return nil, err
 	}
 
-	rounds := 1 << cost
-	for i := 0; i < rounds; i++ {
+	var i, rounds uint64
+	rounds = 1 << cost
+	for i = 0; i < rounds; i++ {
 		blowfish.ExpandKey(ckey, c)
 		blowfish.ExpandKey(csalt, c)
 	}
