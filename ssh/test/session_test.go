@@ -14,7 +14,6 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestRunCommandSuccess(t *testing.T) {
@@ -154,22 +153,12 @@ func TestValidTerminalMode(t *testing.T) {
 
 	stdin.Write([]byte("stty -a && exit\n"))
 
-	rc := make(chan string)
-	go func() {
-		var buf bytes.Buffer
-		if _, err := io.Copy(&buf, stdout); err != nil {
-			t.Fatalf("reading failed: %s", err)
-		}
-		rc <- buf.String()
-	}()
-
-	result := ""
-	select {
-	case result = <-rc:
-	case <-time.After(1 * time.Second):
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, stdout); err != nil {
+		t.Fatalf("reading failed: %s", err)
 	}
 
-	if !strings.Contains(result, "-echo") {
-		t.Fatalf("terminal mode failure: expected '%s'", "-echo")
+	if sttyOutput := buf.String(); !strings.Contains(sttyOutput, "-echo ") {
+		t.Fatalf("terminal mode failure: expected -echo in stty output, got %s", sttyOutput)
 	}
 }
