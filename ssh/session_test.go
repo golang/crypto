@@ -22,12 +22,6 @@ type serverType func(*serverChan, *testing.T)
 
 // dial constructs a new test server and returns a *ClientConn.
 func dial(handler serverType, t *testing.T) *ClientConn {
-	pw := password("tiger")
-	serverConfig.PasswordCallback = func(conn *ServerConn, user, pass string) bool {
-		return user == "testuser" && pass == string(pw)
-	}
-	serverConfig.PublicKeyCallback = nil
-
 	l, err := Listen("tcp", "127.0.0.1:0", serverConfig)
 	if err != nil {
 		t.Fatalf("unable to listen: %v", err)
@@ -74,7 +68,7 @@ func dial(handler serverType, t *testing.T) *ClientConn {
 	config := &ClientConfig{
 		User: "testuser",
 		Auth: []ClientAuth{
-			ClientAuthPassword(pw),
+			ClientAuthPassword(clientPassword),
 		},
 	}
 
