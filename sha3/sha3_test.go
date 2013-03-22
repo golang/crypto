@@ -86,7 +86,7 @@ var shortKeccakTestVectors = []testVector{
 // ExtremelyLongMsgKAT taken from http://keccak.noekeon.org/.
 var longKeccakTestVectors = []testVector{
 	{
-		desc:   "long-1GiB",
+		desc:   "long-64MiB",
 		input:  []byte("abcdefghbcdefghicdefghijdefghijkefghijklfghijklmghijklmnhijklmno"),
 		repeat: 1024 * 1024,
 		want: map[string]string{
@@ -106,13 +106,12 @@ func TestKeccakVectors(t *testing.T) {
 	}
 	for _, tc := range testCases {
 		for alg, want := range tc.want {
-			testDigests[alg].Reset()
-			// Write input data each digests, based on the test specification t.
+			d := testDigests[alg]
+			d.Reset()
 			for i := 0; i < tc.repeat; i++ {
-				testDigests[alg].Write(tc.input)
+				d.Write(tc.input)
 			}
-			// Verify that each algorithm version produced the expected output.
-			got := strings.ToUpper(hex.EncodeToString(testDigests[alg].Sum(nil)))
+			got := strings.ToUpper(hex.EncodeToString(d.Sum(nil)))
 			if got != want {
 				t.Errorf("%s, alg=%s\ngot %q, want %q", tc.desc, alg, got, want)
 			}
