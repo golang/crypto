@@ -212,16 +212,11 @@ func benchmarkBlockWrite(b *testing.B, d *digest) {
 
 // BenchmarkPermutationFunction measures the speed of the permutation function with no input data.
 func BenchmarkPermutationFunction(b *testing.B) {
-	b.StopTimer()
-	d := testDigests["Keccak512"]
-	d.Reset()
 	b.SetBytes(int64(stateSize))
-	b.StartTimer()
+	var lanes [numLanes]uint64
 	for i := 0; i < b.N; i++ {
-		d.keccakF()
+		keccakF(&lanes)
 	}
-	b.StopTimer()
-	d.Reset()
 }
 
 // BenchmarkSingleByteWrite tests the latency from writing a single byte
