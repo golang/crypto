@@ -130,6 +130,7 @@ func (s *server) Shutdown() {
 		if err := s.cmd.Process.Kill(); err != nil {
 			s.t.Error(err)
 		}
+		s.cmd.Wait()
 	}
 	if s.t.Failed() {
 		// log any output from sshd process
