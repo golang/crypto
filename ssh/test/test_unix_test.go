@@ -18,6 +18,7 @@ import (
 	"errors"
 	"io"
 	"io/ioutil"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -79,6 +80,7 @@ func username() string {
 	} else {
 		// user.Current() currently requires cgo. If an error is
 		// returned attempt to get the username from the environment.
+		log.Printf("user.Current: %v; falling back on $USER", err)
 		username = os.Getenv("USER")
 	}
 	if username == "" {
