@@ -128,7 +128,7 @@ func (s *server) Dial(config *ssh.ClientConfig) *ssh.ClientConn {
 }
 
 func (s *server) Shutdown() {
-	if s.cmd.Process != nil {
+	if s.cmd != nil && s.cmd.Process != nil {
 		if err := s.cmd.Process.Kill(); err != nil {
 			s.t.Error(err)
 		}
