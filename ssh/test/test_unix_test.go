@@ -114,15 +114,15 @@ func (s *server) Dial(config *ssh.ClientConfig) *ssh.ClientConn {
 	s.cmd.Stderr = os.Stderr // &s.output
 	err = s.cmd.Start()
 	if err != nil {
-		s.t.FailNow()
+		s.t.Fail()
 		s.Shutdown()
-		s.t.Fatal(err)
+		s.t.Fatalf("s.cmd.Start: %v", err)
 	}
 	conn, err := ssh.Client(&client{stdin, stdout}, config)
 	if err != nil {
-		s.t.FailNow()
+		s.t.Fail()
 		s.Shutdown()
-		s.t.Fatal(err)
+		s.t.Fatalf("ssh.Client: %v", err)
 	}
 	return conn
 }
