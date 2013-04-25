@@ -129,9 +129,9 @@ func (s *server) Dial(config *ssh.ClientConfig) *ssh.ClientConn {
 
 func (s *server) Shutdown() {
 	if s.cmd != nil && s.cmd.Process != nil {
-		if err := s.cmd.Process.Kill(); err != nil {
-			s.t.Error(err)
-		}
+		// don't check for Kill error; if it fails it's most likely
+		// "os: process already finished", and we don't care about that.
+		s.cmd.Process.Kill()
 		s.cmd.Wait()
 	}
 	if s.t.Failed() {

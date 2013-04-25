@@ -42,7 +42,7 @@ func Client(c net.Conn, config *ClientConfig) (*ClientConn, error) {
 	}
 	if err := conn.handshake(); err != nil {
 		conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("handshake failed: %v", err)
 	}
 	go conn.mainLoop()
 	return conn, nil
