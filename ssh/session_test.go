@@ -138,6 +138,54 @@ func TestSessionStdoutPipe(t *testing.T) {
 	}
 }
 
+// Test that a simple string is returned via the Output helper,
+// and that stderr is discarded.
+func TestSessionOutput(t *testing.T) {
+	conn := dial(fixedOutputHandler, t)
+	defer conn.Close()
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("Unable to request new session: %v", err)
+	}
+	defer session.Close()
+
+	buf, err := session.Output("") // cmd is ignored by fixedOutputHandler
+	if err != nil {
+		t.Error("Remote command did not exit cleanly:", err)
+	}
+	w := "this-is-stdout."
+	g := string(buf)
+	if g != w {
+		t.Error("Remote command did not return expected string:")
+		t.Logf("want %q", w)
+		t.Logf("got  %q", g)
+	}
+}
+
+// Test that both stdout and stderr are returned
+// via the CombinedOutput helper.
+func TestSessionCombinedOutput(t *testing.T) {
+	conn := dial(fixedOutputHandler, t)
+	defer conn.Close()
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("Unable to request new session: %v", err)
+	}
+	defer session.Close()
+
+	buf, err := session.CombinedOutput("") // cmd is ignored by fixedOutputHandler
+	if err != nil {
+		t.Error("Remote command did not exit cleanly:", err)
+	}
+	w := "this-is-stdout.this-is-stderr."
+	g := string(buf)
+	if g != w {
+		t.Error("Remote command did not return expected string:")
+		t.Logf("want %q", w)
+		t.Logf("got  %q", g)
+	}
+}
+
 // Test non-0 exit status is returned correctly.
 func TestExitStatusNonZero(t *testing.T) {
 	conn := dial(exitStatusNonZeroHandler, t)
@@ -583,6 +631,30 @@ func shellHandler(ch *serverChan, t *testing.T) {
 	// this string is returned to stdout
 	shell := newServerShell(ch, "golang")
 	readLine(shell, t)
+	sendStatus(0, ch, t)
+}
+
+// Ignores the command, writes fixed strings to stderr and stdout.
+// Strings are "this-is-stdout." and "this-is-stderr.".
+func fixedOutputHandler(ch *serverChan, t *testing.T) {
+	defer ch.Close()
+
+	_, err := ch.Read(make([]byte, 0))
+	if _, ok := err.(ChannelRequest); !ok {
+		t.Fatalf("error: expected channel request, got: %#v", err)
+		return
+	}
+	// ignore request, always send some text
+	ch.AckRequest(true)
+
+	_, err = io.WriteString(ch, "this-is-stdout.")
+	if err != nil {
+		t.Fatalf("error writing on server: %v", err)
+	}
+	_, err = io.WriteString(ch.Stderr(), "this-is-stderr.")
+	if err != nil {
+		t.Fatalf("error writing on server: %v", err)
+	}
 	sendStatus(0, ch, t)
 }
 

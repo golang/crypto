@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"io/ioutil"
+	"sync"
 )
 
 type Signal string
@@ -276,7 +277,8 @@ func (s *Session) Start(cmd string) error {
 
 // Run runs cmd on the remote host. Typically, the remote
 // server passes cmd to the shell for interpretation.
-// A Session only accepts one call to Run, Start or Shell.
+// A Session only accepts one call to Run, Start, Shell, Output,
+// or CombinedOutput.
 //
 // The returned error is nil if the command runs, has no problems
 // copying stdin, stdout, and stderr, and exits with a zero exit
@@ -293,8 +295,46 @@ func (s *Session) Run(cmd string) error {
 	return s.Wait()
 }
 
+// Output runs cmd on the remote host and returns its standard output.
+func (s *Session) Output(cmd string) ([]byte, error) {
+	if s.Stdout != nil {
+		return nil, errors.New("ssh: Stdout already set")
+	}
+	var b bytes.Buffer
+	s.Stdout = &b
+	err := s.Run(cmd)
+	return b.Bytes(), err
+}
+
+type singleWriter struct {
+	b  bytes.Buffer
+	mu sync.Mutex
+}
+
+func (w *singleWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.b.Write(p)
+}
+
+// CombinedOutput runs cmd on the remote host and returns its combined
+// standard output and standard error.
+func (s *Session) CombinedOutput(cmd string) ([]byte, error) {
+	if s.Stdout != nil {
+		return nil, errors.New("ssh: Stdout already set")
+	}
+	if s.Stderr != nil {
+		return nil, errors.New("ssh: Stderr already set")
+	}
+	var b singleWriter
+	s.Stdout = &b
+	s.Stderr = &b
+	err := s.Run(cmd)
+	return b.b.Bytes(), err
+}
+
 // Shell starts a login shell on the remote host. A Session only
-// accepts one call to Run, Start or Shell.
+// accepts one call to Run, Start, Shell, Output, or CombinedOutput.
 func (s *Session) Shell() error {
 	if s.started {
 		return errors.New("ssh: session already started")
@@ -520,8 +560,6 @@ func (s *Session) StderrPipe() (io.Reader, error) {
 	s.stderrpipe = true
 	return s.clientChan.stderr, nil
 }
-
-// TODO(dfc) add Output and CombinedOutput helpers
 
 // NewSession returns a new interactive session on the remote host.
 func (c *ClientConn) NewSession() (*Session, error) {
