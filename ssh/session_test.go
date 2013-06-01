@@ -177,11 +177,12 @@ func TestSessionCombinedOutput(t *testing.T) {
 	if err != nil {
 		t.Error("Remote command did not exit cleanly:", err)
 	}
-	w := "this-is-stdout.this-is-stderr."
+	const stdout = "this-is-stdout."
+	const stderr = "this-is-stderr."
 	g := string(buf)
-	if g != w {
+	if g != stdout+stderr && g != stderr+stdout {
 		t.Error("Remote command did not return expected string:")
-		t.Logf("want %q", w)
+		t.Logf("want %q, or %q", stdout+stderr, stderr+stdout)
 		t.Logf("got  %q", g)
 	}
 }
