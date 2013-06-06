@@ -375,3 +375,120 @@ func (kr *agentKeyring) Sign(i int, rand io.Reader, data []byte) (sig []byte, er
 	}
 	return sig, nil
 }
+
+// ClientKeyboardInteractive should prompt the user for the given
+// questions.
+type ClientKeyboardInteractive interface {
+	// Challenge should print the questions, optionally disabling
+	// echoing (eg. for passwords), and return all the answers.
+	// Challenge may be called multiple times in a single
+	// session. After successful authentication, the server may
+	// send a challenge with no questions, for which the user and
+	// instruction messages should be printed.  RFC 4256 section
+	// 3.3 details how the UI should behave for both CLI and
+	// GUI environments.
+	Challenge(user, instruction string, questions []string, echos []bool) ([]string, error)
+}
+
+// ClientAuthKeyboardInteractive returns a ClientAuth using a
+// prompt/response sequence controlled by the server.
+func ClientAuthKeyboardInteractive(impl ClientKeyboardInteractive) ClientAuth {
+	return &keyboardInteractiveAuth{impl}
+}
+
+type keyboardInteractiveAuth struct {
+	ClientKeyboardInteractive
+}
+
+func (c *keyboardInteractiveAuth) method() string {
+	return "keyboard-interactive"
+}
+
+func (c *keyboardInteractiveAuth) auth(session []byte, user string, t *transport, rand io.Reader) (bool, []string, error) {
+	type initiateMsg struct {
+		User       string
+		Service    string
+		Method     string
+		Language   string
+		Submethods string
+	}
+
+	if err := t.writePacket(marshal(msgUserAuthRequest, initiateMsg{
+		User:    user,
+		Service: serviceSSH,
+		Method:  "keyboard-interactive",
+	})); err != nil {
+		return false, nil, err
+	}
+
+	for {
+		packet, err := t.readPacket()
+		if err != nil {
+			return false, nil, err
+		}
+
+		// like handleAuthResponse, but with less options.
+		switch packet[0] {
+		case msgUserAuthInfoRequest:
+			// OK
+		case msgUserAuthFailure:
+			var msg userAuthFailureMsg
+			if err := unmarshal(&msg, packet, msgUserAuthFailure); err != nil {
+				return false, nil, err
+			}
+			return false, msg.Methods, nil
+		case msgUserAuthSuccess:
+			return true, nil, nil
+		default:
+			return false, nil, UnexpectedMessageError{msgUserAuthInfoRequest, packet[0]}
+		}
+
+		var msg userAuthInfoRequestMsg
+		if err := unmarshal(&msg, packet, packet[0]); err != nil {
+			return false, nil, err
+		}
+
+		// Manually unpack the prompt/echo pairs.
+		rest := msg.Prompts
+		var prompts []string
+		var echos []bool
+		for i := 0; i < int(msg.NumPrompts); i++ {
+			prompt, r, ok := parseString(rest)
+			if !ok || len(r) == 0 {
+				return false, nil, errors.New("ssh: prompt format error")
+			}
+			prompts = append(prompts, string(prompt))
+			echos = append(echos, r[0] != 0)
+			rest = r[1:]
+		}
+
+		if len(rest) != 0 {
+			return false, nil, fmt.Errorf("ssh: junk following message %q", rest)
+		}
+
+		answers, err := c.Challenge(msg.User, msg.Instruction, prompts, echos)
+		if err != nil {
+			return false, nil, err
+		}
+
+		if len(answers) != len(prompts) {
+			return false, nil, errors.New("ssh: not enough answers from keyboard-interactive callback")
+		}
+		responseLength := 1 + 4
+		for _, a := range answers {
+			responseLength += stringLength(len(a))
+		}
+		serialized := make([]byte, responseLength)
+		p := serialized
+		p[0] = msgUserAuthInfoResponse
+		p = p[1:]
+		p = marshalUint32(p, uint32(len(answers)))
+		for _, a := range answers {
+			p = marshalString(p, []byte(a))
+		}
+
+		if err := t.writePacket(serialized); err != nil {
+			return false, nil, err
+		}
+	}
+}

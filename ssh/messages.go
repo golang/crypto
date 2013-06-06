@@ -25,19 +25,26 @@ const (
 	msgKexInit = 20
 	msgNewKeys = 21
 
+	// Diffie-Helman
 	msgKexDHInit  = 30
 	msgKexDHReply = 31
 
+	// Standard authentication messages
 	msgUserAuthRequest  = 50
 	msgUserAuthFailure  = 51
 	msgUserAuthSuccess  = 52
 	msgUserAuthBanner   = 53
 	msgUserAuthPubKeyOk = 60
 
+	// Method specific messages
+	msgUserAuthInfoRequest  = 60
+	msgUserAuthInfoResponse = 61
+
 	msgGlobalRequest  = 80
 	msgRequestSuccess = 81
 	msgRequestFailure = 82
 
+	// Channel manipulation
 	msgChannelOpen         = 90
 	msgChannelOpenConfirm  = 91
 	msgChannelOpenFailure  = 92
@@ -115,6 +122,15 @@ type userAuthRequestMsg struct {
 type userAuthFailureMsg struct {
 	Methods        []string
 	PartialSuccess bool
+}
+
+// See RFC 4256, section 3.2
+type userAuthInfoRequestMsg struct {
+	User               string
+	Instruction        string
+	DeprecatedLanguage string
+	NumPrompts         uint32
+	Prompts            []byte `ssh:"rest"`
 }
 
 // See RFC 4254, section 5.1.

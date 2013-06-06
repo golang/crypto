@@ -329,6 +329,21 @@ func appendInt(buf []byte, n int) []byte {
 	return appendU32(buf, uint32(n))
 }
 
+func appendString(buf []byte, s string) []byte {
+	buf = appendU32(buf, uint32(len(s)))
+	buf = append(buf, s...)
+	return buf
+}
+
+func appendBool(buf []byte, b bool) []byte {
+	if b {
+		buf = append(buf, 1)
+	} else {
+		buf = append(buf, 0)
+	}
+	return buf
+}
+
 // newCond is a helper to hide the fact that there is no usable zero
 // value for sync.Cond.
 func newCond() *sync.Cond { return sync.NewCond(new(sync.Mutex)) }

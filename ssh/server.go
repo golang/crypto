@@ -42,6 +42,15 @@ type ServerConfig struct {
 	// valid for the given user.
 	PublicKeyCallback func(conn *ServerConn, user, algo string, pubkey []byte) bool
 
+	// KeyboardInteractiveCallback, if non-nil, is called when
+	// keyboard-interactive authentication is selected (RFC
+	// 4256). The client object's Challenge function should be
+	// used to query the user. The callback may offer multiple
+	// Challenge rounds. To avoid information leaks, the client
+	// should be presented a challenge even if the user is
+	// unknown.
+	KeyboardInteractiveCallback func(conn *ServerConn, user string, client ClientKeyboardInteractive) bool
+
 	// Cryptographic-related configuration.
 	Crypto CryptoConfig
 }
@@ -415,6 +424,15 @@ userAuthLoop:
 			if s.config.PasswordCallback(s, userAuthReq.User, string(password)) {
 				break userAuthLoop
 			}
+		case "keyboard-interactive":
+			if s.config.KeyboardInteractiveCallback == nil {
+				break
+			}
+
+			s.User = userAuthReq.User
+			if s.config.KeyboardInteractiveCallback(s, s.User, &sshClientKeyboardInteractive{s}) {
+				break userAuthLoop
+			}
 		case "publickey":
 			if s.config.PublicKeyCallback == nil {
 				break
@@ -498,6 +516,9 @@ userAuthLoop:
 		if s.config.PublicKeyCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "publickey")
 		}
+		if s.config.KeyboardInteractiveCallback != nil {
+			failureMsg.Methods = append(failureMsg.Methods, "keyboard-interactive")
+		}
 
 		if len(failureMsg.Methods) == 0 {
 			return errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
@@ -514,6 +535,61 @@ userAuthLoop:
 	}
 
 	return nil
+}
+
+// sshClientKeyboardInteractive implements a ClientKeyboardInteractive by
+// asking the client on the other side of a ServerConn.
+type sshClientKeyboardInteractive struct {
+	*ServerConn
+}
+
+func (c *sshClientKeyboardInteractive) Challenge(user, instruction string, questions []string, echos []bool) (answers []string, err error) {
+	if len(questions) != len(echos) {
+		return nil, errors.New("ssh: echos and questions must have equal length")
+	}
+
+	var prompts []byte
+	for i := range questions {
+		prompts = appendString(prompts, questions[i])
+		prompts = appendBool(prompts, echos[i])
+	}
+
+	if err := c.writePacket(marshal(msgUserAuthInfoRequest, userAuthInfoRequestMsg{
+		Instruction: instruction,
+		NumPrompts:  uint32(len(questions)),
+		Prompts:     prompts,
+	})); err != nil {
+		return nil, err
+	}
+
+	packet, err := c.readPacket()
+	if err != nil {
+		return nil, err
+	}
+	if packet[0] != msgUserAuthInfoResponse {
+		return nil, UnexpectedMessageError{msgUserAuthInfoResponse, packet[0]}
+	}
+	packet = packet[1:]
+
+	n, packet, ok := parseUint32(packet)
+	if !ok || int(n) != len(questions) {
+		return nil, &ParseError{msgUserAuthInfoResponse}
+	}
+
+	for i := uint32(0); i < n; i++ {
+		ans, rest, ok := parseString(packet)
+		if !ok {
+			return nil, &ParseError{msgUserAuthInfoResponse}
+		}
+
+		answers = append(answers, string(ans))
+		packet = rest
+	}
+	if len(packet) != 0 {
+		return nil, errors.New("ssh: junk at end of message")
+	}
+
+	return answers, nil
 }
 
 const defaultWindowSize = 32768

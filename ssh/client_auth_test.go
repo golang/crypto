@@ -112,6 +112,16 @@ func (p password) Password(user string) (string, error) {
 	return string(p), nil
 }
 
+type keyboardInteractive map[string]string
+
+func (cr *keyboardInteractive) Challenge(user string, instruction string, questions []string, echos []bool) ([]string, error) {
+	var answers []string
+	for _, q := range questions {
+		answers = append(answers, (*cr)[q])
+	}
+	return answers, nil
+}
+
 // reused internally by tests
 var (
 	rsakey         *rsa.PrivateKey
@@ -127,6 +137,18 @@ var (
 			expected := []byte(serializePublickey(key))
 			algoname := algoName(key)
 			return user == "testuser" && algo == algoname && bytes.Equal(pubkey, expected)
+		},
+		KeyboardInteractiveCallback: func(conn *ServerConn, user string, client ClientKeyboardInteractive) bool {
+			ans, err := client.Challenge("user",
+				"instruction",
+				[]string{"question1", "question2"},
+				[]bool{true, true})
+			if err != nil {
+				return false
+			}
+			ok := user == "testuser" && ans[0] == "answer1" && ans[1] == "answer2"
+			client.Challenge("user", "motd", nil, nil)
+			return ok
 		},
 	}
 )
@@ -219,6 +241,44 @@ func TestClientAuthWrongPassword(t *testing.T) {
 		t.Fatalf("unable to dial remote side: %s", err)
 	}
 	c.Close()
+}
+
+func TestClientAuthKeyboardInteractive(t *testing.T) {
+	answers := keyboardInteractive(map[string]string{
+		"question1": "answer1",
+		"question2": "answer2",
+	})
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []ClientAuth{
+			ClientAuthKeyboardInteractive(&answers),
+		},
+	}
+
+	c, err := Dial("tcp", newMockAuthServer(t), config)
+	if err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+	c.Close()
+}
+
+func TestClientAuthWrongKeyboardInteractive(t *testing.T) {
+	answers := keyboardInteractive(map[string]string{
+		"question1": "answer1",
+		"question2": "WRONG",
+	})
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []ClientAuth{
+			ClientAuthKeyboardInteractive(&answers),
+		},
+	}
+
+	c, err := Dial("tcp", newMockAuthServer(t), config)
+	if err == nil {
+		c.Close()
+		t.Fatalf("wrong answers should not have authenticated with KeyboardInteractive")
+	}
 }
 
 // the mock server will only authenticate ssh-rsa keys
