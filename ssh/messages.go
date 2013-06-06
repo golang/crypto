@@ -568,8 +568,8 @@ func marshalString(to []byte, s []byte) []byte {
 
 var bigIntType = reflect.TypeOf((*big.Int)(nil))
 
-// Decode a packet into it's corresponding message.
-func decode(packet []byte) interface{} {
+// Decode a packet into its corresponding message.
+func decode(packet []byte) (interface{}, error) {
 	var msg interface{}
 	switch packet[0] {
 	case msgDisconnect:
@@ -615,10 +615,10 @@ func decode(packet []byte) interface{} {
 	case msgChannelFailure:
 		msg = new(channelRequestFailureMsg)
 	default:
-		return UnexpectedMessageError{0, packet[0]}
+		return nil, UnexpectedMessageError{0, packet[0]}
 	}
 	if err := unmarshal(msg, packet, packet[0]); err != nil {
-		return err
+		return nil, err
 	}
-	return msg
+	return msg, nil
 }

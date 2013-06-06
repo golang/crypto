@@ -249,8 +249,15 @@ func (c *ClientConn) mainLoop() {
 				ch.stderr.write(packet)
 			}
 		default:
-			msg := decode(packet)
-			switch msg := msg.(type) {
+			decoded, err := decode(packet)
+			if err != nil {
+				if _, ok := err.(UnexpectedMessageError); ok {
+					fmt.Printf("mainLoop: unexpected message: %v\n", err)
+					continue
+				}
+				return
+			}
+			switch msg := decoded.(type) {
 			case *channelOpenMsg:
 				c.handleChanOpen(msg)
 			case *channelOpenConfirmMsg:

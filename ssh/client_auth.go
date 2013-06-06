@@ -272,7 +272,10 @@ func (p *publickeyAuth) confirmKeyAck(key interface{}, t *transport) (bool, erro
 		case msgUserAuthBanner:
 			// TODO(gpaul): add callback to present the banner to the user
 		case msgUserAuthPubKeyOk:
-			msg := decode(packet).(*userAuthPubKeyOkMsg)
+			msg := userAuthPubKeyOkMsg{}
+			if err := unmarshal(&msg, packet, msgUserAuthPubKeyOk); err != nil {
+				return false, err
+			}
 			if msg.Algo != algoname || msg.PubKey != string(pubkey) {
 				return false, nil
 			}
@@ -309,7 +312,10 @@ func handleAuthResponse(t *transport) (bool, []string, error) {
 		case msgUserAuthBanner:
 			// TODO: add callback to present the banner to the user
 		case msgUserAuthFailure:
-			msg := decode(packet).(*userAuthFailureMsg)
+			msg := userAuthFailureMsg{}
+			if err := unmarshal(&msg, packet, msgUserAuthFailure); err != nil {
+				return false, nil, err
+			}
 			return false, msg.Methods, nil
 		case msgUserAuthSuccess:
 			return true, nil, nil

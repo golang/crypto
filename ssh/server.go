@@ -562,7 +562,11 @@ func (s *ServerConn) Accept() (Channel, error) {
 			}
 			s.lock.Unlock()
 		default:
-			switch msg := decode(packet).(type) {
+			decoded, err := decode(packet)
+			if err != nil {
+				return nil, err
+			}
+			switch msg := decoded.(type) {
 			case *channelOpenMsg:
 				if msg.MaxPacketSize < minPacketLength || msg.MaxPacketSize > 1<<31 {
 					return nil, errors.New("ssh: invalid MaxPacketSize from peer")
@@ -643,9 +647,6 @@ func (s *ServerConn) Accept() (Channel, error) {
 					return nil, err
 				}
 				s.lock.Unlock()
-
-			case UnexpectedMessageError:
-				return nil, msg
 			case *disconnectMsg:
 				return nil, io.EOF
 			default:
