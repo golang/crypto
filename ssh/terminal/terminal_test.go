@@ -52,39 +52,54 @@ func TestClose(t *testing.T) {
 }
 
 var keyPressTests = []struct {
-	in   string
-	line string
-	err  error
+	in             string
+	line           string
+	err            error
+	throwAwayLines int
 }{
 	{
-		"",
-		"",
-		io.EOF,
+		err: io.EOF,
 	},
 	{
-		"\r",
-		"",
-		nil,
+		in:   "\r",
+		line: "",
 	},
 	{
-		"foo\r",
-		"foo",
-		nil,
+		in:   "foo\r",
+		line: "foo",
 	},
 	{
-		"a\x1b[Cb\r", // right
-		"ab",
-		nil,
+		in:   "a\x1b[Cb\r", // right
+		line: "ab",
 	},
 	{
-		"a\x1b[Db\r", // left
-		"ba",
-		nil,
+		in:   "a\x1b[Db\r", // left
+		line: "ba",
 	},
 	{
-		"a\177b\r", // backspace
-		"b",
-		nil,
+		in:   "a\177b\r", // backspace
+		line: "b",
+	},
+	{
+		in: "\x1b[A\r", // up
+	},
+	{
+		in: "\x1b[B\r", // down
+	},
+	{
+		in:   "line\x1b[A\x1b[B\r", // up then down
+		line: "line",
+	},
+	{
+		in:             "line1\rline2\x1b[A\r", // recall previous line.
+		line:           "line1",
+		throwAwayLines: 1,
+	},
+	{
+		// recall two previous lines and append.
+		in:             "line1\rline2\rline3\x1b[A\x1b[Axxx\r",
+		line:           "line1xxx",
+		throwAwayLines: 2,
 	},
 }
 
@@ -96,6 +111,12 @@ func TestKeyPresses(t *testing.T) {
 				bytesPerRead: j,
 			}
 			ss := NewTerminal(c, "> ")
+			for k := 0; k < test.throwAwayLines; k++ {
+				_, err := ss.ReadLine()
+				if err != nil {
+					t.Errorf("Throwaway line %d from test %d resulted in error: %s", k, i, err)
+				}
+			}
 			line, err := ss.ReadLine()
 			if line != test.line {
 				t.Errorf("Line resulting from test %d (%d bytes per read) was '%s', expected '%s'", i, j, line, test.line)
