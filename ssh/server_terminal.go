@@ -77,5 +77,4 @@ func (ss *ServerTerminal) ReadLine() (line string, err error) {
 			ss.Channel.AckRequest(ok)
 		}
 	}
-	panic("unreachable")
 }

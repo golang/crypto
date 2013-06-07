@@ -52,8 +52,10 @@ func TestBasic(t *testing.T) {
 // However, due to the length of time taken, it's disabled here and a more
 // limited version is included, below.
 func TestFull(t *testing.T) {
-	// This is too slow for normal testing
-	return
+	if testing.Short() {
+		// This is too slow for normal testing
+		return
+	}
 
 	a, b := iterate(1000000)
 

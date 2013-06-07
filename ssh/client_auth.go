@@ -286,7 +286,6 @@ func (p *publickeyAuth) confirmKeyAck(key interface{}, t *transport) (bool, erro
 			return false, UnexpectedMessageError{msgUserAuthSuccess, packet[0]}
 		}
 	}
-	panic("unreachable")
 }
 
 func (p *publickeyAuth) method() string {
@@ -325,7 +324,6 @@ func handleAuthResponse(t *transport) (bool, []string, error) {
 			return false, nil, UnexpectedMessageError{msgUserAuthSuccess, packet[0]}
 		}
 	}
-	panic("unreachable")
 }
 
 // ClientAuthKeyring returns a ClientAuth using public key authentication via

@@ -139,7 +139,6 @@ func (t *transport) readPacket() ([]byte, error) {
 			return packet, nil
 		}
 	}
-	panic("unreachable")
 }
 
 // Encrypt and send a packet of data to the remote peer.

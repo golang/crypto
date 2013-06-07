@@ -730,8 +730,6 @@ func (s *ServerConn) Accept() (Channel, error) {
 			}
 		}
 	}
-
-	panic("unreachable")
 }
 
 // A Listener implements a network listener (net.Listener) for SSH connections.

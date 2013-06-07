@@ -340,8 +340,6 @@ func (c *serverChan) read(data []byte) (n int, err error, windowAdjustment uint3
 
 		c.cond.Wait()
 	}
-
-	panic("unreachable")
 }
 
 // getWindowSpace takes, at most, max bytes of space from the peer's window. It
