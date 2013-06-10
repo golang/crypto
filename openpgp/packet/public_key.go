@@ -318,6 +318,7 @@ func (pk *PublicKey) VerifySignature(signed hash.Hash, sig *Signature) (err erro
 	default:
 		panic("shouldn't happen")
 	}
+	panic("unreachable")
 }
 
 // keySignatureHash returns a Hash of the message that needs to be signed for

@@ -62,6 +62,7 @@ func dial(handler serverType, t *testing.T) *ClientConn {
 				handler(ch.(*serverChan), t)
 			}()
 		}
+		<-done
 	}()
 
 	config := &ClientConfig{
