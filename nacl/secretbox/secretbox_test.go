@@ -71,3 +71,21 @@ func TestSecretBox(t *testing.T) {
 		t.Fatalf("box didn't match, got\n%x\n, expected\n%x", box, expected)
 	}
 }
+
+func TestAppend(t *testing.T) {
+	var key [32]byte
+	var nonce [24]byte
+	var message [8]byte
+
+	out := make([]byte, 4)
+	box := Seal(out, message[:], &nonce, &key)
+	if !bytes.Equal(box[:4], out[:4]) {
+		t.Fatalf("Seal didn't correctly append")
+	}
+
+	out = make([]byte, 4, 100)
+	box = Seal(out, message[:], &nonce, &key)
+	if !bytes.Equal(box[:4], out[:4]) {
+		t.Fatalf("Seal didn't correctly append with sufficient capacity.")
+	}
+}

@@ -37,6 +37,21 @@ func setup(subKey *[32]byte, counter *[16]byte, nonce *[24]byte, key *[32]byte) 
 	copy(counter[:], nonce[16:])
 }
 
+// sliceForAppend takes a slice and a requested number of bytes. It returns a
+// slice with the contents of the given slice followed by that many bytes and a
+// second slice that aliases into it and contains only the extra bytes. If the
+// original slice has sufficient capacity then no allocation is performed.
+func sliceForAppend(in []byte, n int) (head, tail []byte) {
+	if total := len(in) + n; cap(in) >= total {
+		head = in[:total]
+	} else {
+		head = make([]byte, total)
+		copy(head, in)
+	}
+	tail = head[len(in):]
+	return
+}
+
 // Seal appends an encrypted and authenticated copy of message to out, which
 // must not overlap message. The key and nonce pair must be unique for each
 // distinct message and the output will be Overhead bytes longer than message.
@@ -54,17 +69,7 @@ func Seal(out, message []byte, nonce *[24]byte, key *[32]byte) []byte {
 	var poly1305Key [32]byte
 	copy(poly1305Key[:], firstBlock[:])
 
-	out = out[len(out):]
-	outLen := len(message) + poly1305.TagSize
-	if cap(out) >= outLen {
-		out = out[:outLen]
-	} else if out == nil {
-		out = make([]byte, outLen)
-	} else {
-		for i := 0; i < outLen; i++ {
-			out = append(out, 0)
-		}
-	}
+	ret, out := sliceForAppend(out, len(message)+poly1305.TagSize)
 
 	// We XOR up to 32 bytes of message with the keystream generated from
 	// the first block.
@@ -90,7 +95,7 @@ func Seal(out, message []byte, nonce *[24]byte, key *[32]byte) []byte {
 	poly1305.Sum(&tag, ciphertext, &poly1305Key)
 	copy(tagOut, tag[:])
 
-	return tagOut
+	return ret
 }
 
 // Open authenticates and decrypts a box produced by Seal and appends the
@@ -120,17 +125,7 @@ func Open(out []byte, box []byte, nonce *[24]byte, key *[32]byte) ([]byte, bool)
 		return nil, false
 	}
 
-	out = out[len(out):]
-	outLen := len(box) - Overhead
-	if cap(out) >= outLen {
-		out = out[:outLen]
-	} else if out == nil {
-		out = make([]byte, outLen)
-	} else {
-		for i := 0; i < outLen; i++ {
-			out = append(out, 0)
-		}
-	}
+	ret, out := sliceForAppend(out, len(box)-Overhead)
 
 	// We XOR up to 32 bytes of box with the keystream generated from
 	// the first block.
@@ -144,12 +139,11 @@ func Open(out []byte, box []byte, nonce *[24]byte, key *[32]byte) ([]byte, bool)
 	}
 
 	box = box[len(firstMessageBlock):]
-	plaintext := out
 	out = out[len(firstMessageBlock):]
 
 	// Now decrypt the rest.
 	counter[8] = 1
 	salsa.XORKeyStream(out, box, &counter, &subKey)
 
-	return plaintext, true
+	return ret, true
 }
