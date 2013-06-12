@@ -47,8 +47,16 @@ func (c *ClientConn) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	// fixup laddr. If the original port was 0, then the remote side will
-	// supply one in the resp.
+
+	// Register this forward, using the port number we requested.
+	// If we requested port 0 (auto allocated port), we have to
+	// register under 0, since the channelOpenMsg will list 0
+	// rather than the allocated port number.
+	ch := c.forwardList.add(*laddr)
+
+	// If the original port was 0, then the remote side will
+	// supply a real port number in the response.
+	origPort := uint32(laddr.Port)
 	if laddr.Port == 0 {
 		port, _, ok := parseUint32(resp.Data)
 		if !ok {
@@ -57,9 +65,7 @@ func (c *ClientConn) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
 		laddr.Port = int(port)
 	}
 
-	// register this forward
-	ch := c.forwardList.add(laddr)
-	return &tcpListener{laddr, c, ch}, nil
+	return &tcpListener{laddr, origPort, c, ch}, nil
 }
 
 // forwardList stores a mapping between remote
@@ -72,17 +78,19 @@ type forwardList struct {
 // forwardEntry represents an established mapping of a laddr on a
 // remote ssh server to a channel connected to a tcpListener.
 type forwardEntry struct {
-	laddr *net.TCPAddr
+	laddr net.TCPAddr
 	c     chan forward
 }
 
-// forward represents an incoming forwarded tcpip connection
+// forward represents an incoming forwarded tcpip connection. The
+// arguments to add/remove/lookup should be address as specified in
+// the original forward-request.
 type forward struct {
 	c     *clientChan  // the ssh client channel underlying this forward
 	raddr *net.TCPAddr // the raddr of the incoming connection
 }
 
-func (l *forwardList) add(addr *net.TCPAddr) chan forward {
+func (l *forwardList) add(addr net.TCPAddr) chan forward {
 	l.Lock()
 	defer l.Unlock()
 	f := forwardEntry{
@@ -93,7 +101,7 @@ func (l *forwardList) add(addr *net.TCPAddr) chan forward {
 	return f.c
 }
 
-func (l *forwardList) remove(addr *net.TCPAddr) {
+func (l *forwardList) remove(addr net.TCPAddr) {
 	l.Lock()
 	defer l.Unlock()
 	for i, f := range l.entries {
@@ -104,7 +112,7 @@ func (l *forwardList) remove(addr *net.TCPAddr) {
 	}
 }
 
-func (l *forwardList) lookup(addr *net.TCPAddr) (chan forward, bool) {
+func (l *forwardList) lookup(addr net.TCPAddr) (chan forward, bool) {
 	l.Lock()
 	defer l.Unlock()
 	for _, f := range l.entries {
@@ -117,8 +125,11 @@ func (l *forwardList) lookup(addr *net.TCPAddr) (chan forward, bool) {
 
 type tcpListener struct {
 	laddr *net.TCPAddr
-	conn  *ClientConn
-	in    <-chan forward
+
+	// The port with which we made the request, which can be 0.
+	origPort uint32
+	conn     *ClientConn
+	in       <-chan forward
 }
 
 // Accept waits for and returns the next connection to the listener.
@@ -144,9 +155,13 @@ func (l *tcpListener) Close() error {
 		"cancel-tcpip-forward",
 		true,
 		l.laddr.IP.String(),
-		uint32(l.laddr.Port),
+		l.origPort,
 	}
-	l.conn.forwardList.remove(l.laddr)
+	origAddr := net.TCPAddr{
+		IP:   l.laddr.IP,
+		Port: int(l.origPort),
+	}
+	l.conn.forwardList.remove(origAddr)
 	if _, err := l.conn.sendGlobalRequest(m); err != nil {
 		return err
 	}
