@@ -48,15 +48,8 @@ func (c *ClientConn) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
 		return nil, err
 	}
 
-	// Register this forward, using the port number we requested.
-	// If we requested port 0 (auto allocated port), we have to
-	// register under 0, since the channelOpenMsg will list 0
-	// rather than the allocated port number.
-	ch := c.forwardList.add(*laddr)
-
 	// If the original port was 0, then the remote side will
 	// supply a real port number in the response.
-	origPort := uint32(laddr.Port)
 	if laddr.Port == 0 {
 		port, _, ok := parseUint32(resp.Data)
 		if !ok {
@@ -65,7 +58,14 @@ func (c *ClientConn) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
 		laddr.Port = int(port)
 	}
 
-	return &tcpListener{laddr, origPort, c, ch}, nil
+	// Register this forward, using the port number we obtained.
+	//
+	// This does not work on OpenSSH < 6.0, which will send a
+	// channelOpenMsg with port number 0, rather than the actual
+	// port number.
+	ch := c.forwardList.add(*laddr)
+
+	return &tcpListener{laddr, c, ch}, nil
 }
 
 // forwardList stores a mapping between remote
@@ -126,10 +126,8 @@ func (l *forwardList) lookup(addr net.TCPAddr) (chan forward, bool) {
 type tcpListener struct {
 	laddr *net.TCPAddr
 
-	// The port with which we made the request, which can be 0.
-	origPort uint32
-	conn     *ClientConn
-	in       <-chan forward
+	conn *ClientConn
+	in   <-chan forward
 }
 
 // Accept waits for and returns the next connection to the listener.
@@ -155,13 +153,9 @@ func (l *tcpListener) Close() error {
 		"cancel-tcpip-forward",
 		true,
 		l.laddr.IP.String(),
-		l.origPort,
+		uint32(l.laddr.Port),
 	}
-	origAddr := net.TCPAddr{
-		IP:   l.laddr.IP,
-		Port: int(l.origPort),
-	}
-	l.conn.forwardList.remove(origAddr)
+	l.conn.forwardList.remove(*l.laddr)
 	if _, err := l.conn.sendGlobalRequest(m); err != nil {
 		return err
 	}

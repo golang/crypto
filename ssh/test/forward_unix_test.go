@@ -1,7 +1,14 @@
+// Copyright 2012 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+// +build darwin freebsd linux netbsd openbsd
+
 package test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -15,9 +22,23 @@ func TestPortForward(t *testing.T) {
 	conn := server.Dial(clientConfig())
 	defer conn.Close()
 
-	sshListener, err := conn.Listen("tcp", "127.0.0.1:0")
+	var sshListener net.Listener
+	var err error
+	tries := 10
+	for i := 0; i < tries; i++ {
+		port := 1024 + rand.Intn(50000)
+
+		// We can't reliably test dynamic port allocation, as it does
+		// not work correctly with OpenSSH before 6.0. See also
+		// https://bugzilla.mindrot.org/show_bug.cgi?id=2017
+		sshListener, err = conn.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err == nil {
+			break
+		}
+	}
+
 	if err != nil {
-		t.Fatalf("conn.Listen failed: %v", err)
+		t.Fatalf("conn.Listen failed: %v (after %d tries)", err, tries)
 	}
 
 	go func() {
