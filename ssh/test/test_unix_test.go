@@ -56,7 +56,6 @@ HostbasedAuthentication no
 
 var (
 	configTmpl template.Template
-	sshd       string // path to sshd
 	rsakey     *rsa.PrivateKey
 )
 
@@ -103,7 +102,11 @@ func clientConfig() *ssh.ClientConfig {
 }
 
 func (s *server) Dial(config *ssh.ClientConfig) *ssh.ClientConn {
-	s.cmd = exec.Command("sshd", "-f", s.configfile, "-i")
+	sshd, err := exec.LookPath("sshd")
+	if err != nil {
+		s.t.Skipf("skipping test: %v", err)
+	}
+	s.cmd = exec.Command(sshd, "-f", s.configfile, "-i", "-e")
 	r1, w1, err := os.Pipe()
 	if err != nil {
 		s.t.Fatal(err)
