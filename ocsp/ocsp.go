@@ -261,12 +261,12 @@ type request struct {
 // RequestOptions contains options for constructing OCSP requests.
 type RequestOptions struct {
 	// Hash contains the hash function that should be used when
-	// constructing the OCSP request.
+	// constructing the OCSP request. If zero, SHA-1 will be used.
 	Hash crypto.Hash
 }
 
 func (opts *RequestOptions) hash() crypto.Hash {
-	if opts == nil {
+	if opts == nil || opts.Hash == 0 {
 		// SHA-1 is nearly universally used in OCSP.
 		return crypto.SHA1
 	}
