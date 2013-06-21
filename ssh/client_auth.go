@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 )
 
 // authenticate authenticates with the remote server. See RFC 4252.
@@ -61,6 +62,17 @@ func keys(m map[string]bool) (s []string) {
 		s = append(s, k)
 	}
 	return
+}
+
+// HostKeyChecker represents a database of known server host keys.
+type HostKeyChecker interface {
+	// Check is called during the handshake to check server's
+	// public key for unexpected changes. The hostKey argument is
+	// in SSH wire format. It can be parsed using
+	// ssh.ParsePublicKey. The address before DNS resolution is
+	// passed in the addr argument, so the key can also be checked
+	// against the hostname.
+	Check(addr string, remote net.Addr, algorithm string, hostKey []byte) error
 }
 
 // A ClientAuth represents an instance of an RFC 4252 authentication method.

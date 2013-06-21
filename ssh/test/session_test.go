@@ -33,6 +33,25 @@ func TestRunCommandSuccess(t *testing.T) {
 	}
 }
 
+func TestHostKeyCheck(t *testing.T) {
+	server := newServer(t)
+	defer server.Shutdown()
+
+	conf := clientConfig()
+	k := conf.HostKeyChecker.(*storedHostKey)
+
+	// change the key.
+	k.keys["ssh-rsa"][25]++
+
+	conn, err := server.TryDial(conf)
+	if err == nil {
+		conn.Close()
+		t.Fatalf("dial should have failed.")
+	} else if !strings.Contains(err.Error(), "host key mismatch") {
+		t.Fatalf("'host key mismatch' not found in %v", err)
+	}
+}
+
 func TestRunCommandFailed(t *testing.T) {
 	server := newServer(t)
 	defer server.Shutdown()
