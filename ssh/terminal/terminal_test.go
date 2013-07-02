@@ -129,3 +129,19 @@ func TestKeyPresses(t *testing.T) {
 		}
 	}
 }
+
+func TestPasswordNotSaved(t *testing.T) {
+	c := &MockTerminal{
+		toSend:       []byte("password\r\x1b[A\r"),
+		bytesPerRead: 1,
+	}
+	ss := NewTerminal(c, "> ")
+	pw, _ := ss.ReadPassword("> ")
+	if pw != "password" {
+		t.Fatalf("failed to read password, got %s", pw)
+	}
+	line, _ := ss.ReadLine()
+	if len(line) > 0 {
+		t.Fatalf("password was saved in history")
+	}
+}

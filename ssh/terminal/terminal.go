@@ -546,8 +546,10 @@ func (t *Terminal) readLine() (line string, err error) {
 		t.c.Write(t.outBuf)
 		t.outBuf = t.outBuf[:0]
 		if lineOk {
-			t.historyIndex = -1
-			t.history.Add(line)
+			if t.echo {
+				t.historyIndex = -1
+				t.history.Add(line)
+			}
 			return
 		}
 
