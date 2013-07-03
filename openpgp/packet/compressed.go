@@ -6,6 +6,7 @@ package packet
 
 import (
 	"code.google.com/p/go.crypto/openpgp/errors"
+	"compress/bzip2"
 	"compress/flate"
 	"compress/zlib"
 	"io"
@@ -30,6 +31,8 @@ func (c *Compressed) parse(r io.Reader) error {
 		c.Body = flate.NewReader(r)
 	case 2:
 		c.Body, err = zlib.NewReader(r)
+	case 3:
+		c.Body = bzip2.NewReader(r)
 	default:
 		err = errors.UnsupportedError("unknown compression algorithm: " + strconv.Itoa(int(buf[0])))
 	}
