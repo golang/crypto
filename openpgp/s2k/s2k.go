@@ -97,12 +97,12 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	}
 
 	switch buf[0] {
-	case 1:
+	case 0:
 		f := func(out, in []byte) {
 			Simple(out, h, in)
 		}
 		return f, nil
-	case 2:
+	case 1:
 		_, err = io.ReadFull(r, buf[:8])
 		if err != nil {
 			return
