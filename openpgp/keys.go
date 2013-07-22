@@ -10,6 +10,7 @@ import (
 	"code.google.com/p/go.crypto/openpgp/packet"
 	"crypto/rsa"
 	"io"
+	"time"
 )
 
 // PublicKeyType is the armor type for a PGP public key.
@@ -80,59 +81,68 @@ func (e *Entity) primaryIdentity() *Identity {
 
 // encryptionKey returns the best candidate Key for encrypting a message to the
 // given Entity.
-func (e *Entity) encryptionKey() Key {
+func (e *Entity) encryptionKey(now time.Time) (Key, bool) {
 	candidateSubkey := -1
 
 	for i, subkey := range e.Subkeys {
-		if subkey.Sig.FlagsValid && subkey.Sig.FlagEncryptCommunications && subkey.PublicKey.PubKeyAlgo.CanEncrypt() {
+		if subkey.Sig.FlagsValid &&
+			subkey.Sig.FlagEncryptCommunications &&
+			subkey.PublicKey.PubKeyAlgo.CanEncrypt() &&
+			!subkey.Sig.KeyExpired(now) {
 			candidateSubkey = i
 			break
-		}
-	}
-
-	i := e.primaryIdentity()
-
-	if e.PrimaryKey.PubKeyAlgo.CanEncrypt() {
-		// If we don't have any candidate subkeys for encryption and
-		// the primary key doesn't have any usage metadata then we
-		// assume that the primary key is ok. Or, if the primary key is
-		// marked as ok to encrypt to, then we can obviously use it.
-		if candidateSubkey == -1 && !i.SelfSignature.FlagsValid || i.SelfSignature.FlagEncryptCommunications && i.SelfSignature.FlagsValid {
-			return Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}
 		}
 	}
 
 	if candidateSubkey != -1 {
 		subkey := e.Subkeys[candidateSubkey]
-		return Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig}
+		return Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig}, true
+	}
+
+	// If we don't have any candidate subkeys for encryption and
+	// the primary key doesn't have any usage metadata then we
+	// assume that the primary key is ok. Or, if the primary key is
+	// marked as ok to encrypt to, then we can obviously use it.
+	i := e.primaryIdentity()
+	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagEncryptCommunications &&
+		e.PrimaryKey.PubKeyAlgo.CanEncrypt() &&
+		!i.SelfSignature.KeyExpired(now) {
+		return Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
 	}
 
 	// This Entity appears to be signing only.
-	return Key{}
+	return Key{}, false
 }
 
 // signingKey return the best candidate Key for signing a message with this
 // Entity.
-func (e *Entity) signingKey() Key {
+func (e *Entity) signingKey(now time.Time) (Key, bool) {
 	candidateSubkey := -1
 
 	for i, subkey := range e.Subkeys {
-		if subkey.Sig.FlagsValid && subkey.Sig.FlagSign && subkey.PublicKey.PubKeyAlgo.CanSign() {
+		if subkey.Sig.FlagsValid &&
+			subkey.Sig.FlagSign &&
+			subkey.PublicKey.PubKeyAlgo.CanSign() &&
+			!subkey.Sig.KeyExpired(now) {
 			candidateSubkey = i
 			break
 		}
 	}
 
-	i := e.primaryIdentity()
+	if candidateSubkey != -1 {
+		subkey := e.Subkeys[candidateSubkey]
+		return Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig}, true
+	}
 
 	// If we have no candidate subkey then we assume that it's ok to sign
 	// with the primary key.
-	if candidateSubkey == -1 || i.SelfSignature.FlagsValid && i.SelfSignature.FlagSign {
-		return Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}
+	i := e.primaryIdentity()
+	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagSign &&
+		!i.SelfSignature.KeyExpired(now) {
+		return Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
 	}
 
-	subkey := e.Subkeys[candidateSubkey]
-	return Key{e, subkey.PublicKey, subkey.PrivateKey, subkey.Sig}
+	return Key{}, false
 }
 
 // An EntityList contains one or more Entities.

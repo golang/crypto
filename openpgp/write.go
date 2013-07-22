@@ -158,8 +158,12 @@ func hashToHashId(h crypto.Hash) uint8 {
 func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
 	var signer *packet.PrivateKey
 	if signed != nil {
-		signer = signed.signingKey().PrivateKey
-		if signer == nil || signer.Encrypted {
+		signKey, ok := signed.signingKey(config.Now())
+		if !ok {
+			return nil, errors.InvalidArgumentError("no valid signing keys")
+		}
+		signer = signKey.PrivateKey
+		if signer.Encrypted {
 			return nil, errors.InvalidArgumentError("signing key must be decrypted")
 		}
 	}
@@ -185,8 +189,9 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 
 	encryptKeys := make([]Key, len(to))
 	for i := range to {
-		encryptKeys[i] = to[i].encryptionKey()
-		if encryptKeys[i].PublicKey == nil {
+		var ok bool
+		encryptKeys[i], ok = to[i].encryptionKey(config.Now())
+		if !ok {
 			return nil, errors.InvalidArgumentError("cannot encrypt a message to key id " + strconv.FormatUint(to[i].PrimaryKey.KeyId, 16) + " because it has no encryption keys")
 		}
 

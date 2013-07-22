@@ -383,6 +383,16 @@ func serializeSubpackets(to []byte, subpackets []outputSubpacket, hashed bool) {
 	return
 }
 
+// KeyExpired returns whether sig is a self-signature of a key that has
+// expired.
+func (sig *Signature) KeyExpired(currentTime time.Time) bool {
+	if sig.KeyLifetimeSecs == nil {
+		return false
+	}
+	expiry := sig.CreationTime.Add(time.Duration(*sig.KeyLifetimeSecs) * time.Second)
+	return currentTime.After(expiry)
+}
+
 // buildHashSuffix constructs the HashSuffix member of sig in preparation for signing.
 func (sig *Signature) buildHashSuffix() (err error) {
 	hashedSubpacketsLen := subpacketsLength(sig.outSubpackets, true)

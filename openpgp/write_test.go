@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"testing"
+	"time"
 )
 
 func TestSignDetached(t *testing.T) {
@@ -193,8 +194,10 @@ func TestEncryption(t *testing.T) {
 			continue
 		}
 
+		testTime, _ := time.Parse("2006-01-02", "2013-07-01")
 		if test.isSigned {
-			expectedKeyId := kring[0].signingKey().PublicKey.KeyId
+			signKey, _ := kring[0].signingKey(testTime)
+			expectedKeyId := signKey.PublicKey.KeyId
 			if md.SignedByKeyId != expectedKeyId {
 				t.Errorf("#%d: message signed by wrong key id, got: %d, want: %d", i, *md.SignedBy, expectedKeyId)
 			}
@@ -209,7 +212,8 @@ func TestEncryption(t *testing.T) {
 			continue
 		}
 
-		expectedKeyId := kring[0].encryptionKey().PublicKey.KeyId
+		encryptKey, _ := kring[0].encryptionKey(testTime)
+		expectedKeyId := encryptKey.PublicKey.KeyId
 		if len(md.EncryptedToKeyIds) != 1 || md.EncryptedToKeyIds[0] != expectedKeyId {
 			t.Errorf("#%d: expected message to be encrypted to %v, but got %#v", i, expectedKeyId, md.EncryptedToKeyIds)
 		}
