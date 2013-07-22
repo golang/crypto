@@ -14,14 +14,12 @@ import (
 	"math/rand"
 	"net"
 	"testing"
+	"time"
+
+	"code.google.com/p/go.crypto/ssh"
 )
 
-func TestPortForward(t *testing.T) {
-	server := newServer(t)
-	defer server.Shutdown()
-	conn := server.Dial(clientConfig())
-	defer conn.Close()
-
+func listenSSHAuto(conn *ssh.ClientConn) (net.Listener, error) {
 	var sshListener net.Listener
 	var err error
 	tries := 10
@@ -38,7 +36,21 @@ func TestPortForward(t *testing.T) {
 	}
 
 	if err != nil {
-		t.Fatalf("conn.Listen failed: %v (after %d tries)", err, tries)
+		return nil, fmt.Errorf("conn.Listen failed: %v (after %d tries)", err, tries)
+	}
+
+	return sshListener, nil
+}
+
+func TestPortForward(t *testing.T) {
+	server := newServer(t)
+	defer server.Shutdown()
+	conn := server.Dial(clientConfig())
+	defer conn.Close()
+
+	sshListener, err := listenSSHAuto(conn)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	go func() {
@@ -106,3 +118,37 @@ func TestPortForward(t *testing.T) {
 		t.Errorf("still listening to %s after closing", forwardedAddr)
 	}
 }
+
+func TestAcceptClose(t *testing.T) {
+	server := newServer(t)
+	defer server.Shutdown()
+	conn := server.Dial(clientConfig())
+
+	sshListener, err := listenSSHAuto(conn)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	quit := make(chan error, 1)
+	go func() {
+		for {
+			c, err := sshListener.Accept()
+			if err != nil {
+				quit <- err
+				break
+			}
+			c.Close()
+		}
+	}()
+	sshListener.Close()
+
+	select {
+	case <-time.After(1 * time.Second):
+		t.Errorf("timeout: listener did not close.")
+	case err := <-quit:
+		t.Logf("quit as expected (error %v)", err)
+	}
+}
+
+// TODO(hanwen): test that closing the connection also
+// exits the listeners.

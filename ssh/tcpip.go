@@ -101,15 +101,28 @@ func (l *forwardList) add(addr net.TCPAddr) chan forward {
 	return f.c
 }
 
+// remove removes the forward entry, and the channel feeding its
+// listener.
 func (l *forwardList) remove(addr net.TCPAddr) {
 	l.Lock()
 	defer l.Unlock()
 	for i, f := range l.entries {
 		if addr.IP.Equal(f.laddr.IP) && addr.Port == f.laddr.Port {
 			l.entries = append(l.entries[:i], l.entries[i+1:]...)
+			close(f.c)
 			return
 		}
 	}
+}
+
+// closeAll closes and clears all forwards.
+func (l *forwardList) closeAll() {
+	l.Lock()
+	defer l.Unlock()
+	for _, f := range l.entries {
+		close(f.c)
+	}
+	l.entries = nil
 }
 
 func (l *forwardList) lookup(addr net.TCPAddr) (chan forward, bool) {

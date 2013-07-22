@@ -210,7 +210,8 @@ func (c *ClientConn) kexDH(group *dhGroup, hashFunc crypto.Hash, magics *handsha
 func (c *ClientConn) mainLoop() {
 	defer func() {
 		c.Close()
-		c.closeAll()
+		c.chanList.closeAll()
+		c.forwardList.closeAll()
 	}()
 
 	for {
