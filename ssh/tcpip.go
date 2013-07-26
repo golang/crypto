@@ -8,7 +8,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -32,10 +35,60 @@ type channelForwardMsg struct {
 	rport     uint32
 }
 
+// Automatic port allocation is broken with OpenSSH before 6.0. See
+// also https://bugzilla.mindrot.org/show_bug.cgi?id=2017.  In
+// particular, OpenSSH 5.9 sends a channelOpenMsg with port number 0,
+// rather than the actual port number. This means you can never open
+// two different listeners with auto allocated ports. We work around
+// this by trying explicit ports until we succeed.
+
+const openSSHPrefix = "OpenSSH_"
+
+// isBrokenOpenSSHVersion returns true if the given version string
+// specifies a version of OpenSSH that is known to have a bug in port
+// forwarding.
+func isBrokenOpenSSHVersion(versionStr string) bool {
+	i := strings.Index(versionStr, openSSHPrefix)
+	if i < 0 {
+		return false
+	}
+	i += len(openSSHPrefix)
+	j := i
+	for ; j < len(versionStr); j++ {
+		if versionStr[j] < '0' || versionStr[j] > '9' {
+			break
+		}
+	}
+	version, _ := strconv.Atoi(versionStr[i:j])
+	return version < 6
+}
+
+// autoPortListenWorkaround simulates automatic port allocation by
+// trying random ports repeatedly.
+func (c *ClientConn) autoPortListenWorkaround(laddr *net.TCPAddr) (net.Listener, error) {
+	var sshListener net.Listener
+	var err error
+	const tries = 10
+	for i := 0; i < tries; i++ {
+		addr := *laddr
+		addr.Port = 1024 + rand.Intn(60000)
+		sshListener, err = c.ListenTCP(&addr)
+		if err == nil {
+			laddr.Port = addr.Port
+			return sshListener, err
+		}
+	}
+	return nil, fmt.Errorf("ssh: listen on random port failed after %d tries: %v", tries, err)
+}
+
 // ListenTCP requests the remote peer open a listening socket
 // on laddr. Incoming connections will be available by calling
 // Accept on the returned net.Listener.
 func (c *ClientConn) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
+	if laddr.Port == 0 && isBrokenOpenSSHVersion(c.serverVersion) {
+		return c.autoPortListenWorkaround(laddr)
+	}
+
 	m := channelForwardMsg{
 		"tcpip-forward",
 		true, // sendGlobalRequest waits for a reply
@@ -59,10 +112,6 @@ func (c *ClientConn) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
 	}
 
 	// Register this forward, using the port number we obtained.
-	//
-	// This does not work on OpenSSH < 6.0, which will send a
-	// channelOpenMsg with port number 0, rather than the actual
-	// port number.
 	ch := c.forwardList.add(*laddr)
 
 	return &tcpListener{laddr, c, ch}, nil

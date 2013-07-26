@@ -29,6 +29,8 @@ type ClientConn struct {
 
 	// Address as passed to the Dial function.
 	dialAddress string
+
+	serverVersion string
 }
 
 type globalRequest struct {
@@ -75,6 +77,7 @@ func (c *ClientConn) handshake() error {
 		return err
 	}
 	magics.serverVersion = version
+	c.serverVersion = string(version)
 	clientKexInit := kexInitMsg{
 		KexAlgos:                supportedKexAlgos,
 		ServerHostKeyAlgos:      supportedHostKeyAlgos,

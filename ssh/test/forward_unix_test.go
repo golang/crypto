@@ -8,39 +8,13 @@ package test
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"math/rand"
 	"net"
 	"testing"
 	"time"
-
-	"code.google.com/p/go.crypto/ssh"
 )
-
-func listenSSHAuto(conn *ssh.ClientConn) (net.Listener, error) {
-	var sshListener net.Listener
-	var err error
-	tries := 10
-	for i := 0; i < tries; i++ {
-		port := 1024 + rand.Intn(50000)
-
-		// We can't reliably test dynamic port allocation, as it does
-		// not work correctly with OpenSSH before 6.0. See also
-		// https://bugzilla.mindrot.org/show_bug.cgi?id=2017
-		sshListener, err = conn.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-		if err == nil {
-			break
-		}
-	}
-
-	if err != nil {
-		return nil, fmt.Errorf("conn.Listen failed: %v (after %d tries)", err, tries)
-	}
-
-	return sshListener, nil
-}
 
 func TestPortForward(t *testing.T) {
 	server := newServer(t)
@@ -48,7 +22,7 @@ func TestPortForward(t *testing.T) {
 	conn := server.Dial(clientConfig())
 	defer conn.Close()
 
-	sshListener, err := listenSSHAuto(conn)
+	sshListener, err := conn.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +98,7 @@ func TestAcceptClose(t *testing.T) {
 	defer server.Shutdown()
 	conn := server.Dial(clientConfig())
 
-	sshListener, err := listenSSHAuto(conn)
+	sshListener, err := conn.Listen("tcp", "localhost:0")
 	if err != nil {
 		t.Fatal(err)
 	}
