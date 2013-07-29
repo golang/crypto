@@ -171,9 +171,10 @@ func (p ParseError) Error() string {
 
 // ParseResponse parses an OCSP response in DER form. It only supports
 // responses for a single certificate. If the response contains a certificate
-// then the signature over the response is checked. Invalid signatures or parse
-// failures will result in a ParseError.
-func ParseResponse(bytes []byte) (*Response, error) {
+// then the signature over the response is checked. If issuer is not nil then
+// it will be used to validate the signature or embedded certificate. Invalid
+// signatures or parse failures will result in a ParseError.
+func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
 	var resp responseASN1
 	rest, err := asn1.Unmarshal(bytes, &resp)
 	if err != nil {
@@ -218,6 +219,16 @@ func ParseResponse(bytes []byte) (*Response, error) {
 		}
 
 		if err := ret.CheckSignatureFrom(ret.Certificate); err != nil {
+			return nil, ParseError("bad OCSP signature")
+		}
+
+		if issuer != nil {
+			if err := issuer.CheckSignature(ret.Certificate.SignatureAlgorithm, ret.Certificate.RawTBSCertificate, ret.Certificate.Signature); err != nil {
+				return nil, ParseError("bad signature on embedded certificate")
+			}
+		}
+	} else if issuer != nil {
+		if err := ret.CheckSignatureFrom(issuer); err != nil {
 			return nil, ParseError("bad OCSP signature")
 		}
 	}
