@@ -44,6 +44,8 @@ type channelForwardMsg struct {
 
 const openSSHPrefix = "OpenSSH_"
 
+var portRandomizer = rand.New(rand.NewSource(time.Now().UnixNano()))
+
 // isBrokenOpenSSHVersion returns true if the given version string
 // specifies a version of OpenSSH that is known to have a bug in port
 // forwarding.
@@ -71,7 +73,7 @@ func (c *ClientConn) autoPortListenWorkaround(laddr *net.TCPAddr) (net.Listener,
 	const tries = 10
 	for i := 0; i < tries; i++ {
 		addr := *laddr
-		addr.Port = 1024 + rand.Intn(60000)
+		addr.Port = 1024 + portRandomizer.Intn(60000)
 		sshListener, err = c.ListenTCP(&addr)
 		if err == nil {
 			laddr.Port = addr.Port
