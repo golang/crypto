@@ -151,14 +151,15 @@ func Serialize(w io.Writer, key []byte, rand io.Reader, passphrase []byte) error
 var hashToHashIdMapping = []struct {
 	id   byte
 	hash crypto.Hash
+	name string
 }{
-	{1, crypto.MD5},
-	{2, crypto.SHA1},
-	{3, crypto.RIPEMD160},
-	{8, crypto.SHA256},
-	{9, crypto.SHA384},
-	{10, crypto.SHA512},
-	{11, crypto.SHA224},
+	{1, crypto.MD5, "MD5"},
+	{2, crypto.SHA1, "SHA1"},
+	{3, crypto.RIPEMD160, "RIPEMD160"},
+	{8, crypto.SHA256, "SHA256"},
+	{9, crypto.SHA384, "SHA384"},
+	{10, crypto.SHA512, "SHA512"},
+	{11, crypto.SHA224, "SHA224"},
 }
 
 // HashIdToHash returns a crypto.Hash which corresponds to the given OpenPGP
@@ -170,6 +171,18 @@ func HashIdToHash(id byte) (h crypto.Hash, ok bool) {
 		}
 	}
 	return 0, false
+}
+
+// HashIdToString returns the name of the hash function corresponding to the
+// given OpenPGP hash id, or panics if id is unknown.
+func HashIdToString(id byte) (name string, ok bool) {
+	for _, m := range hashToHashIdMapping {
+		if m.id == id {
+			return m.name, true
+		}
+	}
+
+	return "", false
 }
 
 // HashIdToHash returns an OpenPGP hash id which corresponds the given Hash.
