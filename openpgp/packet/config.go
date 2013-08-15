@@ -26,6 +26,12 @@ type Config struct {
 	// Time returns the current time as the number of seconds since the
 	// epoch. If Time is nil, time.Now is used.
 	Time func() time.Time
+	// DefaultCompressionAlgo is the compression algorithm to be
+	// applied to the plaintext before encryption. If zero, no
+	// compression is done.
+	DefaultCompressionAlgo CompressionAlgo
+	// CompressionConfig configures the compression settings.
+	CompressionConfig *CompressionConfig
 }
 
 func (c *Config) Random() io.Reader {
@@ -54,4 +60,11 @@ func (c *Config) Now() time.Time {
 		return time.Now()
 	}
 	return c.Time()
+}
+
+func (c *Config) Compression() CompressionAlgo {
+	if c == nil {
+		return CompressionNone
+	}
+	return c.DefaultCompressionAlgo
 }

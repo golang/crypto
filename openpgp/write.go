@@ -118,11 +118,24 @@ func SymmetricallyEncrypt(ciphertext io.Writer, passphrase []byte, hints *FileHi
 	if err != nil {
 		return
 	}
+
+	literaldata := w
+	if algo := config.Compression(); algo != packet.CompressionNone {
+		var compConfig *packet.CompressionConfig
+		if config != nil {
+			compConfig = config.CompressionConfig
+		}
+		literaldata, err = packet.SerializeCompressed(w, algo, compConfig)
+		if err != nil {
+			return
+		}
+	}
+
 	var epochSeconds uint32
 	if !hints.ModTime.IsZero() {
 		epochSeconds = uint32(hints.ModTime.Unix())
 	}
-	return packet.SerializeLiteral(w, hints.IsBinary, hints.FileName, epochSeconds)
+	return packet.SerializeLiteral(literaldata, hints.IsBinary, hints.FileName, epochSeconds)
 }
 
 // intersectPreferences mutates and returns a prefix of a that contains only

@@ -488,3 +488,14 @@ func writeMPI(w io.Writer, bitLength uint16, mpiBytes []byte) (err error) {
 func writeBig(w io.Writer, i *big.Int) error {
 	return writeMPI(w, uint16(i.BitLen()), i.Bytes())
 }
+
+// CompressionAlgo Represents the different compression algorithms
+// supported by OpenPGP (except for BZIP2, which is not currently
+// supported). See Section 9.3 of RFC 4880.
+type CompressionAlgo uint8
+
+const (
+	CompressionNone CompressionAlgo = 0
+	CompressionZIP  CompressionAlgo = 1
+	CompressionZLIB CompressionAlgo = 2
+)
