@@ -16,8 +16,8 @@ import (
 	"sync"
 )
 
-// clientVersion is the fixed identification string that the client will use.
-var clientVersion = []byte("SSH-2.0-Go\r\n")
+// clientVersion is the default identification string that the client will use.
+var clientVersion = []byte("SSH-2.0-Go")
 
 // ClientConn represents the client side of an SSH connection.
 type ClientConn struct {
@@ -63,13 +63,20 @@ func clientWithAddress(c net.Conn, addr string, config *ClientConfig) (*ClientCo
 func (c *ClientConn) handshake() error {
 	var magics handshakeMagics
 
-	if _, err := c.Write(clientVersion); err != nil {
+	var version []byte
+	if len(c.config.ClientVersion) > 0 {
+		version = []byte(c.config.ClientVersion)
+	} else {
+		version = clientVersion
+	}
+	magics.clientVersion = version
+	version = append(version, '\r', '\n')
+	if _, err := c.Write(version); err != nil {
 		return err
 	}
 	if err := c.Flush(); err != nil {
 		return err
 	}
-	magics.clientVersion = clientVersion[:len(clientVersion)-2]
 
 	// read remote server version
 	version, err := readVersion(c)
@@ -489,6 +496,10 @@ type ClientConfig struct {
 
 	// Cryptographic-related configuration.
 	Crypto CryptoConfig
+
+	// The identification string that will be used for the connection.
+	// If empty, a reasonable default is used.
+	ClientVersion string
 }
 
 func (c *ClientConfig) rand() io.Reader {
