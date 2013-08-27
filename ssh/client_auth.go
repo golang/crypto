@@ -441,6 +441,9 @@ func (c *keyboardInteractiveAuth) auth(session []byte, user string, t *transport
 
 		// like handleAuthResponse, but with less options.
 		switch packet[0] {
+		case msgUserAuthBanner:
+			// TODO: Print banners during userauth.
+			continue
 		case msgUserAuthInfoRequest:
 			// OK
 		case msgUserAuthFailure:
