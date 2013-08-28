@@ -232,15 +232,31 @@ func (l *tcpListener) Addr() net.Addr {
 }
 
 // Dial initiates a connection to the addr from the remote host.
-// addr is resolved using net.ResolveTCPAddr before connection.
-// This could allow an observer to observe the DNS name of the
-// remote host. Consider using ssh.DialTCP to avoid this.
+// The resulting connection has a zero LocalAddr() and RemoteAddr().
 func (c *ClientConn) Dial(n, addr string) (net.Conn, error) {
-	raddr, err := net.ResolveTCPAddr(n, addr)
+	// Parse the address into host and numeric port.
+	host, portString, err := net.SplitHostPort(addr)
 	if err != nil {
 		return nil, err
 	}
-	return c.DialTCP(n, nil, raddr)
+	port, err := strconv.ParseUint(portString, 10, 16)
+	if err != nil {
+		return nil, err
+	}
+	// Use a zero address for local and remote address.
+	zeroAddr := &net.TCPAddr{
+		IP:   net.IPv4zero,
+		Port: 0,
+	}
+	ch, err := c.dial(net.IPv4zero.String(), 0, host, int(port))
+	if err != nil {
+		return nil, err
+	}
+	return &tcpChanConn{
+		tcpChan: ch,
+		laddr:   zeroAddr,
+		raddr:   zeroAddr,
+	}, nil
 }
 
 // DialTCP connects to the remote address raddr on the network net,
