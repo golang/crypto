@@ -124,5 +124,37 @@ func TestAcceptClose(t *testing.T) {
 	}
 }
 
-// TODO(hanwen): test that closing the connection also
-// exits the listeners.
+// Check that listeners exit if the underlying client transport dies.
+func TestPortForwardConnectionClose(t *testing.T) {
+	server := newServer(t)
+	defer server.Shutdown()
+	conn := server.Dial(clientConfig())
+
+	sshListener, err := conn.Listen("tcp", "localhost:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	quit := make(chan error, 1)
+	go func() {
+		for {
+			c, err := sshListener.Accept()
+			if err != nil {
+				quit <- err
+				break
+			}
+			c.Close()
+		}
+	}()
+
+	// It would be even nicer if we closed the server side, but it
+	// is more involved as the fd for that side is dup()ed.
+	server.clientConn.Close()
+
+	select {
+	case <-time.After(1 * time.Second):
+		t.Errorf("timeout: listener did not close.")
+	case err := <-quit:
+		t.Logf("quit as expected (error %v)", err)
+	}
+}
