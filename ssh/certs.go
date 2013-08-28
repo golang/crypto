@@ -291,22 +291,28 @@ func marshalSignature(to []byte, sig *signature) []byte {
 	return to
 }
 
-func parseSignature(in []byte) (out *signature, rest []byte, ok bool) {
-	var sigBytes, format []byte
-	sig := new(signature)
+func parseSignatureBody(in []byte) (out *signature, rest []byte, ok bool) {
+	var format []byte
+	if format, in, ok = parseString(in); !ok {
+		return
+	}
 
+	out = &signature{
+		Format: string(format),
+	}
+
+	if out.Blob, in, ok = parseString(in); !ok {
+		return
+	}
+
+	return out, in, ok
+}
+
+func parseSignature(in []byte) (out *signature, rest []byte, ok bool) {
+	var sigBytes []byte
 	if sigBytes, rest, ok = parseString(in); !ok {
 		return
 	}
 
-	if format, sigBytes, ok = parseString(sigBytes); !ok {
-		return
-	}
-	sig.Format = string(format)
-
-	if sig.Blob, sigBytes, ok = parseString(sigBytes); !ok {
-		return
-	}
-
-	return sig, rest, ok
+	return parseSignatureBody(sigBytes)
 }

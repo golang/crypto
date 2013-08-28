@@ -5,8 +5,10 @@
 package ssh
 
 import (
+	"crypto"
 	"crypto/dsa"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rsa"
 	"errors"
 	"fmt"
@@ -16,8 +18,11 @@ import (
 
 // These are string constants in the SSH protocol.
 const (
-	keyAlgoDH1SHA1  = "diffie-hellman-group1-sha1"
+	kexAlgoDH1SHA1  = "diffie-hellman-group1-sha1"
 	kexAlgoDH14SHA1 = "diffie-hellman-group14-sha1"
+	kexAlgoECDH256  = "ecdh-sha2-nistp256"
+	kexAlgoECDH384  = "ecdh-sha2-nistp384"
+	kexAlgoECDH521  = "ecdh-sha2-nistp521"
 	hostAlgoRSA     = "ssh-rsa"
 	hostAlgoDSA     = "ssh-dss"
 	compressionNone = "none"
@@ -25,7 +30,11 @@ const (
 	serviceSSH      = "ssh-connection"
 )
 
-var supportedKexAlgos = []string{kexAlgoDH14SHA1, keyAlgoDH1SHA1}
+var supportedKexAlgos = []string{
+	kexAlgoECDH256, kexAlgoECDH384, kexAlgoECDH521,
+	kexAlgoDH14SHA1, kexAlgoDH1SHA1,
+}
+
 var supportedHostKeyAlgos = []string{hostAlgoRSA}
 var supportedCompressions = []string{compressionNone}
 
@@ -165,6 +174,10 @@ func findAgreedAlgorithms(transport *transport, clientKexInit, serverKexInit *ke
 
 // Cryptographic configuration common to both ServerConfig and ClientConfig.
 type CryptoConfig struct {
+	// The allowed key exchanges algorithms. If unspecified then a
+	// default set of algorithms is used.
+	KeyExchanges []string
+
 	// The allowed cipher algorithms. If unspecified then DefaultCipherOrder is
 	// used.
 	Ciphers []string
@@ -180,11 +193,31 @@ func (c *CryptoConfig) ciphers() []string {
 	return c.Ciphers
 }
 
+func (c *CryptoConfig) kexes() []string {
+	if c.KeyExchanges == nil {
+		return defaultKeyExchangeOrder
+	}
+	return c.KeyExchanges
+}
+
 func (c *CryptoConfig) macs() []string {
 	if c.MACs == nil {
 		return DefaultMACOrder
 	}
 	return c.MACs
+}
+
+// ecHash returns the hash to match the given elliptic curve, see RFC
+// 5656, section 6.2.1
+func ecHash(curve elliptic.Curve) crypto.Hash {
+	bitSize := curve.Params().BitSize
+	switch {
+	case bitSize <= 256:
+		return crypto.SHA256
+	case bitSize <= 384:
+		return crypto.SHA384
+	}
+	return crypto.SHA512
 }
 
 // serialize a signed slice according to RFC 4254 6.6.

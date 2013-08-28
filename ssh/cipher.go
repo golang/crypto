@@ -89,3 +89,12 @@ var cipherModes = map[string]*cipherMode{
 	"arcfour128": {16, 0, 1536, newRC4},
 	"arcfour256": {32, 0, 1536, newRC4},
 }
+
+// defaultKeyExchangeOrder specifies a default set of key exchange algorithms
+// with preferences.
+var defaultKeyExchangeOrder = []string{
+	// P384 and P521 are not constant-time yet, but since we don't
+	// reuse ephemeral keys, using them for ECDH should be OK.
+	kexAlgoECDH256, kexAlgoECDH384, kexAlgoECDH521,
+	kexAlgoDH14SHA1, kexAlgoDH1SHA1,
+}

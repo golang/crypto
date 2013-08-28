@@ -16,6 +16,7 @@ import (
 	"io"
 	"io/ioutil"
 	"math/big"
+	"strings"
 	"testing"
 )
 
@@ -353,6 +354,25 @@ func TestClientUnsupportedCipher(t *testing.T) {
 	c, err := Dial("tcp", newMockAuthServer(t), config)
 	if err == nil {
 		t.Errorf("expected no ciphers in common")
+		c.Close()
+	}
+}
+
+func TestClientUnsupportedKex(t *testing.T) {
+	kc := new(keychain)
+	kc.keys = append(kc.keys, rsakey)
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []ClientAuth{
+			ClientAuthKeyring(kc),
+		},
+		Crypto: CryptoConfig{
+			KeyExchanges: []string{"diffie-hellman-group-exchange-sha256"}, // not currently supported
+		},
+	}
+	c, err := Dial("tcp", newMockAuthServer(t), config)
+	if err == nil || !strings.Contains(err.Error(), "no common algorithms") {
+		t.Errorf("got %v, expected 'no common algorithms'", err)
 		c.Close()
 	}
 }

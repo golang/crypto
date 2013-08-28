@@ -6,7 +6,10 @@ package ssh
 
 import (
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -86,7 +89,7 @@ func (c *ClientConn) handshake() error {
 	magics.serverVersion = version
 	c.serverVersion = string(version)
 	clientKexInit := kexInitMsg{
-		KexAlgos:                supportedKexAlgos,
+		KexAlgos:                c.config.Crypto.kexes(),
 		ServerHostKeyAlgos:      supportedHostKeyAlgos,
 		CiphersClientServer:     c.config.Crypto.ciphers(),
 		CiphersServerClient:     c.config.Crypto.ciphers(),
@@ -126,17 +129,20 @@ func (c *ClientConn) handshake() error {
 		}
 	}
 
-	var H, K []byte
-	var hashFunc crypto.Hash
+	var result *kexResult
 	switch kexAlgo {
+	case kexAlgoECDH256:
+		result, err = c.kexECDH(elliptic.P256(), &magics, hostKeyAlgo)
+	case kexAlgoECDH384:
+		result, err = c.kexECDH(elliptic.P384(), &magics, hostKeyAlgo)
+	case kexAlgoECDH521:
+		result, err = c.kexECDH(elliptic.P521(), &magics, hostKeyAlgo)
 	case kexAlgoDH14SHA1:
-		hashFunc = crypto.SHA1
 		dhGroup14Once.Do(initDHGroup14)
-		H, K, err = c.kexDH(dhGroup14, hashFunc, &magics, hostKeyAlgo)
-	case keyAlgoDH1SHA1:
-		hashFunc = crypto.SHA1
+		result, err = c.kexDH(crypto.SHA1, dhGroup14, &magics, hostKeyAlgo)
+	case kexAlgoDH1SHA1:
 		dhGroup1Once.Do(initDHGroup1)
-		H, K, err = c.kexDH(dhGroup1, hashFunc, &magics, hostKeyAlgo)
+		result, err = c.kexDH(crypto.SHA1, dhGroup1, &magics, hostKeyAlgo)
 	default:
 		err = fmt.Errorf("ssh: unexpected key exchange algorithm %v", kexAlgo)
 	}
@@ -144,10 +150,22 @@ func (c *ClientConn) handshake() error {
 		return err
 	}
 
+	err = verifyHostKeySignature(hostKeyAlgo, result.HostKey, result.H, result.Signature)
+	if err != nil {
+		return err
+	}
+
+	if checker := c.config.HostKeyChecker; checker != nil {
+		err = checker.Check(c.dialAddress, c.RemoteAddr(), hostKeyAlgo, result.HostKey)
+		if err != nil {
+			return err
+		}
+	}
+
 	if err = c.writePacket([]byte{msgNewKeys}); err != nil {
 		return err
 	}
-	if err = c.transport.writer.setupKeys(clientKeys, K, H, H, hashFunc); err != nil {
+	if err = c.transport.writer.setupKeys(clientKeys, result.K, result.H, result.H, result.Hash); err != nil {
 		return err
 	}
 	if packet, err = c.readPacket(); err != nil {
@@ -156,46 +174,170 @@ func (c *ClientConn) handshake() error {
 	if packet[0] != msgNewKeys {
 		return UnexpectedMessageError{msgNewKeys, packet[0]}
 	}
-	if err := c.transport.reader.setupKeys(serverKeys, K, H, H, hashFunc); err != nil {
+	if err := c.transport.reader.setupKeys(serverKeys, result.K, result.H, result.H, result.Hash); err != nil {
 		return err
 	}
-	return c.authenticate(H)
+	return c.authenticate(result.H)
 }
 
-// kexDH performs Diffie-Hellman key agreement on a ClientConn. The
-// returned values are given the same names as in RFC 4253, section 8.
-func (c *ClientConn) kexDH(group *dhGroup, hashFunc crypto.Hash, magics *handshakeMagics, hostKeyAlgo string) ([]byte, []byte, error) {
+// kexECDH performs Elliptic Curve Diffie-Hellman key exchange as
+// described in RFC 5656, section 4.
+func (c *ClientConn) kexECDH(curve elliptic.Curve, magics *handshakeMagics, hostKeyAlgo string) (*kexResult, error) {
+	ephKey, err := ecdsa.GenerateKey(curve, c.config.rand())
+	if err != nil {
+		return nil, err
+	}
+
+	kexInit := kexECDHInitMsg{
+		ClientPubKey: elliptic.Marshal(curve, ephKey.PublicKey.X, ephKey.PublicKey.Y),
+	}
+
+	serialized := marshal(msgKexECDHInit, kexInit)
+	if err := c.writePacket(serialized); err != nil {
+		return nil, err
+	}
+
+	packet, err := c.readPacket()
+	if err != nil {
+		return nil, err
+	}
+
+	var reply kexECDHReplyMsg
+	if err = unmarshal(&reply, packet, msgKexECDHReply); err != nil {
+		return nil, err
+	}
+
+	x, y := elliptic.Unmarshal(curve, reply.EphemeralPubKey)
+	if x == nil {
+		return nil, errors.New("ssh: elliptic.Unmarshal failure")
+	}
+	if !validateECPublicKey(curve, x, y) {
+		return nil, errors.New("ssh: ephemeral server key not on curve")
+	}
+
+	// generate shared secret
+	secret, _ := curve.ScalarMult(x, y, ephKey.D.Bytes())
+
+	hashFunc := ecHash(curve)
+	h := hashFunc.New()
+	writeString(h, magics.clientVersion)
+	writeString(h, magics.serverVersion)
+	writeString(h, magics.clientKexInit)
+	writeString(h, magics.serverKexInit)
+	writeString(h, reply.HostKey)
+	writeString(h, kexInit.ClientPubKey)
+	writeString(h, reply.EphemeralPubKey)
+	K := make([]byte, intLength(secret))
+	marshalInt(K, secret)
+	h.Write(K)
+
+	return &kexResult{
+		H:         h.Sum(nil),
+		K:         K,
+		HostKey:   reply.HostKey,
+		Signature: reply.Signature,
+		Hash:      hashFunc,
+	}, nil
+}
+
+// Verify the host key obtained in the key exchange.
+func verifyHostKeySignature(hostKeyAlgo string, hostKeyBytes []byte, data []byte, signature []byte) error {
+	hostKey, rest, ok := ParsePublicKey(hostKeyBytes)
+	if len(rest) > 0 || !ok {
+		return errors.New("ssh: could not parse hostkey")
+	}
+
+	// Select hash function to match the hostkey algorithm, as per
+	// RFC 4253, section 6.1 (for RSA/DSS) and RFC 5656, section
+	// 6.2.1 (for ECDSA).
+	var hashFunc crypto.Hash
+	switch hostKeyAlgo {
+	case KeyAlgoRSA:
+		hashFunc = crypto.SHA1
+	case KeyAlgoDSA:
+		hashFunc = crypto.SHA1
+	case KeyAlgoECDSA256:
+		hashFunc = crypto.SHA256
+	case KeyAlgoECDSA384:
+		hashFunc = crypto.SHA384
+	case KeyAlgoECDSA521:
+		hashFunc = crypto.SHA512
+	default:
+		return errors.New("ssh: unknown key algorithm: " + hostKeyAlgo)
+	}
+
+	signed := hashFunc.New()
+	signed.Write(data)
+	digest := signed.Sum(nil)
+
+	sig, rest, ok := parseSignatureBody(signature)
+	if len(rest) > 0 || !ok {
+		return errors.New("ssh: signature parse error")
+	}
+	if sig.Format != hostKeyAlgo {
+		return fmt.Errorf("ssh: unexpected signature type %q", sig.Format)
+	}
+
+	return verifySignature(digest, sig, hostKey)
+}
+
+func verifySignature(hash []byte, sig *signature, key interface{}) error {
+	switch pubKey := key.(type) {
+	case *rsa.PublicKey:
+		return verifyRSASignature(hash, sig, pubKey)
+	}
+	return fmt.Errorf("ssh: unknown key type %T", key)
+}
+
+func verifyRSASignature(hash []byte, sig *signature, key *rsa.PublicKey) error {
+	return rsa.VerifyPKCS1v15(key, crypto.SHA1, hash, sig.Blob)
+}
+
+// kexResult captures the outcome of a key exchange.
+type kexResult struct {
+	// Session hash. See also RFC 4253, section 8.
+	H []byte
+
+	// Shared secret. See also RFC 4253, section 8.
+	K []byte
+
+	// Host key as hashed into H
+	HostKey []byte
+
+	// Signature of H
+	Signature []byte
+
+	// Hash function that was used.
+	Hash crypto.Hash
+}
+
+// kexDH performs Diffie-Hellman key agreement on a ClientConn.
+func (c *ClientConn) kexDH(hashFunc crypto.Hash, group *dhGroup, magics *handshakeMagics, hostKeyAlgo string) (*kexResult, error) {
 	x, err := rand.Int(c.config.rand(), group.p)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	X := new(big.Int).Exp(group.g, x, group.p)
 	kexDHInit := kexDHInitMsg{
 		X: X,
 	}
 	if err := c.writePacket(marshal(msgKexDHInit, kexDHInit)); err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	packet, err := c.readPacket()
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	var kexDHReply kexDHReplyMsg
 	if err = unmarshal(&kexDHReply, packet, msgKexDHReply); err != nil {
-		return nil, nil, err
-	}
-
-	if checker := c.config.HostKeyChecker; checker != nil {
-		if err = checker.Check(c.dialAddress, c.RemoteAddr(), hostKeyAlgo, kexDHReply.HostKey); err != nil {
-			return nil, nil, err
-		}
+		return nil, err
 	}
 
 	kInt, err := group.diffieHellman(kexDHReply.Y, x)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	h := hashFunc.New()
@@ -210,9 +352,13 @@ func (c *ClientConn) kexDH(group *dhGroup, hashFunc crypto.Hash, magics *handsha
 	marshalInt(K, kInt)
 	h.Write(K)
 
-	H := h.Sum(nil)
-
-	return H, K, nil
+	return &kexResult{
+		H:         h.Sum(nil),
+		K:         K,
+		HostKey:   kexDHReply.HostKey,
+		Signature: kexDHReply.Signature,
+		Hash:      hashFunc,
+	}, nil
 }
 
 // mainLoop reads incoming messages and routes channel messages

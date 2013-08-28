@@ -29,6 +29,9 @@ const (
 	msgKexDHInit  = 30
 	msgKexDHReply = 31
 
+	msgKexECDHInit  = 30
+	msgKexECDHReply = 31
+
 	// Standard authentication messages
 	msgUserAuthRequest  = 50
 	msgUserAuthFailure  = 51
@@ -92,6 +95,16 @@ type kexInitMsg struct {
 // See RFC 4253, section 8.
 type kexDHInitMsg struct {
 	X *big.Int
+}
+
+type kexECDHInitMsg struct {
+	ClientPubKey []byte
+}
+
+type kexECDHReplyMsg struct {
+	HostKey         []byte
+	EphemeralPubKey []byte
+	Signature       []byte
 }
 
 type kexDHReplyMsg struct {
