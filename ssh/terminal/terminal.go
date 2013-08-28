@@ -118,6 +118,8 @@ const (
 	keyAltRight
 	keyHome
 	keyEnd
+	keyDeleteWord
+	keyDeleteLine
 )
 
 // bytesToKey tries to parse a key sequence from b. If successful, it returns
@@ -125,6 +127,15 @@ const (
 func bytesToKey(b []byte) (int, []byte) {
 	if len(b) == 0 {
 		return -1, nil
+	}
+
+	switch b[0] {
+	case 8: // ^H
+		return keyBackspace, b[1:]
+	case 11: // ^K
+		return keyDeleteLine, b[1:]
+	case 23: // ^W
+		return keyDeleteWord, b[1:]
 	}
 
 	if b[0] != keyEscape {
@@ -274,6 +285,73 @@ func (t *Terminal) setLine(newLine []byte, newPos int) {
 	t.pos = newPos
 }
 
+func (t *Terminal) eraseNPreviousChars(n int) {
+	if n == 0 {
+		return
+	}
+
+	if t.pos < n {
+		n = t.pos
+	}
+	t.pos -= n
+	t.moveCursorToPos(t.pos)
+
+	copy(t.line[t.pos:], t.line[n+t.pos:])
+	t.line = t.line[:len(t.line)-n]
+	if t.echo {
+		t.writeLine(t.line[t.pos:])
+		for i := 0; i < n; i++ {
+			t.queue(space)
+		}
+		t.cursorX += n
+		t.moveCursorToPos(t.pos)
+	}
+}
+
+// countToLeftWord returns then number of characters from the cursor to the
+// start of the previous word.
+func (t *Terminal) countToLeftWord() int {
+	if t.pos == 0 {
+		return 0
+	}
+
+	pos := t.pos - 1
+	for pos > 0 {
+		if t.line[pos] != ' ' {
+			break
+		}
+		pos--
+	}
+	for pos > 0 {
+		if t.line[pos] == ' ' {
+			pos++
+			break
+		}
+		pos--
+	}
+
+	return t.pos - pos
+}
+
+// countToRightWord returns then number of characters from the cursor to the
+// start of the next word.
+func (t *Terminal) countToRightWord() int {
+	pos := t.pos
+	for pos < len(t.line) {
+		if t.line[pos] == ' ' {
+			break
+		}
+		pos++
+	}
+	for pos < len(t.line) {
+		if t.line[pos] != ' ' {
+			break
+		}
+		pos++
+	}
+	return pos - t.pos
+}
+
 // handleKey processes the given key and, optionally, returns a line of text
 // that the user has entered.
 func (t *Terminal) handleKey(key int) (line string, ok bool) {
@@ -282,50 +360,14 @@ func (t *Terminal) handleKey(key int) (line string, ok bool) {
 		if t.pos == 0 {
 			return
 		}
-		t.pos--
-		t.moveCursorToPos(t.pos)
-
-		copy(t.line[t.pos:], t.line[1+t.pos:])
-		t.line = t.line[:len(t.line)-1]
-		if t.echo {
-			t.writeLine(t.line[t.pos:])
-		}
-		t.queue(eraseUnderCursor)
-		t.moveCursorToPos(t.pos)
+		t.eraseNPreviousChars(1)
 	case keyAltLeft:
 		// move left by a word.
-		if t.pos == 0 {
-			return
-		}
-		t.pos--
-		for t.pos > 0 {
-			if t.line[t.pos] != ' ' {
-				break
-			}
-			t.pos--
-		}
-		for t.pos > 0 {
-			if t.line[t.pos] == ' ' {
-				t.pos++
-				break
-			}
-			t.pos--
-		}
+		t.pos -= t.countToLeftWord()
 		t.moveCursorToPos(t.pos)
 	case keyAltRight:
 		// move right by a word.
-		for t.pos < len(t.line) {
-			if t.line[t.pos] == ' ' {
-				break
-			}
-			t.pos++
-		}
-		for t.pos < len(t.line) {
-			if t.line[t.pos] != ' ' {
-				break
-			}
-			t.pos++
-		}
+		t.pos += t.countToRightWord()
 		t.moveCursorToPos(t.pos)
 	case keyLeft:
 		if t.pos == 0 {
@@ -385,6 +427,18 @@ func (t *Terminal) handleKey(key int) (line string, ok bool) {
 		t.cursorX = 0
 		t.cursorY = 0
 		t.maxLine = 0
+	case keyDeleteWord:
+		// Delete zero or more spaces and then one or more characters.
+		t.eraseNPreviousChars(t.countToLeftWord())
+	case keyDeleteLine:
+		// Delete everything from the current cursor position to the
+		// end of line.
+		for i := t.pos; i < len(t.line); i++ {
+			t.queue(space)
+			t.cursorX++
+		}
+		t.line = t.line[:t.pos]
+		t.moveCursorToPos(t.pos)
 	default:
 		if t.AutoCompleteCallback != nil {
 			t.lock.Unlock()

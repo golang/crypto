@@ -101,11 +101,47 @@ var keyPressTests = []struct {
 		line:           "line1xxx",
 		throwAwayLines: 2,
 	},
+	{
+		in:   "\027\r",
+		line: "",
+	},
+	{
+		in:   "a\027\r",
+		line: "",
+	},
+	{
+		in:   "a \027\r",
+		line: "",
+	},
+	{
+		in:   "a b\027\r",
+		line: "a ",
+	},
+	{
+		in:   "a b \027\r",
+		line: "a ",
+	},
+	{
+		in:   "one two thr\x1b[D\027\r",
+		line: "one two r",
+	},
+	{
+		in:   "\013\r",
+		line: "",
+	},
+	{
+		in:   "a\013\r",
+		line: "a",
+	},
+	{
+		in:   "ab\x1b[D\013\r",
+		line: "a",
+	},
 }
 
 func TestKeyPresses(t *testing.T) {
 	for i, test := range keyPressTests {
-		for j := 0; j < len(test.in); j++ {
+		for j := 1; j < len(test.in); j++ {
 			c := &MockTerminal{
 				toSend:       []byte(test.in),
 				bytesPerRead: j,
