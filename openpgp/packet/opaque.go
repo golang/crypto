@@ -7,6 +7,7 @@ package packet
 import (
 	"bytes"
 	"code.google.com/p/go.crypto/openpgp/errors"
+	"encoding/binary"
 	"io"
 	"io/ioutil"
 )
@@ -83,18 +84,15 @@ func (or *OpaqueReader) Next() (op *OpaquePacket, err error) {
 // OpaqueSubpacket represents an unparsed OpenPGP subpacket,
 // as found in signature and user attribute packets.
 type OpaqueSubpacket struct {
-	Length   uint32
 	SubType  uint8
 	Contents []byte
 }
 
 // OpaqueSubpackets extracts opaque, unparsed OpenPGP subpackets from
 // their byte representation.
-func OpaqueSubpackets(contents []byte) ([]*OpaqueSubpacket, error) {
-	var result []*OpaqueSubpacket
-	var err error
+func OpaqueSubpackets(contents []byte) (result []*OpaqueSubpacket, err error) {
 	var (
-		subHeaderLen uint32
+		subHeaderLen int
 		subPacket    *OpaqueSubpacket
 	)
 	for len(contents) > 0 {
@@ -103,47 +101,64 @@ func OpaqueSubpackets(contents []byte) ([]*OpaqueSubpacket, error) {
 			break
 		}
 		result = append(result, subPacket)
-		contents = contents[subHeaderLen+subPacket.Length:]
+		contents = contents[subHeaderLen+len(subPacket.Contents):]
 	}
-	return result, err
+	return
 }
 
-func nextSubpacket(contents []byte) (subHeaderLen uint32, subPacket *OpaqueSubpacket, err error) {
+func nextSubpacket(contents []byte) (subHeaderLen int, subPacket *OpaqueSubpacket, err error) {
 	// RFC 4880, section 5.2.3.1
+	var subLen uint32
 	if len(contents) < 1 {
 		goto Truncated
 	}
 	subPacket = &OpaqueSubpacket{}
 	switch {
 	case contents[0] < 192:
-		subHeaderLen = 1
-		subPacket.Length = uint32(contents[0])
+		subHeaderLen = 2 // 1 length byte, 1 subtype byte
+		if len(contents) < subHeaderLen {
+			goto Truncated
+		}
+		subLen = uint32(contents[0])
 		contents = contents[1:]
 	case contents[0] < 255:
-		subHeaderLen = 2
-		if len(contents) < 2 {
+		subHeaderLen = 3 // 2 length bytes, 1 subtype
+		if len(contents) < subHeaderLen {
 			goto Truncated
 		}
-		subPacket.Length = uint32(contents[0]-192)<<8 + uint32(contents[1]) + 192
+		subLen = uint32(contents[0]-192)<<8 + uint32(contents[1]) + 192
 		contents = contents[2:]
 	default:
-		subHeaderLen = 5
-		if len(contents) < 5 {
+		subHeaderLen = 6 // 5 length bytes, 1 subtype
+		if len(contents) < subHeaderLen {
 			goto Truncated
 		}
-		subPacket.Length = uint32(contents[1])<<24 |
+		subLen = uint32(contents[1])<<24 |
 			uint32(contents[2])<<16 |
 			uint32(contents[3])<<8 |
 			uint32(contents[4])
 		contents = contents[5:]
 	}
-	if subPacket.Length > uint32(len(contents)) {
+	if subLen > uint32(len(contents)) {
 		goto Truncated
 	}
 	subPacket.SubType = contents[0]
-	subPacket.Contents = contents[1:subPacket.Length]
+	subPacket.Contents = contents[1:subLen]
 	return
 Truncated:
 	err = errors.StructuralError("subpacket truncated")
+	return
+}
+
+func (osp *OpaqueSubpacket) Serialize(w io.Writer) (err error) {
+	buf := make([]byte, 6)
+	buf[0] = 0xff
+	// Header length includes the subtype byte
+	binary.BigEndian.PutUint32(buf[1:5], uint32(len(osp.Contents)+1))
+	buf[5] = osp.SubType
+	if _, err = w.Write(buf); err != nil {
+		return
+	}
+	_, err = w.Write(osp.Contents)
 	return
 }

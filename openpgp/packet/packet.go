@@ -293,6 +293,7 @@ const (
 	packetTypeLiteralData               packetType = 11
 	packetTypeUserId                    packetType = 13
 	packetTypePublicSubkey              packetType = 14
+	packetTypeUserAttribute             packetType = 17
 	packetTypeSymmetricallyEncryptedMDC packetType = 18
 )
 
@@ -333,6 +334,8 @@ func Read(r io.Reader) (p Packet, err error) {
 		p = new(LiteralData)
 	case packetTypeUserId:
 		p = new(UserId)
+	case packetTypeUserAttribute:
+		p = new(UserAttribute)
 	case packetTypeSymmetricallyEncryptedMDC:
 		se := new(SymmetricallyEncrypted)
 		se.MDC = true
