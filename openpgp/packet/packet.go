@@ -377,6 +377,9 @@ const (
 	PubKeyAlgoRSASignOnly    PublicKeyAlgorithm = 3
 	PubKeyAlgoElGamal        PublicKeyAlgorithm = 16
 	PubKeyAlgoDSA            PublicKeyAlgorithm = 17
+	// RFC 6637, Section 5.
+	PubKeyAlgoECDH  PublicKeyAlgorithm = 18
+	PubKeyAlgoECDSA PublicKeyAlgorithm = 19
 )
 
 // CanEncrypt returns true if it's possible to encrypt a message to a public
