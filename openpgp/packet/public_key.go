@@ -340,7 +340,7 @@ func (pk *PublicKey) parseElGamal(r io.Reader) (err error) {
 // SerializeSignaturePrefix writes the prefix for this public key to the given Writer.
 // The prefix is used when calculating a signature over this public key. See
 // RFC 4880, section 5.2.4.
-func (pk *PublicKey) SerializeSignaturePrefix(h hash.Hash) {
+func (pk *PublicKey) SerializeSignaturePrefix(h io.Writer) {
 	var pLength uint16
 	switch pk.PubKeyAlgo {
 	case PubKeyAlgoRSA, PubKeyAlgoRSAEncryptOnly, PubKeyAlgoRSASignOnly:
