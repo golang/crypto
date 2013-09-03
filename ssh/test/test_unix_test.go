@@ -182,9 +182,10 @@ func (s *server) TryDial(config *ssh.ClientConfig) (*ssh.ClientConn, error) {
 	if err != nil {
 		s.t.Fatalf("UnixConn.File: %v", err)
 	}
+	defer f.Close()
 	s.cmd.Stdin = f
 	s.cmd.Stdout = f
-	s.cmd.Stderr = os.Stderr
+	s.cmd.Stderr = &s.output
 	if err := s.cmd.Start(); err != nil {
 		s.t.Fail()
 		s.Shutdown()
@@ -206,14 +207,16 @@ func (s *server) Dial(config *ssh.ClientConfig) *ssh.ClientConn {
 
 func (s *server) Shutdown() {
 	if s.cmd != nil && s.cmd.Process != nil {
-		// don't check for Kill error; if it fails it's most likely
-		// "os: process already finished", and we don't care about that.
-		s.cmd.Process.Kill()
+		// Don't check for errors; if it fails it's most
+		// likely "os: process already finished", and we don't
+		// care about that. Use os.Interrupt, so child
+		// processes are killed too.
+		s.cmd.Process.Signal(os.Interrupt)
 		s.cmd.Wait()
 	}
 	if s.t.Failed() {
 		// log any output from sshd process
-		s.t.Logf("sshd: %q", s.output.String())
+		s.t.Logf("sshd: %s", s.output.String())
 	}
 	s.cleanup()
 }
