@@ -344,13 +344,14 @@ func subpacketLengthLength(length int) int {
 
 // serializeSubpacketLength marshals the given length into to.
 func serializeSubpacketLength(to []byte, length int) int {
+	// RFC 4880, Section 4.2.2.
 	if length < 192 {
 		to[0] = byte(length)
 		return 1
 	}
 	if length < 16320 {
 		length -= 192
-		to[0] = byte(length >> 8)
+		to[0] = byte((length >> 8) + 192)
 		to[1] = byte(length)
 		return 2
 	}

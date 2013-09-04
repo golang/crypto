@@ -7,7 +7,6 @@ package packet
 import (
 	"bytes"
 	"code.google.com/p/go.crypto/openpgp/errors"
-	"encoding/binary"
 	"io"
 	"io/ioutil"
 )
@@ -152,11 +151,9 @@ Truncated:
 
 func (osp *OpaqueSubpacket) Serialize(w io.Writer) (err error) {
 	buf := make([]byte, 6)
-	buf[0] = 0xff
-	// Header length includes the subtype byte
-	binary.BigEndian.PutUint32(buf[1:5], uint32(len(osp.Contents)+1))
-	buf[5] = osp.SubType
-	if _, err = w.Write(buf); err != nil {
+	n := serializeSubpacketLength(buf, len(osp.Contents)+1)
+	buf[n] = osp.SubType
+	if _, err = w.Write(buf[:n+1]); err != nil {
 		return
 	}
 	_, err = w.Write(osp.Contents)
