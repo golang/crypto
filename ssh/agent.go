@@ -206,7 +206,7 @@ func (ac *AgentClient) RequestIdentities() ([]*AgentKey, error) {
 // as defined in [PROTOCOL.agent] section 2.6.2.
 func (ac *AgentClient) SignRequest(key interface{}, data []byte) ([]byte, error) {
 	req := marshal(agentSignRequest, signRequestAgentMsg{
-		KeyBlob: serializePublickey(key),
+		KeyBlob: serializePublicKey(key),
 		Data:    data,
 	})
 

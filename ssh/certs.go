@@ -160,7 +160,7 @@ func marshalOpenSSHCertV01(cert *OpenSSHCertV01) []byte {
 		panic("ssh: unknown public key type in cert")
 	}
 
-	sigKey := serializePublickey(cert.SignatureKey)
+	sigKey := serializePublicKey(cert.SignatureKey)
 
 	length := stringLength(len(cert.Nonce))
 	length += len(pubKey)

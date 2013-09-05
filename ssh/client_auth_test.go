@@ -135,7 +135,7 @@ var (
 		},
 		PublicKeyCallback: func(conn *ServerConn, user, algo string, pubkey []byte) bool {
 			key := &clientKeychain.keys[0].(*rsa.PrivateKey).PublicKey
-			expected := []byte(serializePublickey(key))
+			expected := []byte(serializePublicKey(key))
 			algoname := algoName(key)
 			return user == "testuser" && algo == algoname && bytes.Equal(pubkey, expected)
 		},
@@ -198,7 +198,7 @@ func newMockAuthServer(t *testing.T) string {
 	return l.Addr().String()
 }
 
-func TestClientAuthPublickey(t *testing.T) {
+func TestClientAuthPublicKey(t *testing.T) {
 	config := &ClientConfig{
 		User: "testuser",
 		Auth: []ClientAuth{
@@ -283,7 +283,7 @@ func TestClientAuthWrongKeyboardInteractive(t *testing.T) {
 }
 
 // the mock server will only authenticate ssh-rsa keys
-func TestClientAuthInvalidPublickey(t *testing.T) {
+func TestClientAuthInvalidPublicKey(t *testing.T) {
 	kc := new(keychain)
 	kc.keys = append(kc.keys, dsakey)
 	config := &ClientConfig{

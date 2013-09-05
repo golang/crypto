@@ -214,7 +214,7 @@ func (p *publickeyAuth) auth(session []byte, user string, t *transport, rand io.
 	// methods that may continue if this auth is not successful.
 	var methods []string
 	for i, key := range validKeys {
-		pubkey := serializePublickey(key)
+		pubkey := serializePublicKey(key)
 		algoname := algoName(key)
 		sign, err := p.Sign(i, rand, buildDataSignedForAuth(session, userAuthRequestMsg{
 			User:    user,
@@ -254,7 +254,7 @@ func (p *publickeyAuth) auth(session []byte, user string, t *transport, rand io.
 
 // validateKey validates the key provided it is acceptable to the server.
 func (p *publickeyAuth) validateKey(key interface{}, user string, t *transport) (bool, error) {
-	pubkey := serializePublickey(key)
+	pubkey := serializePublicKey(key)
 	algoname := algoName(key)
 	msg := publickeyAuthMsg{
 		User:     user,
@@ -272,7 +272,7 @@ func (p *publickeyAuth) validateKey(key interface{}, user string, t *transport) 
 }
 
 func (p *publickeyAuth) confirmKeyAck(key interface{}, t *transport) (bool, error) {
-	pubkey := serializePublickey(key)
+	pubkey := serializePublicKey(key)
 	algoname := algoName(key)
 
 	for {

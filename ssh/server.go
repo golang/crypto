@@ -82,7 +82,7 @@ func (s *ServerConfig) SetRSAPrivateKey(pemBytes []byte) error {
 		return err
 	}
 
-	s.rsaSerialized = marshalPrivRSA(s.rsa)
+	s.rsaSerialized = serializePublicKey(&s.rsa.PublicKey)
 	return nil
 }
 

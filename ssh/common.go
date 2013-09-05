@@ -248,7 +248,7 @@ func serializeSignature(algoname string, sig []byte) []byte {
 }
 
 // serialize a *rsa.PublicKey or *dsa.PublicKey according to RFC 4253 6.6.
-func serializePublickey(key interface{}) []byte {
+func serializePublicKey(key interface{}) []byte {
 	var pubKeyBytes []byte
 	algoname := algoName(key)
 	switch key := key.(type) {
@@ -304,7 +304,7 @@ func algoName(key interface{}) string {
 			}
 		}
 	}
-	panic("unexpected key type")
+	panic(fmt.Sprintf("unexpected key type %T", key))
 }
 
 // buildDataSignedForAuth returns the data that is signed in order to prove

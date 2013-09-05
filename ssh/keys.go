@@ -125,21 +125,6 @@ func parseECDSA(in []byte) (out *ecdsa.PublicKey, rest []byte, ok bool) {
 	return key, in, ok
 }
 
-// marshalPrivRSA serializes an RSA private key according to RFC 4253, section 6.6.
-func marshalPrivRSA(priv *rsa.PrivateKey) []byte {
-	e := new(big.Int).SetInt64(int64(priv.E))
-	length := stringLength(len(KeyAlgoRSA))
-	length += intLength(e)
-	length += intLength(priv.N)
-
-	ret := make([]byte, length)
-	r := marshalString(ret, []byte(KeyAlgoRSA))
-	r = marshalInt(r, e)
-	r = marshalInt(r, priv.N)
-
-	return ret
-}
-
 // marshalPubRSA serializes an RSA public key according to RFC 4253, section 6.6.
 func marshalPubRSA(key *rsa.PublicKey) []byte {
 	e := new(big.Int).SetInt64(int64(key.E))
@@ -334,7 +319,7 @@ func MarshalAuthorizedKey(key interface{}) []byte {
 	b.WriteString(algoName(key))
 	b.WriteByte(' ')
 	e := base64.NewEncoder(base64.StdEncoding, b)
-	e.Write(serializePublickey(key))
+	e.Write(serializePublicKey(key))
 	e.Close()
 	b.WriteByte('\n')
 	return b.Bytes()
@@ -345,5 +330,5 @@ func MarshalAuthorizedKey(key interface{}) []byte {
 // of ServerConfig's PublicKeyCallback as well as for generating an
 // authorized_keys or host_keys file.
 func MarshalPublicKey(key interface{}) []byte {
-	return serializePublickey(key)
+	return serializePublicKey(key)
 }
