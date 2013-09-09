@@ -340,7 +340,7 @@ func handleAuthResponse(t *transport) (bool, []string, error) {
 	panic("unreachable")
 }
 
-// ClientAuthKeyring returns a ClientAuth using public key authentication via
+// ClientAuthAgent returns a ClientAuth using public key authentication via
 // an agent.
 func ClientAuthAgent(agent *AgentClient) ClientAuth {
 	return ClientAuthKeyring(&agentKeyring{agent: agent})

@@ -9,7 +9,6 @@ import (
 	"crypto"
 	"crypto/dsa"
 	"crypto/rsa"
-	_ "crypto/sha1"
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
@@ -18,6 +17,8 @@ import (
 	"math/big"
 	"strings"
 	"testing"
+
+	_ "crypto/sha1"
 )
 
 // private key for mock server

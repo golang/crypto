@@ -20,12 +20,14 @@ import (
 	"net"
 	"sync"
 
-	_ "crypto/sha256"
-	_ "crypto/sha512"
+	_ "crypto/sha1"
 )
 
 type ServerConfig struct {
-	rsa           *rsa.PrivateKey
+	rsa *rsa.PrivateKey
+
+	// rsaSerialized is the serialized form of the public key that
+	// corresponds to the private key held in the rsa field.
 	rsaSerialized []byte
 
 	// Rand provides the source of entropy for key exchange. If Rand is
@@ -84,18 +86,6 @@ func (s *ServerConfig) SetRSAPrivateKey(pemBytes []byte) error {
 
 	s.rsaSerialized = serializePublicKey(&s.rsa.PublicKey)
 	return nil
-}
-
-func parseRSASig(in []byte) (sig []byte, ok bool) {
-	algo, in, ok := parseString(in)
-	if !ok || string(algo) != hostAlgoRSA {
-		return nil, false
-	}
-	sig, in, ok = parseString(in)
-	if len(in) > 0 {
-		ok = false
-	}
-	return
 }
 
 // cachedPubKey contains the results of querying whether a public key is
@@ -490,7 +480,12 @@ func (s *ServerConn) clientInitHandshake(clientKexInit *kexInitMsg, clientKexIni
 }
 
 func isAcceptableAlgo(algo string) bool {
-	return algo == hostAlgoRSA
+	switch algo {
+	case KeyAlgoRSA, KeyAlgoDSA, KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521,
+		CertAlgoRSAv01, CertAlgoDSAv01, CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01:
+		return true
+	}
+	return false
 }
 
 // testPubKey returns true if the given public key is acceptable for the user.
@@ -607,38 +602,34 @@ userAuthLoop:
 					continue userAuthLoop
 				}
 			} else {
-				sig, payload, ok := parseString(payload)
+				sig, payload, ok := parseSignature(payload)
 				if !ok || len(payload) > 0 {
 					return ParseError{msgUserAuthRequest}
 				}
-				if !isAcceptableAlgo(algo) {
+				// Ensure the public key algo and signature algo
+				// are supported.  Compare the private key
+				// algorithm name that corresponds to algo with
+				// sig.Format.  This is usually the same, but
+				// for certs, the names differ.
+				if !isAcceptableAlgo(algo) || !isAcceptableAlgo(sig.Format) || pubAlgoToPrivAlgo(algo) != sig.Format {
 					break
 				}
-				rsaSig, ok := parseRSASig(sig)
+				signedData := buildDataSignedForAuth(H, userAuthReq, algoBytes, pubKey)
+				key, _, ok := parsePubKey(pubKey)
 				if !ok {
 					return ParseError{msgUserAuthRequest}
 				}
-				signedData := buildDataSignedForAuth(H, userAuthReq, algoBytes, pubKey)
-				switch algo {
-				case hostAlgoRSA:
-					hashFunc := crypto.SHA1
-					h := hashFunc.New()
-					h.Write(signedData)
-					digest := h.Sum(nil)
-					key, _, ok := parsePubKey(pubKey)
-					if !ok {
-						return ParseError{msgUserAuthRequest}
-					}
-					rsaKey, ok := key.(*rsa.PublicKey)
-					if !ok {
-						return ParseError{msgUserAuthRequest}
-					}
-					if rsa.VerifyPKCS1v15(rsaKey, hashFunc, digest, rsaSig) != nil {
-						return ParseError{msgUserAuthRequest}
-					}
-				default:
+				hashFunc, ok := hashFuncs[algo]
+				if !ok {
 					return errors.New("ssh: isAcceptableAlgo incorrect")
 				}
+				h := hashFunc.New()
+				h.Write(signedData)
+				digest := h.Sum(nil)
+				if verifySignature(digest, sig, key) != nil {
+					return ParseError{msgUserAuthRequest}
+				}
+				// TODO(jmpittman): Implement full validation for certificates.
 				s.User = userAuthReq.User
 				if s.testPubKey(userAuthReq.User, algo, pubKey) {
 					break userAuthLoop

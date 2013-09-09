@@ -9,7 +9,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -248,21 +247,10 @@ func verifyHostKeySignature(hostKeyAlgo string, hostKeyBytes []byte, data []byte
 	}
 
 	// Select hash function to match the hostkey algorithm, as per
-	// RFC 4253, section 6.1 (for RSA/DSS) and RFC 5656, section
+	// RFC 4253, section 6.6 (for RSA/DSS) and RFC 5656, section
 	// 6.2.1 (for ECDSA).
-	var hashFunc crypto.Hash
-	switch hostKeyAlgo {
-	case KeyAlgoRSA:
-		hashFunc = crypto.SHA1
-	case KeyAlgoDSA:
-		hashFunc = crypto.SHA1
-	case KeyAlgoECDSA256:
-		hashFunc = crypto.SHA256
-	case KeyAlgoECDSA384:
-		hashFunc = crypto.SHA384
-	case KeyAlgoECDSA521:
-		hashFunc = crypto.SHA512
-	default:
+	hashFunc, ok := hashFuncs[hostKeyAlgo]
+	if !ok {
 		return errors.New("ssh: unknown key algorithm: " + hostKeyAlgo)
 	}
 
@@ -279,18 +267,6 @@ func verifyHostKeySignature(hostKeyAlgo string, hostKeyBytes []byte, data []byte
 	}
 
 	return verifySignature(digest, sig, hostKey)
-}
-
-func verifySignature(hash []byte, sig *signature, key interface{}) error {
-	switch pubKey := key.(type) {
-	case *rsa.PublicKey:
-		return verifyRSASignature(hash, sig, pubKey)
-	}
-	return fmt.Errorf("ssh: unknown key type %T", key)
-}
-
-func verifyRSASignature(hash []byte, sig *signature, key *rsa.PublicKey) error {
-	return rsa.VerifyPKCS1v15(key, crypto.SHA1, hash, sig.Blob)
 }
 
 // kexResult captures the outcome of a key exchange.

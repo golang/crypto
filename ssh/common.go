@@ -14,6 +14,10 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
+
+	_ "crypto/sha1"
+	_ "crypto/sha256"
+	_ "crypto/sha512"
 )
 
 // These are string constants in the SSH protocol.
@@ -37,6 +41,21 @@ var supportedKexAlgos = []string{
 
 var supportedHostKeyAlgos = []string{hostAlgoRSA}
 var supportedCompressions = []string{compressionNone}
+
+// hashFuncs keeps the mapping of supported algorithms to their respective
+// hashes needed for signature verification.
+var hashFuncs = map[string]crypto.Hash{
+	KeyAlgoRSA:          crypto.SHA1,
+	KeyAlgoDSA:          crypto.SHA1,
+	KeyAlgoECDSA256:     crypto.SHA256,
+	KeyAlgoECDSA384:     crypto.SHA384,
+	KeyAlgoECDSA521:     crypto.SHA512,
+	CertAlgoRSAv01:      crypto.SHA1,
+	CertAlgoDSAv01:      crypto.SHA1,
+	CertAlgoECDSA256v01: crypto.SHA256,
+	CertAlgoECDSA384v01: crypto.SHA384,
+	CertAlgoECDSA521v01: crypto.SHA512,
+}
 
 // dhGroup is a multiplicative group suitable for implementing Diffie-Hellman key agreement.
 type dhGroup struct {
@@ -222,21 +241,11 @@ func ecHash(curve elliptic.Curve) crypto.Hash {
 
 // serialize a signed slice according to RFC 4254 6.6.
 func serializeSignature(algoname string, sig []byte) []byte {
-	switch algoname {
 	// The corresponding private key to a public certificate is always a normal
 	// private key.  For signature serialization purposes, ensure we use the
 	// proper key algorithm name in case the public cert algorithm name is passed.
-	case CertAlgoRSAv01:
-		algoname = KeyAlgoRSA
-	case CertAlgoDSAv01:
-		algoname = KeyAlgoDSA
-	case CertAlgoECDSA256v01:
-		algoname = KeyAlgoECDSA256
-	case CertAlgoECDSA384v01:
-		algoname = KeyAlgoECDSA384
-	case CertAlgoECDSA521v01:
-		algoname = KeyAlgoECDSA521
-	}
+	algoname = pubAlgoToPrivAlgo(algoname)
+
 	length := stringLength(len(algoname))
 	length += stringLength(len(sig))
 
@@ -245,6 +254,60 @@ func serializeSignature(algoname string, sig []byte) []byte {
 	r = marshalString(r, sig)
 
 	return ret
+}
+
+func verifySignature(hash []byte, sig *signature, key interface{}) error {
+	switch pubKey := key.(type) {
+	case *rsa.PublicKey:
+		return verifyRSASignature(hash, sig, pubKey)
+	case *dsa.PublicKey:
+		return verifyDSASignature(hash, sig, pubKey)
+	case *ecdsa.PublicKey:
+		return verifyECDSASignature(hash, sig, pubKey)
+	case *OpenSSHCertV01:
+		return verifySignature(hash, sig, pubKey.Key)
+	}
+	return fmt.Errorf("ssh: unknown key type %T", key)
+}
+
+func verifyRSASignature(hash []byte, sig *signature, key *rsa.PublicKey) error {
+	return rsa.VerifyPKCS1v15(key, crypto.SHA1, hash, sig.Blob)
+}
+
+func verifyDSASignature(hash []byte, sig *signature, key *dsa.PublicKey) error {
+	// Per RFC 4253, section 6.6,
+	// The value for 'dss_signature_blob' is encoded as a string containing
+	// r, followed by s (which are 160-bit integers, without lengths or
+	// padding, unsigned, and in network byte order).
+	// For DSS purposes, sig.Blob should be exactly 40 bytes in length.
+	if len(sig.Blob) != 40 {
+		return fmt.Errorf("ssh: improper dss signature length of %d", len(sig.Blob))
+	}
+	r := new(big.Int).SetBytes(sig.Blob[:20])
+	s := new(big.Int).SetBytes(sig.Blob[20:])
+	if !dsa.Verify(key, hash, r, s) {
+		return errors.New("ssh: unable to verify dsa signature")
+	}
+	return nil
+}
+
+func verifyECDSASignature(hash []byte, sig *signature, key *ecdsa.PublicKey) error {
+	// Per RFC 5656, section 3.1.2,
+	// The ecdsa_signature_blob value has the following specific encoding:
+	//    mpint    r
+	//    mpint    s
+	r, rest, ok := parseInt(sig.Blob)
+	if !ok {
+		return errors.New("ssh: ecdsa signature blob parse failed")
+	}
+	s, rest, ok := parseInt(rest)
+	if !ok || len(rest) > 0 {
+		return errors.New("ssh: ecdsa signature blob parse failed")
+	}
+	if !ecdsa.Verify(key, hash, r, s) {
+		return errors.New("ssh: unable to verify ecdsa signature")
+	}
+	return nil
 }
 
 // serialize a *rsa.PublicKey or *dsa.PublicKey according to RFC 4253 6.6.
@@ -305,6 +368,27 @@ func algoName(key interface{}) string {
 		}
 	}
 	panic(fmt.Sprintf("unexpected key type %T", key))
+}
+
+// pubAlgoToPrivAlgo returns the private key algorithm format name that
+// corresponds to a given public key algorithm format name.  For most
+// public keys, the private key algorithm name is the same.  For some
+// situations, such as openssh certificates, the private key algorithm and
+// public key algorithm names differ.  This accounts for those situations.
+func pubAlgoToPrivAlgo(pubAlgo string) string {
+	switch pubAlgo {
+	case CertAlgoRSAv01:
+		return KeyAlgoRSA
+	case CertAlgoDSAv01:
+		return KeyAlgoDSA
+	case CertAlgoECDSA256v01:
+		return KeyAlgoECDSA256
+	case CertAlgoECDSA384v01:
+		return KeyAlgoECDSA384
+	case CertAlgoECDSA521v01:
+		return KeyAlgoECDSA521
+	}
+	return pubAlgo
 }
 
 // buildDataSignedForAuth returns the data that is signed in order to prove
