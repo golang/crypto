@@ -137,6 +137,10 @@ var keyPressTests = []struct {
 		in:   "ab\x1b[D\013\r",
 		line: "a",
 	},
+	{
+		in:   "Ξεσκεπάζω\r",
+		line: "Ξεσκεπάζω",
+	},
 }
 
 func TestKeyPresses(t *testing.T) {
