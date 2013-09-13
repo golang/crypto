@@ -6,10 +6,7 @@ package ssh
 
 import (
 	"crypto"
-	"crypto/dsa"
-	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rsa"
 	"errors"
 	"fmt"
 	"math/big"
@@ -239,135 +236,34 @@ func ecHash(curve elliptic.Curve) crypto.Hash {
 	return crypto.SHA512
 }
 
-// serialize a signed slice according to RFC 4254 6.6.
-func serializeSignature(algoname string, sig []byte) []byte {
-	// The corresponding private key to a public certificate is always a normal
-	// private key.  For signature serialization purposes, ensure we use the
-	// proper key algorithm name in case the public cert algorithm name is passed.
-	algoname = pubAlgoToPrivAlgo(algoname)
-
-	length := stringLength(len(algoname))
+// serialize a signed slice according to RFC 4254 6.6. The name should
+// be a key type name, rather than a cert type name.
+func serializeSignature(name string, sig []byte) []byte {
+	length := stringLength(len(name))
 	length += stringLength(len(sig))
 
 	ret := make([]byte, length)
-	r := marshalString(ret, []byte(algoname))
+	r := marshalString(ret, []byte(name))
 	r = marshalString(r, sig)
 
 	return ret
 }
 
-func verifySignature(hash []byte, sig *signature, key interface{}) error {
-	switch pubKey := key.(type) {
-	case *rsa.PublicKey:
-		return verifyRSASignature(hash, sig, pubKey)
-	case *dsa.PublicKey:
-		return verifyDSASignature(hash, sig, pubKey)
-	case *ecdsa.PublicKey:
-		return verifyECDSASignature(hash, sig, pubKey)
-	case *OpenSSHCertV01:
-		return verifySignature(hash, sig, pubKey.Key)
-	}
-	return fmt.Errorf("ssh: unknown key type %T", key)
-}
-
-func verifyRSASignature(hash []byte, sig *signature, key *rsa.PublicKey) error {
-	return rsa.VerifyPKCS1v15(key, crypto.SHA1, hash, sig.Blob)
-}
-
-func verifyDSASignature(hash []byte, sig *signature, key *dsa.PublicKey) error {
-	// Per RFC 4253, section 6.6,
-	// The value for 'dss_signature_blob' is encoded as a string containing
-	// r, followed by s (which are 160-bit integers, without lengths or
-	// padding, unsigned, and in network byte order).
-	// For DSS purposes, sig.Blob should be exactly 40 bytes in length.
-	if len(sig.Blob) != 40 {
-		return fmt.Errorf("ssh: improper dss signature length of %d", len(sig.Blob))
-	}
-	r := new(big.Int).SetBytes(sig.Blob[:20])
-	s := new(big.Int).SetBytes(sig.Blob[20:])
-	if !dsa.Verify(key, hash, r, s) {
-		return errors.New("ssh: unable to verify dsa signature")
-	}
-	return nil
-}
-
-func verifyECDSASignature(hash []byte, sig *signature, key *ecdsa.PublicKey) error {
-	// Per RFC 5656, section 3.1.2,
-	// The ecdsa_signature_blob value has the following specific encoding:
-	//    mpint    r
-	//    mpint    s
-	r, rest, ok := parseInt(sig.Blob)
-	if !ok {
-		return errors.New("ssh: ecdsa signature blob parse failed")
-	}
-	s, rest, ok := parseInt(rest)
-	if !ok || len(rest) > 0 {
-		return errors.New("ssh: ecdsa signature blob parse failed")
-	}
-	if !ecdsa.Verify(key, hash, r, s) {
-		return errors.New("ssh: unable to verify ecdsa signature")
-	}
-	return nil
-}
-
-// serialize a *rsa.PublicKey or *dsa.PublicKey according to RFC 4253 6.6.
-func serializePublicKey(key interface{}) []byte {
-	var pubKeyBytes []byte
-	algoname := algoName(key)
-	switch key := key.(type) {
-	case *rsa.PublicKey:
-		pubKeyBytes = marshalPubRSA(key)
-	case *dsa.PublicKey:
-		pubKeyBytes = marshalPubDSA(key)
-	case *ecdsa.PublicKey:
-		pubKeyBytes = marshalPubECDSA(key)
-	case *OpenSSHCertV01:
-		pubKeyBytes = marshalOpenSSHCertV01(key)
-	default:
-		panic("unexpected key type")
-	}
+// MarshalPublicKey serializes a supported key or certificate for use
+// by the SSH wire protocol. It can be used for comparison with the
+// pubkey argument of ServerConfig's PublicKeyCallback as well as for
+// generating an authorized_keys or host_keys file.
+func MarshalPublicKey(key PublicKey) []byte {
+	// See also RFC 4253 6.6.
+	algoname := key.PrivateKeyAlgo()
+	blob := key.Marshal()
 
 	length := stringLength(len(algoname))
-	length += len(pubKeyBytes)
+	length += len(blob)
 	ret := make([]byte, length)
 	r := marshalString(ret, []byte(algoname))
-	copy(r, pubKeyBytes)
+	copy(r, blob)
 	return ret
-}
-
-func algoName(key interface{}) string {
-	switch key.(type) {
-	case *rsa.PublicKey:
-		return KeyAlgoRSA
-	case *dsa.PublicKey:
-		return KeyAlgoDSA
-	case *ecdsa.PublicKey:
-		switch key.(*ecdsa.PublicKey).Params().BitSize {
-		case 256:
-			return KeyAlgoECDSA256
-		case 384:
-			return KeyAlgoECDSA384
-		case 521:
-			return KeyAlgoECDSA521
-		}
-	case *OpenSSHCertV01:
-		switch key.(*OpenSSHCertV01).Key.(type) {
-		case *rsa.PublicKey:
-			return CertAlgoRSAv01
-		case *dsa.PublicKey:
-			return CertAlgoDSAv01
-		case *ecdsa.PublicKey:
-			switch key.(*OpenSSHCertV01).Key.(*ecdsa.PublicKey).Params().BitSize {
-			case 256:
-				return CertAlgoECDSA256v01
-			case 384:
-				return CertAlgoECDSA384v01
-			case 521:
-				return CertAlgoECDSA521v01
-			}
-		}
-	}
-	panic(fmt.Sprintf("unexpected key type %T", key))
 }
 
 // pubAlgoToPrivAlgo returns the private key algorithm format name that

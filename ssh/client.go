@@ -246,18 +246,6 @@ func verifyHostKeySignature(hostKeyAlgo string, hostKeyBytes []byte, data []byte
 		return errors.New("ssh: could not parse hostkey")
 	}
 
-	// Select hash function to match the hostkey algorithm, as per
-	// RFC 4253, section 6.6 (for RSA/DSS) and RFC 5656, section
-	// 6.2.1 (for ECDSA).
-	hashFunc, ok := hashFuncs[hostKeyAlgo]
-	if !ok {
-		return errors.New("ssh: unknown key algorithm: " + hostKeyAlgo)
-	}
-
-	signed := hashFunc.New()
-	signed.Write(data)
-	digest := signed.Sum(nil)
-
 	sig, rest, ok := parseSignatureBody(signature)
 	if len(rest) > 0 || !ok {
 		return errors.New("ssh: signature parse error")
@@ -266,7 +254,10 @@ func verifyHostKeySignature(hostKeyAlgo string, hostKeyBytes []byte, data []byte
 		return fmt.Errorf("ssh: unexpected signature type %q", sig.Format)
 	}
 
-	return verifySignature(digest, sig, hostKey)
+	if !hostKey.Verify(data, sig.Blob) {
+		return errors.New("ssh: host key signature error")
+	}
+	return nil
 }
 
 // kexResult captures the outcome of a key exchange.

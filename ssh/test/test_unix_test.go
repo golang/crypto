@@ -71,7 +71,7 @@ func init() {
 	if err != nil {
 		panic("ParsePKCS1PrivateKey: " + err.Error())
 	}
-	serializedHostKey = ssh.MarshalPublicKey(&priv.PublicKey)
+	serializedHostKey = ssh.MarshalPublicKey(ssh.NewRSAPublicKey(&priv.PublicKey))
 }
 
 type server struct {
@@ -266,15 +266,15 @@ type keychain struct {
 	keys []interface{}
 }
 
-func (k *keychain) Key(i int) (interface{}, error) {
+func (k *keychain) Key(i int) (ssh.PublicKey, error) {
 	if i < 0 || i >= len(k.keys) {
 		return nil, nil
 	}
 	switch key := k.keys[i].(type) {
 	case *rsa.PrivateKey:
-		return &key.PublicKey, nil
+		return ssh.NewRSAPublicKey(&key.PublicKey), nil
 	case *dsa.PrivateKey:
-		return &key.PublicKey, nil
+		return ssh.NewDSAPublicKey(&key.PublicKey), nil
 	}
 	panic("unknown key type")
 }

@@ -99,7 +99,7 @@ func (ak *AgentKey) String() string {
 }
 
 // Key returns an agent's public key as one of the supported key or certificate types.
-func (ak *AgentKey) Key() (interface{}, error) {
+func (ak *AgentKey) Key() (PublicKey, error) {
 	if key, _, ok := parsePubKey(ak.blob); ok {
 		return key, nil
 	}
@@ -204,9 +204,9 @@ func (ac *AgentClient) RequestIdentities() ([]*AgentKey, error) {
 
 // SignRequest requests the signing of data by the agent using a protocol 2 key
 // as defined in [PROTOCOL.agent] section 2.6.2.
-func (ac *AgentClient) SignRequest(key interface{}, data []byte) ([]byte, error) {
+func (ac *AgentClient) SignRequest(key PublicKey, data []byte) ([]byte, error) {
 	req := marshal(agentSignRequest, signRequestAgentMsg{
-		KeyBlob: serializePublicKey(key),
+		KeyBlob: MarshalPublicKey(key),
 		Data:    data,
 	})
 

@@ -65,15 +65,15 @@ type keychain struct {
 	keys []interface{}
 }
 
-func (k *keychain) Key(i int) (interface{}, error) {
+func (k *keychain) Key(i int) (PublicKey, error) {
 	if i < 0 || i >= len(k.keys) {
 		return nil, nil
 	}
 	switch key := k.keys[i].(type) {
 	case *rsa.PrivateKey:
-		return &key.PublicKey, nil
+		return NewRSAPublicKey(&key.PublicKey), nil
 	case *dsa.PrivateKey:
-		return &key.PublicKey, nil
+		return NewDSAPublicKey(&key.PublicKey), nil
 	}
 	panic("unknown key type")
 }
@@ -135,9 +135,10 @@ var (
 			return user == "testuser" && pass == string(clientPassword)
 		},
 		PublicKeyCallback: func(conn *ServerConn, user, algo string, pubkey []byte) bool {
-			key := &clientKeychain.keys[0].(*rsa.PrivateKey).PublicKey
-			expected := []byte(serializePublicKey(key))
-			algoname := algoName(key)
+			rsaKey := &clientKeychain.keys[0].(*rsa.PrivateKey).PublicKey
+			key := NewRSAPublicKey(rsaKey)
+			expected := MarshalPublicKey(key)
+			algoname := key.PublicKeyAlgo()
 			return user == "testuser" && algo == algoname && bytes.Equal(pubkey, expected)
 		},
 		KeyboardInteractiveCallback: func(conn *ServerConn, user string, client ClientKeyboardInteractive) bool {

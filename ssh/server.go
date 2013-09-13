@@ -78,13 +78,12 @@ func (s *ServerConfig) SetRSAPrivateKey(pemBytes []byte) error {
 	if block == nil {
 		return errors.New("ssh: no key found")
 	}
-	var err error
-	s.rsa, err = x509.ParsePKCS1PrivateKey(block.Bytes)
+	rsa, err := x509.ParsePKCS1PrivateKey(block.Bytes)
 	if err != nil {
 		return err
 	}
-
-	s.rsaSerialized = serializePublicKey(&s.rsa.PublicKey)
+	s.rsa = rsa
+	s.rsaSerialized = MarshalPublicKey(NewRSAPublicKey(&rsa.PublicKey))
 	return nil
 }
 
@@ -170,10 +169,7 @@ func (s *ServerConn) kexECDH(curve elliptic.Curve, magics *handshakeMagics, host
 		return nil, err
 	}
 
-	hostKey, err := s.serializedHostKey(hostKeyAlgo)
-	if err != nil {
-		return nil, err
-	}
+	hostKeyBytes := s.config.rsaSerialized
 
 	serializedEphKey := elliptic.Marshal(curve, ephKey.PublicKey.X, ephKey.PublicKey.Y)
 
@@ -186,7 +182,7 @@ func (s *ServerConn) kexECDH(curve elliptic.Curve, magics *handshakeMagics, host
 	writeString(h, magics.serverVersion)
 	writeString(h, magics.clientKexInit)
 	writeString(h, magics.serverKexInit)
-	writeString(h, hostKey)
+	writeString(h, hostKeyBytes)
 	writeString(h, kexECDHInit.ClientPubKey)
 	writeString(h, serializedEphKey)
 
@@ -196,15 +192,15 @@ func (s *ServerConn) kexECDH(curve elliptic.Curve, magics *handshakeMagics, host
 
 	H := h.Sum(nil)
 
-	serializedSig, err := s.serializedHostKeySignature(hostKeyAlgo, H)
+	sig, err := s.serializedHostKeySignature(hostKeyAlgo, H)
 	if err != nil {
 		return nil, err
 	}
 
 	reply := kexECDHReplyMsg{
 		EphemeralPubKey: serializedEphKey,
-		HostKey:         hostKey,
-		Signature:       serializedSig,
+		HostKey:         hostKeyBytes,
+		Signature:       sig,
 	}
 
 	serialized := marshal(msgKexECDHReply, reply)
@@ -218,14 +214,6 @@ func (s *ServerConn) kexECDH(curve elliptic.Curve, magics *handshakeMagics, host
 		HostKey: reply.HostKey,
 		Hash:    hashFunc,
 	}, nil
-}
-
-func (s *ServerConn) serializedHostKey(hostKeyAlgo string) ([]byte, error) {
-	switch hostKeyAlgo {
-	case hostAlgoRSA:
-		return s.config.rsaSerialized, nil
-	}
-	return nil, errors.New("ssh: internal error")
 }
 
 // validateECPublicKey checks that the point is a valid public key for
@@ -280,17 +268,14 @@ func (s *ServerConn) kexDH(group *dhGroup, hashFunc crypto.Hash, magics *handsha
 		return nil, err
 	}
 
-	hostKey, err := s.serializedHostKey(hostKeyAlgo)
-	if err != nil {
-		return nil, err
-	}
+	hostKeyBytes := s.config.rsaSerialized
 
 	h := hashFunc.New()
 	writeString(h, magics.clientVersion)
 	writeString(h, magics.serverVersion)
 	writeString(h, magics.clientKexInit)
 	writeString(h, magics.serverKexInit)
-	writeString(h, hostKey)
+	writeString(h, hostKeyBytes)
 	writeInt(h, kexDHInit.X)
 	writeInt(h, Y)
 
@@ -300,15 +285,15 @@ func (s *ServerConn) kexDH(group *dhGroup, hashFunc crypto.Hash, magics *handsha
 
 	H := h.Sum(nil)
 
-	serializedSig, err := s.serializedHostKeySignature(hostKeyAlgo, H)
+	sig, err := s.serializedHostKeySignature(hostKeyAlgo, H)
 	if err != nil {
 		return nil, err
 	}
 
 	kexDHReply := kexDHReplyMsg{
-		HostKey:   hostKey,
+		HostKey:   hostKeyBytes,
 		Y:         Y,
-		Signature: serializedSig,
+		Signature: sig,
 	}
 	packet = marshal(msgKexDHReply, kexDHReply)
 
@@ -316,7 +301,7 @@ func (s *ServerConn) kexDH(group *dhGroup, hashFunc crypto.Hash, magics *handsha
 	return &kexResult{
 		H:       H,
 		K:       K,
-		HostKey: hostKey,
+		HostKey: hostKeyBytes,
 		Hash:    hashFunc,
 	}, nil
 }
@@ -417,7 +402,6 @@ func (s *ServerConn) clientInitHandshake(clientKexInit *kexInitMsg, clientKexIni
 	if !ok {
 		return errors.New("ssh: no common algorithms")
 	}
-
 	if clientKexInit.FirstKexFollows && kexAlgo != clientKexInit.KexAlgos[0] {
 		// The client sent a Kex message for the wrong algorithm,
 		// which we have to ignore.
@@ -619,14 +603,8 @@ userAuthLoop:
 				if !ok {
 					return ParseError{msgUserAuthRequest}
 				}
-				hashFunc, ok := hashFuncs[algo]
-				if !ok {
-					return errors.New("ssh: isAcceptableAlgo incorrect")
-				}
-				h := hashFunc.New()
-				h.Write(signedData)
-				digest := h.Sum(nil)
-				if verifySignature(digest, sig, key) != nil {
+
+				if !key.Verify(signedData, sig.Blob) {
 					return ParseError{msgUserAuthRequest}
 				}
 				// TODO(jmpittman): Implement full validation for certificates.

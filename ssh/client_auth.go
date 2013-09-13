@@ -155,9 +155,8 @@ func ClientAuthPassword(impl ClientPassword) ClientAuth {
 
 // ClientKeyring implements access to a client key ring.
 type ClientKeyring interface {
-	// Key returns the i'th *rsa.Publickey or *dsa.Publickey, or nil if
-	// no key exists at i.
-	Key(i int) (key interface{}, err error)
+	// Key returns the i'th Publickey, or nil if no key exists at i.
+	Key(i int) (key PublicKey, err error)
 
 	// Sign returns a signature of the given data using the i'th key
 	// and the supplied random source.
@@ -190,7 +189,7 @@ func (p *publickeyAuth) auth(session []byte, user string, t *transport, rand io.
 
 	var index int
 	// a map of public keys to their index in the keyring
-	validKeys := make(map[int]interface{})
+	validKeys := make(map[int]PublicKey)
 	for {
 		key, err := p.Key(index)
 		if err != nil {
@@ -214,8 +213,8 @@ func (p *publickeyAuth) auth(session []byte, user string, t *transport, rand io.
 	// methods that may continue if this auth is not successful.
 	var methods []string
 	for i, key := range validKeys {
-		pubkey := serializePublicKey(key)
-		algoname := algoName(key)
+		pubkey := MarshalPublicKey(key)
+		algoname := key.PublicKeyAlgo()
 		sign, err := p.Sign(i, rand, buildDataSignedForAuth(session, userAuthRequestMsg{
 			User:    user,
 			Service: serviceSSH,
@@ -225,7 +224,7 @@ func (p *publickeyAuth) auth(session []byte, user string, t *transport, rand io.
 			return false, nil, err
 		}
 		// manually wrap the serialized signature in a string
-		s := serializeSignature(algoname, sign)
+		s := serializeSignature(key.PublicKeyAlgo(), sign)
 		sig := make([]byte, stringLength(len(s)))
 		marshalString(sig, s)
 		msg := publickeyAuthMsg{
@@ -253,9 +252,9 @@ func (p *publickeyAuth) auth(session []byte, user string, t *transport, rand io.
 }
 
 // validateKey validates the key provided it is acceptable to the server.
-func (p *publickeyAuth) validateKey(key interface{}, user string, t *transport) (bool, error) {
-	pubkey := serializePublicKey(key)
-	algoname := algoName(key)
+func (p *publickeyAuth) validateKey(key PublicKey, user string, t *transport) (bool, error) {
+	pubkey := MarshalPublicKey(key)
+	algoname := key.PublicKeyAlgo()
 	msg := publickeyAuthMsg{
 		User:     user,
 		Service:  serviceSSH,
@@ -271,9 +270,9 @@ func (p *publickeyAuth) validateKey(key interface{}, user string, t *transport) 
 	return p.confirmKeyAck(key, t)
 }
 
-func (p *publickeyAuth) confirmKeyAck(key interface{}, t *transport) (bool, error) {
-	pubkey := serializePublicKey(key)
-	algoname := algoName(key)
+func (p *publickeyAuth) confirmKeyAck(key PublicKey, t *transport) (bool, error) {
+	pubkey := MarshalPublicKey(key)
+	algoname := key.PublicKeyAlgo()
 
 	for {
 		packet, err := t.readPacket()
@@ -352,7 +351,7 @@ type agentKeyring struct {
 	keys  []*AgentKey
 }
 
-func (kr *agentKeyring) Key(i int) (key interface{}, err error) {
+func (kr *agentKeyring) Key(i int) (key PublicKey, err error) {
 	if kr.keys == nil {
 		if kr.keys, err = kr.agent.RequestIdentities(); err != nil {
 			return
@@ -365,7 +364,7 @@ func (kr *agentKeyring) Key(i int) (key interface{}, err error) {
 }
 
 func (kr *agentKeyring) Sign(i int, rand io.Reader, data []byte) (sig []byte, err error) {
-	var key interface{}
+	var key PublicKey
 	if key, err = kr.Key(i); err != nil {
 		return
 	}

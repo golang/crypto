@@ -5,9 +5,6 @@
 package ssh
 
 import (
-	"crypto/dsa"
-	"crypto/ecdsa"
-	"crypto/rsa"
 	"time"
 )
 
@@ -42,7 +39,7 @@ type tuple struct {
 // [PROTOCOL.certkeys]?rev=1.8.
 type OpenSSHCertV01 struct {
 	Nonce                   []byte
-	Key                     interface{} // rsa, dsa, or ecdsa *PublicKey
+	Key                     PublicKey
 	Serial                  uint64
 	Type                    uint32
 	KeyId                   string
@@ -51,8 +48,36 @@ type OpenSSHCertV01 struct {
 	CriticalOptions         []tuple
 	Extensions              []tuple
 	Reserved                []byte
-	SignatureKey            interface{} // rsa, dsa, or ecdsa *PublicKey
+	SignatureKey            PublicKey
 	Signature               *signature
+}
+
+var certAlgoNames = map[string]string{
+	KeyAlgoRSA:      CertAlgoRSAv01,
+	KeyAlgoDSA:      CertAlgoDSAv01,
+	KeyAlgoECDSA256: CertAlgoECDSA256v01,
+	KeyAlgoECDSA384: CertAlgoECDSA384v01,
+	KeyAlgoECDSA521: CertAlgoECDSA521v01,
+}
+
+func (c *OpenSSHCertV01) PublicKeyAlgo() string {
+	algo, ok := certAlgoNames[c.Key.PublicKeyAlgo()]
+	if !ok {
+		panic("unknown cert key type")
+	}
+	return algo
+}
+
+func (c *OpenSSHCertV01) RawKey() interface{} {
+	return c.Key.RawKey()
+}
+
+func (c *OpenSSHCertV01) PrivateKeyAlgo() string {
+	return c.Key.PrivateKeyAlgo()
+}
+
+func (c *OpenSSHCertV01) Verify(data []byte, sig []byte) bool {
+	return c.Key.Verify(data, sig)
 }
 
 func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []byte, ok bool) {
@@ -62,26 +87,12 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 		return
 	}
 
-	switch algo {
-	case CertAlgoRSAv01:
-		var rsaPubKey *rsa.PublicKey
-		if rsaPubKey, in, ok = parseRSA(in); !ok {
-			return
-		}
-		cert.Key = rsaPubKey
-	case CertAlgoDSAv01:
-		var dsaPubKey *dsa.PublicKey
-		if dsaPubKey, in, ok = parseDSA(in); !ok {
-			return
-		}
-		cert.Key = dsaPubKey
-	case CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01:
-		var ecdsaPubKey *ecdsa.PublicKey
-		if ecdsaPubKey, in, ok = parseECDSA(in); !ok {
-			return
-		}
-		cert.Key = ecdsaPubKey
-	default:
+	cert.Key, in, ok = ParsePublicKey(in)
+	if !ok {
+		return
+	}
+
+	if cert.Key.PrivateKeyAlgo() != algo {
 		ok = false
 		return
 	}
@@ -144,23 +155,10 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 	return cert, in, ok
 }
 
-func marshalOpenSSHCertV01(cert *OpenSSHCertV01) []byte {
-	var pubKey []byte
-	switch cert.Key.(type) {
-	case *rsa.PublicKey:
-		k := cert.Key.(*rsa.PublicKey)
-		pubKey = marshalPubRSA(k)
-	case *dsa.PublicKey:
-		k := cert.Key.(*dsa.PublicKey)
-		pubKey = marshalPubDSA(k)
-	case *ecdsa.PublicKey:
-		k := cert.Key.(*ecdsa.PublicKey)
-		pubKey = marshalPubECDSA(k)
-	default:
-		panic("ssh: unknown public key type in cert")
-	}
+func (cert *OpenSSHCertV01) Marshal() []byte {
+	pubKey := MarshalPublicKey(cert.Key)
 
-	sigKey := serializePublicKey(cert.SignatureKey)
+	sigKey := MarshalPublicKey(cert.SignatureKey)
 
 	length := stringLength(len(cert.Nonce))
 	length += len(pubKey)
@@ -314,5 +312,6 @@ func parseSignature(in []byte) (out *signature, rest []byte, ok bool) {
 		return
 	}
 
+	// TODO(hanwen): this is a bug; 'rest' gets swallowed.
 	return parseSignatureBody(sigBytes)
 }
