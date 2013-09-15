@@ -141,6 +141,16 @@ var keyPressTests = []struct {
 		in:   "Ξεσκεπάζω\r",
 		line: "Ξεσκεπάζω",
 	},
+	{
+		in:             "£\r\x1b[A\177\r", // non-ASCII char, enter, up, backspace.
+		line:           "",
+		throwAwayLines: 1,
+	},
+	{
+		in:             "£\r££\x1b[A\x1b[B\177\r", // non-ASCII char, enter, 2x non-ASCII, up, down, backspace, enter.
+		line:           "£",
+		throwAwayLines: 1,
+	},
 }
 
 func TestKeyPresses(t *testing.T) {

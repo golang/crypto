@@ -409,19 +409,22 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 			t.historyPending = string(t.line)
 		}
 		t.historyIndex++
-		t.setLine([]rune(entry), len(entry))
+		runes := []rune(entry)
+		t.setLine(runes, len(runes))
 	case keyDown:
 		switch t.historyIndex {
 		case -1:
 			return
 		case 0:
-			t.setLine([]rune(t.historyPending), len(t.historyPending))
+			runes := []rune(t.historyPending)
+			t.setLine(runes, len(runes))
 			t.historyIndex--
 		default:
 			entry, ok := t.history.NthPreviousEntry(t.historyIndex - 1)
 			if ok {
 				t.historyIndex--
-				t.setLine([]rune(entry), len(entry))
+				runes := []rune(entry)
+				t.setLine(runes, len(runes))
 			}
 		}
 	case keyEnter:
