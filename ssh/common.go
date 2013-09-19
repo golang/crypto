@@ -6,7 +6,6 @@ package ssh
 
 import (
 	"crypto"
-	"crypto/elliptic"
 	"errors"
 	"fmt"
 	"math/big"
@@ -221,19 +220,6 @@ func (c *CryptoConfig) macs() []string {
 		return DefaultMACOrder
 	}
 	return c.MACs
-}
-
-// ecHash returns the hash to match the given elliptic curve, see RFC
-// 5656, section 6.2.1
-func ecHash(curve elliptic.Curve) crypto.Hash {
-	bitSize := curve.Params().BitSize
-	switch {
-	case bitSize <= 256:
-		return crypto.SHA256
-	case bitSize <= 384:
-		return crypto.SHA384
-	}
-	return crypto.SHA512
 }
 
 // serialize a signed slice according to RFC 4254 6.6. The name should

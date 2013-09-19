@@ -1,60 +1,138 @@
 package ssh
 
 import (
-	"crypto"
 	"crypto/dsa"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"reflect"
+	"strings"
 	"testing"
 )
 
-func TestRSAMarshal(t *testing.T) {
-	k0 := &rsakey.PublicKey
-	k1 := NewRSAPublicKey(k0)
-	k2, rest, ok := ParsePublicKey(MarshalPublicKey(k1))
-	if !ok {
-		t.Errorf("could not parse back Blob output")
+var ecdsaKey Signer
+
+func rawKey(pub PublicKey) interface{} {
+	switch k := pub.(type) {
+	case *rsaPublicKey:
+		return (*rsa.PublicKey)(k)
+	case *dsaPublicKey:
+		return (*dsa.PublicKey)(k)
+	case *ecdsaPublicKey:
+		return (*ecdsa.PublicKey)(k)
 	}
-	if len(rest) > 0 {
-		t.Errorf("trailing junk in RSA Blob() output")
-	}
-	if !reflect.DeepEqual(k0, k2.RawKey().(*rsa.PublicKey)) {
-		t.Errorf("got %#v in roundtrip, want %#v", k2.RawKey(), k0)
+	panic("unknown key type")
+}
+
+func TestKeyMarshalParse(t *testing.T) {
+	keys := []Signer{rsaKey, dsaKey, ecdsaKey}
+	for _, priv := range keys {
+		pub := priv.PublicKey()
+		roundtrip, rest, ok := ParsePublicKey(MarshalPublicKey(pub))
+		if !ok {
+			t.Errorf("ParsePublicKey(%T) failed", pub)
+		}
+
+		if len(rest) > 0 {
+			t.Errorf("ParsePublicKey(%T): trailing junk", pub)
+		}
+
+		k1 := rawKey(pub)
+		k2 := rawKey(roundtrip)
+
+		if !reflect.DeepEqual(k1, k2) {
+			t.Errorf("got %#v in roundtrip, want %#v", k2, k1)
+		}
 	}
 }
 
-func TestRSAKeyVerify(t *testing.T) {
-	pub := NewRSAPublicKey(&rsakey.PublicKey)
-
-	data := []byte("sign me")
-	h := crypto.SHA1.New()
-	h.Write(data)
-	digest := h.Sum(nil)
-
-	sig, err := rsa.SignPKCS1v15(rand.Reader, rsakey, crypto.SHA1, digest)
+func TestUnsupportedCurves(t *testing.T) {
+	raw, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
 	if err != nil {
-		t.Fatalf("SignPKCS1v15: %v", err)
+		t.Fatalf("GenerateKey: %v", err)
 	}
 
-	if !pub.Verify(data, sig) {
-		t.Errorf("publicKey.Verify failed")
+	if _, err = NewSignerFromKey(raw); err == nil || !strings.Contains(err.Error(), "only P256") {
+		t.Fatalf("NewPrivateKey should not succeed with P224, got: %v", err)
+	}
+
+	if _, err = NewPublicKey(&raw.PublicKey); err == nil || !strings.Contains(err.Error(), "only P256") {
+		t.Fatalf("NewPublicKey should not succeed with P224, got: %v", err)
 	}
 }
 
-func TestDSAMarshal(t *testing.T) {
-	k0 := &dsakey.PublicKey
-	k1 := NewDSAPublicKey(k0)
-	k2, rest, ok := ParsePublicKey(MarshalPublicKey(k1))
+func TestNewPublicKey(t *testing.T) {
+	keys := []Signer{rsaKey, dsaKey, ecdsaKey}
+	for _, k := range keys {
+		raw := rawKey(k.PublicKey())
+		pub, err := NewPublicKey(raw)
+		if err != nil {
+			t.Errorf("NewPublicKey(%#v): %v", raw, err)
+		}
+		if !reflect.DeepEqual(k.PublicKey(), pub) {
+			t.Errorf("NewPublicKey(%#v) = %#v, want %#v", raw, pub, k.PublicKey())
+		}
+	}
+}
+
+func TestKeySignVerify(t *testing.T) {
+	keys := []Signer{rsaKey, dsaKey, ecdsaKey}
+	for _, priv := range keys {
+		pub := priv.PublicKey()
+
+		data := []byte("sign me")
+		sig, err := priv.Sign(rand.Reader, data)
+		if err != nil {
+			t.Fatalf("Sign(%T): %v", priv, err)
+		}
+
+		if !pub.Verify(data, sig) {
+			t.Errorf("publicKey.Verify(%T) failed", priv)
+		}
+	}
+}
+
+func TestParseRSAPrivateKey(t *testing.T) {
+	key, err := ParsePrivateKey([]byte(testServerPrivateKey))
+	if err != nil {
+		t.Fatalf("ParsePrivateKey: %v", err)
+	}
+
+	rsa, ok := key.(*rsaPrivateKey)
 	if !ok {
-		t.Errorf("could not parse back Blob output")
+		t.Fatalf("got %T, want *rsa.PrivateKey", rsa)
 	}
-	if len(rest) > 0 {
-		t.Errorf("trailing junk in DSA Blob() output")
-	}
-	if !reflect.DeepEqual(k0, k2.RawKey().(*dsa.PublicKey)) {
-		t.Errorf("got %#v in roundtrip, want %#v", k2.RawKey(), k0)
+
+	if err := rsa.Validate(); err != nil {
+		t.Errorf("Validate: %v", err)
 	}
 }
 
-// TODO(hanwen): test for ECDSA marshal.
+func TestParseECPrivateKey(t *testing.T) {
+	// Taken from the data in test/ .
+	pem := []byte(`-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEINGWx0zo6fhJ/0EAfrPzVFyFC9s18lBt3cRoEDhS3ARooAoGCCqGSM49
+AwEHoUQDQgAEi9Hdw6KvZcWxfg2IDhA7UkpDtzzt6ZqJXSsFdLd+Kx4S3Sx4cVO+
+6/ZOXRnPmNAlLUqjShUsUBBngG0u2fqEqA==
+-----END EC PRIVATE KEY-----`)
+
+	key, err := ParsePrivateKey(pem)
+	if err != nil {
+		t.Fatalf("ParsePrivateKey: %v", err)
+	}
+
+	ecKey, ok := key.(*ecdsaPrivateKey)
+	if !ok {
+		t.Fatalf("got %T, want *ecdsaPrivateKey", ecKey)
+	}
+
+	if !validateECPublicKey(ecKey.Curve, ecKey.X, ecKey.Y) {
+		t.Fatalf("public key does not validate.")
+	}
+}
+
+func init() {
+	raw, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	ecdsaKey, _ = NewSignerFromKey(raw)
+}

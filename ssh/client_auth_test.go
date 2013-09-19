@@ -6,12 +6,7 @@ package ssh
 
 import (
 	"bytes"
-	"crypto"
 	"crypto/dsa"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
-	"errors"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -62,32 +57,23 @@ rrxx26itVhJmcvoUhOjwuzSlP2bE5VHAvkGB352YBg==
 
 // keychain implements the ClientKeyring interface
 type keychain struct {
-	keys []interface{}
+	keys []Signer
 }
 
 func (k *keychain) Key(i int) (PublicKey, error) {
 	if i < 0 || i >= len(k.keys) {
 		return nil, nil
 	}
-	switch key := k.keys[i].(type) {
-	case *rsa.PrivateKey:
-		return NewRSAPublicKey(&key.PublicKey), nil
-	case *dsa.PrivateKey:
-		return NewDSAPublicKey(&key.PublicKey), nil
-	}
-	panic("unknown key type")
+
+	return k.keys[i].PublicKey(), nil
 }
 
 func (k *keychain) Sign(i int, rand io.Reader, data []byte) (sig []byte, err error) {
-	hashFunc := crypto.SHA1
-	h := hashFunc.New()
-	h.Write(data)
-	digest := h.Sum(nil)
-	switch key := k.keys[i].(type) {
-	case *rsa.PrivateKey:
-		return rsa.SignPKCS1v15(rand, key, hashFunc, digest)
-	}
-	return nil, errors.New("ssh: unknown key type")
+	return k.keys[i].Sign(rand, data)
+}
+
+func (k *keychain) add(key Signer) {
+	k.keys = append(k.keys, key)
 }
 
 func (k *keychain) loadPEM(file string) error {
@@ -95,15 +81,11 @@ func (k *keychain) loadPEM(file string) error {
 	if err != nil {
 		return err
 	}
-	block, _ := pem.Decode(buf)
-	if block == nil {
-		return errors.New("ssh: no key found")
-	}
-	r, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	key, err := ParsePrivateKey(buf)
 	if err != nil {
 		return err
 	}
-	k.keys = append(k.keys, r)
+	k.add(key)
 	return nil
 }
 
@@ -126,8 +108,8 @@ func (cr *keyboardInteractive) Challenge(user string, instruction string, questi
 
 // reused internally by tests
 var (
-	rsakey         *rsa.PrivateKey
-	dsakey         *dsa.PrivateKey
+	rsaKey         Signer
+	dsaKey         Signer
 	clientKeychain = new(keychain)
 	clientPassword = password("tiger")
 	serverConfig   = &ServerConfig{
@@ -135,8 +117,7 @@ var (
 			return user == "testuser" && pass == string(clientPassword)
 		},
 		PublicKeyCallback: func(conn *ServerConn, user, algo string, pubkey []byte) bool {
-			rsaKey := &clientKeychain.keys[0].(*rsa.PrivateKey).PublicKey
-			key := NewRSAPublicKey(rsaKey)
+			key, _ := clientKeychain.Key(0)
 			expected := MarshalPublicKey(key)
 			algoname := key.PublicKeyAlgo()
 			return user == "testuser" && algo == algoname && bytes.Equal(pubkey, expected)
@@ -157,21 +138,26 @@ var (
 )
 
 func init() {
-	if err := serverConfig.SetRSAPrivateKey([]byte(testServerPrivateKey)); err != nil {
+	var err error
+	rsaKey, err = ParsePrivateKey([]byte(testServerPrivateKey))
+	if err != nil {
 		panic("unable to set private key: " + err.Error())
 	}
+	rawDSAKey := new(dsa.PrivateKey)
 
-	block, _ := pem.Decode([]byte(testClientPrivateKey))
-	rsakey, _ = x509.ParsePKCS1PrivateKey(block.Bytes)
-
-	clientKeychain.keys = append(clientKeychain.keys, rsakey)
-	dsakey = new(dsa.PrivateKey)
 	// taken from crypto/dsa/dsa_test.go
-	dsakey.P, _ = new(big.Int).SetString("A9B5B793FB4785793D246BAE77E8FF63CA52F442DA763C440259919FE1BC1D6065A9350637A04F75A2F039401D49F08E066C4D275A5A65DA5684BC563C14289D7AB8A67163BFBF79D85972619AD2CFF55AB0EE77A9002B0EF96293BDD0F42685EBB2C66C327079F6C98000FBCB79AACDE1BC6F9D5C7B1A97E3D9D54ED7951FEF", 16)
-	dsakey.Q, _ = new(big.Int).SetString("E1D3391245933D68A0714ED34BBCB7A1F422B9C1", 16)
-	dsakey.G, _ = new(big.Int).SetString("634364FC25248933D01D1993ECABD0657CC0CB2CEED7ED2E3E8AECDFCDC4A25C3B15E9E3B163ACA2984B5539181F3EFF1A5E8903D71D5B95DA4F27202B77D2C44B430BB53741A8D59A8F86887525C9F2A6A5980A195EAA7F2FF910064301DEF89D3AA213E1FAC7768D89365318E370AF54A112EFBA9246D9158386BA1B4EEFDA", 16)
-	dsakey.Y, _ = new(big.Int).SetString("32969E5780CFE1C849A1C276D7AEB4F38A23B591739AA2FE197349AEEBD31366AEE5EB7E6C6DDB7C57D02432B30DB5AA66D9884299FAA72568944E4EEDC92EA3FBC6F39F53412FBCC563208F7C15B737AC8910DBC2D9C9B8C001E72FDC40EB694AB1F06A5A2DBD18D9E36C66F31F566742F11EC0A52E9F7B89355C02FB5D32D2", 16)
-	dsakey.X, _ = new(big.Int).SetString("5078D4D29795CBE76D3AACFE48C9AF0BCDBEE91A", 16)
+	rawDSAKey.P, _ = new(big.Int).SetString("A9B5B793FB4785793D246BAE77E8FF63CA52F442DA763C440259919FE1BC1D6065A9350637A04F75A2F039401D49F08E066C4D275A5A65DA5684BC563C14289D7AB8A67163BFBF79D85972619AD2CFF55AB0EE77A9002B0EF96293BDD0F42685EBB2C66C327079F6C98000FBCB79AACDE1BC6F9D5C7B1A97E3D9D54ED7951FEF", 16)
+	rawDSAKey.Q, _ = new(big.Int).SetString("E1D3391245933D68A0714ED34BBCB7A1F422B9C1", 16)
+	rawDSAKey.G, _ = new(big.Int).SetString("634364FC25248933D01D1993ECABD0657CC0CB2CEED7ED2E3E8AECDFCDC4A25C3B15E9E3B163ACA2984B5539181F3EFF1A5E8903D71D5B95DA4F27202B77D2C44B430BB53741A8D59A8F86887525C9F2A6A5980A195EAA7F2FF910064301DEF89D3AA213E1FAC7768D89365318E370AF54A112EFBA9246D9158386BA1B4EEFDA", 16)
+	rawDSAKey.Y, _ = new(big.Int).SetString("32969E5780CFE1C849A1C276D7AEB4F38A23B591739AA2FE197349AEEBD31366AEE5EB7E6C6DDB7C57D02432B30DB5AA66D9884299FAA72568944E4EEDC92EA3FBC6F39F53412FBCC563208F7C15B737AC8910DBC2D9C9B8C001E72FDC40EB694AB1F06A5A2DBD18D9E36C66F31F566742F11EC0A52E9F7B89355C02FB5D32D2", 16)
+	rawDSAKey.X, _ = new(big.Int).SetString("5078D4D29795CBE76D3AACFE48C9AF0BCDBEE91A", 16)
+
+	dsaKey, err = NewSignerFromKey(rawDSAKey)
+	if err != nil {
+		panic("NewSignerFromKey: " + err.Error())
+	}
+	clientKeychain.add(rsaKey)
+	serverConfig.AddHostKey(rsaKey)
 }
 
 // newMockAuthServer creates a new Server bound to
@@ -287,7 +273,8 @@ func TestClientAuthWrongKeyboardInteractive(t *testing.T) {
 // the mock server will only authenticate ssh-rsa keys
 func TestClientAuthInvalidPublicKey(t *testing.T) {
 	kc := new(keychain)
-	kc.keys = append(kc.keys, dsakey)
+
+	kc.add(dsaKey)
 	config := &ClientConfig{
 		User: "testuser",
 		Auth: []ClientAuth{
@@ -305,7 +292,8 @@ func TestClientAuthInvalidPublicKey(t *testing.T) {
 // the client should authenticate with the second key
 func TestClientAuthRSAandDSA(t *testing.T) {
 	kc := new(keychain)
-	kc.keys = append(kc.keys, dsakey, rsakey)
+	kc.add(dsaKey)
+	kc.add(rsaKey)
 	config := &ClientConfig{
 		User: "testuser",
 		Auth: []ClientAuth{
@@ -321,7 +309,7 @@ func TestClientAuthRSAandDSA(t *testing.T) {
 
 func TestClientHMAC(t *testing.T) {
 	kc := new(keychain)
-	kc.keys = append(kc.keys, rsakey)
+	kc.add(rsaKey)
 	for _, mac := range DefaultMACOrder {
 		config := &ClientConfig{
 			User: "testuser",
@@ -343,7 +331,6 @@ func TestClientHMAC(t *testing.T) {
 // issue 4285.
 func TestClientUnsupportedCipher(t *testing.T) {
 	kc := new(keychain)
-	kc.keys = append(kc.keys, rsakey)
 	config := &ClientConfig{
 		User: "testuser",
 		Auth: []ClientAuth{
@@ -362,7 +349,6 @@ func TestClientUnsupportedCipher(t *testing.T) {
 
 func TestClientUnsupportedKex(t *testing.T) {
 	kc := new(keychain)
-	kc.keys = append(kc.keys, rsakey)
 	config := &ClientConfig{
 		User: "testuser",
 		Auth: []ClientAuth{

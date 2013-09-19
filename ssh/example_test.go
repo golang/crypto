@@ -23,13 +23,17 @@ func ExampleListen() {
 		},
 	}
 
-	pemBytes, err := ioutil.ReadFile("id_rsa")
+	privateBytes, err := ioutil.ReadFile("id_rsa")
 	if err != nil {
 		panic("Failed to load private key")
 	}
-	if err = config.SetRSAPrivateKey(pemBytes); err != nil {
+
+	private, err := ParsePrivateKey(privateBytes)
+	if err != nil {
 		panic("Failed to parse private key")
 	}
+
+	config.AddHostKey(private)
 
 	// Once a ServerConfig has been configured, connections can be
 	// accepted.

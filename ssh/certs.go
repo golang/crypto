@@ -68,10 +68,6 @@ func (c *OpenSSHCertV01) PublicKeyAlgo() string {
 	return algo
 }
 
-func (c *OpenSSHCertV01) RawKey() interface{} {
-	return c.Key.RawKey()
-}
-
 func (c *OpenSSHCertV01) PrivateKeyAlgo() string {
 	return c.Key.PrivateKeyAlgo()
 }

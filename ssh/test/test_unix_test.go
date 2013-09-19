@@ -10,12 +10,7 @@ package test
 
 import (
 	"bytes"
-	"crypto"
-	"crypto/dsa"
-	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
-	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"log"
@@ -53,25 +48,23 @@ HostbasedAuthentication no
 `
 
 var (
-	configTmpl        template.Template
-	rsakey            *rsa.PrivateKey
-	serializedHostKey []byte
+	configTmpl template.Template
+	privateKey ssh.Signer
+	hostKey    ssh.Signer
 )
 
 func init() {
 	template.Must(configTmpl.Parse(sshd_config))
-	block, _ := pem.Decode([]byte(testClientPrivateKey))
-	rsakey, _ = x509.ParsePKCS1PrivateKey(block.Bytes)
 
-	block, _ = pem.Decode([]byte(keys["ssh_host_rsa_key"]))
-	if block == nil {
-		panic("pem.Decode ssh_host_rsa_key")
-	}
-	priv, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	var err error
+	hostKey, err = ssh.ParsePrivateKey([]byte(keys["ssh_host_rsa_key"]))
 	if err != nil {
-		panic("ParsePKCS1PrivateKey: " + err.Error())
+		panic("ParsePrivateKey: " + err.Error())
 	}
-	serializedHostKey = ssh.MarshalPublicKey(ssh.NewRSAPublicKey(&priv.PublicKey))
+	privateKey, err = ssh.ParsePrivateKey([]byte(testClientPrivateKey))
+	if err != nil {
+		panic("ParsePrivateKey: " + err.Error())
+	}
 }
 
 type server struct {
@@ -106,26 +99,26 @@ type storedHostKey struct {
 	keys map[string][]byte
 }
 
-func (k *storedHostKey) Add(algo string, public []byte) {
+func (k *storedHostKey) Add(key ssh.PublicKey) {
 	if k.keys == nil {
 		k.keys = map[string][]byte{}
 	}
-	k.keys[algo] = append([]byte(nil), public...)
+	k.keys[key.PublicKeyAlgo()] = append([]byte(nil), ssh.MarshalPublicKey(key)...)
 }
 
 func (k *storedHostKey) Check(addr string, remote net.Addr, algo string, key []byte) error {
 	if k.keys == nil || bytes.Compare(key, k.keys[algo]) != 0 {
-		return errors.New("host key mismatch")
+		return fmt.Errorf("host key mismatch. Got %q, want %q", key, k.keys[algo])
 	}
 	return nil
 }
 
 func clientConfig() *ssh.ClientConfig {
 	keyChecker := storedHostKey{}
-	keyChecker.Add("ssh-rsa", serializedHostKey)
+	keyChecker.Add(hostKey.PublicKey())
 
 	kc := new(keychain)
-	kc.keys = append(kc.keys, rsakey)
+	kc.keys = append(kc.keys, privateKey)
 	config := &ssh.ClientConfig{
 		User: username(),
 		Auth: []ssh.ClientAuth{
@@ -261,34 +254,20 @@ func newServer(t *testing.T) *server {
 	}
 }
 
-// keychain implements the ClientKeyring interface
+// keychain implements the ClientKeyring interface.
 type keychain struct {
-	keys []interface{}
+	keys []ssh.Signer
 }
 
 func (k *keychain) Key(i int) (ssh.PublicKey, error) {
 	if i < 0 || i >= len(k.keys) {
 		return nil, nil
 	}
-	switch key := k.keys[i].(type) {
-	case *rsa.PrivateKey:
-		return ssh.NewRSAPublicKey(&key.PublicKey), nil
-	case *dsa.PrivateKey:
-		return ssh.NewDSAPublicKey(&key.PublicKey), nil
-	}
-	panic("unknown key type")
+	return k.keys[i].PublicKey(), nil
 }
 
 func (k *keychain) Sign(i int, rand io.Reader, data []byte) (sig []byte, err error) {
-	hashFunc := crypto.SHA1
-	h := hashFunc.New()
-	h.Write(data)
-	digest := h.Sum(nil)
-	switch key := k.keys[i].(type) {
-	case *rsa.PrivateKey:
-		return rsa.SignPKCS1v15(rand, key, hashFunc, digest)
-	}
-	return nil, errors.New("ssh: unknown key type")
+	return k.keys[i].Sign(rand, data)
 }
 
 func (k *keychain) loadPEM(file string) error {
@@ -296,14 +275,10 @@ func (k *keychain) loadPEM(file string) error {
 	if err != nil {
 		return err
 	}
-	block, _ := pem.Decode(buf)
-	if block == nil {
-		return errors.New("ssh: no key found")
-	}
-	r, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	key, err := ssh.ParsePrivateKey(buf)
 	if err != nil {
 		return err
 	}
-	k.keys = append(k.keys, r)
+	k.keys = append(k.keys, key)
 	return nil
 }

@@ -11,7 +11,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
 	"math/big"
 )
 
@@ -209,12 +214,17 @@ type PublicKey interface {
 	// Verify that sig is a signature on the given data using this
 	// key. This function will hash the data appropriately first.
 	Verify(data []byte, sigBlob []byte) bool
-
-	// RawKey returns the underlying object, eg. *rsa.PublicKey.
-	RawKey() interface{}
 }
 
-// TODO(hanwen): define PrivateKey too.
+// A Signer is can create signatures that verify against a public key.
+type Signer interface {
+	// PublicKey returns an associated PublicKey instance.
+	PublicKey() PublicKey
+
+	// Sign returns raw signature for the given data. This method
+	// will apply the hash specified for the keytype to the data.
+	Sign(rand io.Reader, data []byte) ([]byte, error)
+}
 
 type rsaPublicKey rsa.PublicKey
 
@@ -223,11 +233,7 @@ func (r *rsaPublicKey) PrivateKeyAlgo() string {
 }
 
 func (r *rsaPublicKey) PublicKeyAlgo() string {
-	return "ssh-rsa"
-}
-
-func (r *rsaPublicKey) RawKey() interface{} {
-	return (*rsa.PublicKey)(r)
+	return r.PrivateKeyAlgo()
 }
 
 // parseRSA parses an RSA key according to RFC 4253, section 6.6.
@@ -250,7 +256,7 @@ func parseRSA(in []byte) (out PublicKey, rest []byte, ok bool) {
 	}
 
 	ok = true
-	return NewRSAPublicKey(key), in, ok
+	return (*rsaPublicKey)(key), in, ok
 }
 
 func (r *rsaPublicKey) Marshal() []byte {
@@ -273,8 +279,19 @@ func (r *rsaPublicKey) Verify(data []byte, sig []byte) bool {
 	return rsa.VerifyPKCS1v15((*rsa.PublicKey)(r), crypto.SHA1, digest, sig) == nil
 }
 
-func NewRSAPublicKey(k *rsa.PublicKey) PublicKey {
-	return (*rsaPublicKey)(k)
+type rsaPrivateKey struct {
+	*rsa.PrivateKey
+}
+
+func (r *rsaPrivateKey) PublicKey() PublicKey {
+	return (*rsaPublicKey)(&r.PrivateKey.PublicKey)
+}
+
+func (r *rsaPrivateKey) Sign(rand io.Reader, data []byte) ([]byte, error) {
+	h := crypto.SHA1.New()
+	h.Write(data)
+	digest := h.Sum(nil)
+	return rsa.SignPKCS1v15(rand, r.PrivateKey, crypto.SHA1, digest)
 }
 
 type dsaPublicKey dsa.PublicKey
@@ -282,11 +299,9 @@ type dsaPublicKey dsa.PublicKey
 func (r *dsaPublicKey) PrivateKeyAlgo() string {
 	return "ssh-dss"
 }
+
 func (r *dsaPublicKey) PublicKeyAlgo() string {
-	return "ssh-dss"
-}
-func (r *dsaPublicKey) RawKey() interface{} {
-	return (*dsa.PublicKey)(r)
+	return r.PrivateKeyAlgo()
 }
 
 // parseDSA parses an DSA key according to RFC 4253, section 6.6.
@@ -310,7 +325,7 @@ func parseDSA(in []byte) (out PublicKey, rest []byte, ok bool) {
 	}
 
 	ok = true
-	return NewDSAPublicKey(key), in, ok
+	return (*dsaPublicKey)(key), in, ok
 }
 
 func (r *dsaPublicKey) Marshal() []byte {
@@ -347,21 +362,33 @@ func (k *dsaPublicKey) Verify(data []byte, sigBlob []byte) bool {
 	return dsa.Verify((*dsa.PublicKey)(k), digest, r, s)
 }
 
-func NewDSAPublicKey(k *dsa.PublicKey) PublicKey {
-	return (*dsaPublicKey)(k)
+type dsaPrivateKey struct {
+	*dsa.PrivateKey
+}
+
+func (k *dsaPrivateKey) PublicKey() PublicKey {
+	return (*dsaPublicKey)(&k.PrivateKey.PublicKey)
+}
+
+func (k *dsaPrivateKey) Sign(rand io.Reader, data []byte) ([]byte, error) {
+	h := crypto.SHA1.New()
+	h.Write(data)
+	digest := h.Sum(nil)
+	r, s, err := dsa.Sign(rand, k.PrivateKey, digest)
+	if err != nil {
+		return nil, err
+	}
+
+	sig := make([]byte, 40)
+	copy(sig[:20], r.Bytes())
+	copy(sig[20:], s.Bytes())
+	return sig, nil
 }
 
 type ecdsaPublicKey ecdsa.PublicKey
 
-func NewECDSAPublicKey(k *ecdsa.PublicKey) PublicKey {
-	return (*ecdsaPublicKey)(k)
-}
-func (r *ecdsaPublicKey) RawKey() interface{} {
-	return (*ecdsa.PublicKey)(r)
-}
-
 func (key *ecdsaPublicKey) PrivateKeyAlgo() string {
-	return "ecdh-sha2-" + key.nistID()
+	return "ecdsa-sha2-" + key.nistID()
 }
 
 func (key *ecdsaPublicKey) nistID() string {
@@ -376,29 +403,25 @@ func (key *ecdsaPublicKey) nistID() string {
 	panic("ssh: unsupported ecdsa key size")
 }
 
-// RFC 5656, section 6.2.1 (for ECDSA).
-func (key *ecdsaPublicKey) hash() crypto.Hash {
-	switch key.Params().BitSize {
-	case 256:
+func supportedEllipticCurve(curve elliptic.Curve) bool {
+	return (curve == elliptic.P256() || curve == elliptic.P384() || curve == elliptic.P521())
+}
+
+// ecHash returns the hash to match the given elliptic curve, see RFC
+// 5656, section 6.2.1
+func ecHash(curve elliptic.Curve) crypto.Hash {
+	bitSize := curve.Params().BitSize
+	switch {
+	case bitSize <= 256:
 		return crypto.SHA256
-	case 384:
+	case bitSize <= 384:
 		return crypto.SHA384
-	case 521:
-		return crypto.SHA512
 	}
-	panic("ssh: unsupported ecdsa key size")
+	return crypto.SHA512
 }
 
 func (key *ecdsaPublicKey) PublicKeyAlgo() string {
-	switch key.Params().BitSize {
-	case 256:
-		return KeyAlgoECDSA256
-	case 384:
-		return KeyAlgoECDSA384
-	case 521:
-		return KeyAlgoECDSA521
-	}
-	panic("ssh: unsupported ecdsa key size")
+	return key.PrivateKeyAlgo()
 }
 
 // parseECDSA parses an ECDSA key according to RFC 5656, section 3.1.
@@ -432,7 +455,7 @@ func parseECDSA(in []byte) (out PublicKey, rest []byte, ok bool) {
 		ok = false
 		return
 	}
-	return NewECDSAPublicKey(key), in, ok
+	return (*ecdsaPublicKey)(key), in, ok
 }
 
 func (key *ecdsaPublicKey) Marshal() []byte {
@@ -450,7 +473,7 @@ func (key *ecdsaPublicKey) Marshal() []byte {
 }
 
 func (key *ecdsaPublicKey) Verify(data []byte, sigBlob []byte) bool {
-	h := key.hash().New()
+	h := ecHash(key.Curve).New()
 	h.Write(data)
 	digest := h.Sum(nil)
 
@@ -467,4 +490,101 @@ func (key *ecdsaPublicKey) Verify(data []byte, sigBlob []byte) bool {
 		return false
 	}
 	return ecdsa.Verify((*ecdsa.PublicKey)(key), digest, r, s)
+}
+
+type ecdsaPrivateKey struct {
+	*ecdsa.PrivateKey
+}
+
+func (k *ecdsaPrivateKey) PublicKey() PublicKey {
+	return (*ecdsaPublicKey)(&k.PrivateKey.PublicKey)
+}
+
+func (k *ecdsaPrivateKey) Sign(rand io.Reader, data []byte) ([]byte, error) {
+	h := ecHash(k.PrivateKey.PublicKey.Curve).New()
+	h.Write(data)
+	digest := h.Sum(nil)
+	r, s, err := ecdsa.Sign(rand, k.PrivateKey, digest)
+	if err != nil {
+		return nil, err
+	}
+
+	sig := make([]byte, intLength(r)+intLength(s))
+	rest := marshalInt(sig, r)
+	marshalInt(rest, s)
+	return sig, nil
+}
+
+// NewPrivateKey takes a pointer to rsa, dsa or ecdsa PrivateKey
+// returns a corresponding Signer instance. EC keys should use P256,
+// P384 or P521.
+func NewSignerFromKey(k interface{}) (Signer, error) {
+	var sshKey Signer
+	switch t := k.(type) {
+	case *rsa.PrivateKey:
+		sshKey = &rsaPrivateKey{t}
+	case *dsa.PrivateKey:
+		sshKey = &dsaPrivateKey{t}
+	case *ecdsa.PrivateKey:
+		if !supportedEllipticCurve(t.Curve) {
+			return nil, errors.New("ssh: only P256, P384 and P521 EC keys are supported.")
+		}
+
+		sshKey = &ecdsaPrivateKey{t}
+	default:
+		return nil, fmt.Errorf("ssh: unsupported key type %T", k)
+	}
+	return sshKey, nil
+}
+
+// NewPublicKey takes a pointer to rsa, dsa or ecdsa PublicKey
+// and returns a corresponding ssh PublicKey instance. EC keys should use P256, P384 or P521.
+func NewPublicKey(k interface{}) (PublicKey, error) {
+	var sshKey PublicKey
+	switch t := k.(type) {
+	case *rsa.PublicKey:
+		sshKey = (*rsaPublicKey)(t)
+	case *ecdsa.PublicKey:
+		if !supportedEllipticCurve(t.Curve) {
+			return nil, errors.New("ssh: only P256, P384 and P521 EC keys are supported.")
+		}
+		sshKey = (*ecdsaPublicKey)(t)
+	case *dsa.PublicKey:
+		sshKey = (*dsaPublicKey)(t)
+	default:
+		return nil, fmt.Errorf("ssh: unsupported key type %T", k)
+	}
+	return sshKey, nil
+}
+
+// ParsePublicKey parses a PEM encoded private key. Currently, only
+// PKCS#1, RSA and ECDSA private keys are supported.
+func ParsePrivateKey(pemBytes []byte) (Signer, error) {
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return nil, errors.New("ssh: no key found")
+	}
+
+	var rawkey interface{}
+	switch block.Type {
+	case "RSA PRIVATE KEY":
+		rsa, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		rawkey = rsa
+	case "EC PRIVATE KEY":
+		ec, err := x509.ParseECPrivateKey(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		rawkey = ec
+
+		// TODO(hanwen): find doc for format and implement PEM parsing
+		// for DSA keys.
+	default:
+		return nil, fmt.Errorf("ssh: unsupported key type %q", block.Type)
+	}
+
+	return NewSignerFromKey(rawkey)
 }
