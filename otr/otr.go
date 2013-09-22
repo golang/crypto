@@ -277,6 +277,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 		in = in[len(msgPrefix) : len(in)-1]
 	} else if version := isQuery(in); version > 0 {
 		c.authState = authStateAwaitingDHKey
+		c.myKeyId = 0
 		toSend = c.encode(c.generateDHCommit())
 		return
 	} else {
@@ -310,6 +311,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 			if err = c.processDHCommit(msg); err != nil {
 				return
 			}
+			c.myKeyId = 0
 			toSend = c.encode(c.generateDHKey())
 			return
 		case authStateAwaitingDHKey:
@@ -328,6 +330,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 				if err = c.processDHCommit(msg); err != nil {
 					return
 				}
+				c.myKeyId = 0
 				toSend = c.encode(c.generateDHKey())
 				return
 			}
@@ -340,6 +343,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 			if err = c.processDHCommit(msg); err != nil {
 				return
 			}
+			c.myKeyId = 0
 			toSend = c.encode(c.generateDHKey())
 			c.authState = authStateAwaitingRevealSig
 		default:
