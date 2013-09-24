@@ -5,15 +5,11 @@
 package ssh
 
 import (
-	"crypto"
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
-	"math/big"
 	"net"
 	"sync"
 )
@@ -63,17 +59,14 @@ func clientWithAddress(c net.Conn, addr string, config *ClientConfig) (*ClientCo
 
 // handshake performs the client side key exchange. See RFC 4253 Section 7.
 func (c *ClientConn) handshake() error {
-	var magics handshakeMagics
-
-	var version []byte
+	var myVersion []byte
 	if len(c.config.ClientVersion) > 0 {
-		version = []byte(c.config.ClientVersion)
+		myVersion = []byte(c.config.ClientVersion)
 	} else {
-		version = clientVersion
+		myVersion = clientVersion
 	}
-	magics.clientVersion = version
-	version = append(version, '\r', '\n')
-	if _, err := c.Write(version); err != nil {
+
+	if _, err := c.Write(append(myVersion, '\r', '\n')); err != nil {
 		return err
 	}
 	if err := c.Flush(); err != nil {
@@ -81,12 +74,12 @@ func (c *ClientConn) handshake() error {
 	}
 
 	// read remote server version
-	version, err := readVersion(c)
+	serverVersion, err := readVersion(c)
 	if err != nil {
 		return err
 	}
-	magics.serverVersion = version
-	c.serverVersion = string(version)
+	c.serverVersion = string(serverVersion)
+
 	clientKexInit := kexInitMsg{
 		KexAlgos:                c.config.Crypto.kexes(),
 		ServerHostKeyAlgos:      supportedHostKeyAlgos,
@@ -98,8 +91,6 @@ func (c *ClientConn) handshake() error {
 		CompressionServerClient: supportedCompressions,
 	}
 	kexInitPacket := marshal(msgKexInit, clientKexInit)
-	magics.clientKexInit = kexInitPacket
-
 	if err := c.writePacket(kexInitPacket); err != nil {
 		return err
 	}
@@ -107,8 +98,6 @@ func (c *ClientConn) handshake() error {
 	if err != nil {
 		return err
 	}
-
-	magics.serverKexInit = packet
 
 	var serverKexInit kexInitMsg
 	if err = unmarshal(&serverKexInit, packet, msgKexInit); err != nil {
@@ -128,23 +117,18 @@ func (c *ClientConn) handshake() error {
 		}
 	}
 
-	var result *kexResult
-	switch kexAlgo {
-	case kexAlgoECDH256:
-		result, err = c.kexECDH(elliptic.P256(), &magics, hostKeyAlgo)
-	case kexAlgoECDH384:
-		result, err = c.kexECDH(elliptic.P384(), &magics, hostKeyAlgo)
-	case kexAlgoECDH521:
-		result, err = c.kexECDH(elliptic.P521(), &magics, hostKeyAlgo)
-	case kexAlgoDH14SHA1:
-		dhGroup14Once.Do(initDHGroup14)
-		result, err = c.kexDH(crypto.SHA1, dhGroup14, &magics, hostKeyAlgo)
-	case kexAlgoDH1SHA1:
-		dhGroup1Once.Do(initDHGroup1)
-		result, err = c.kexDH(crypto.SHA1, dhGroup1, &magics, hostKeyAlgo)
-	default:
-		err = fmt.Errorf("ssh: unexpected key exchange algorithm %v", kexAlgo)
+	kex, ok := kexAlgoMap[kexAlgo]
+	if !ok {
+		return fmt.Errorf("ssh: unexpected key exchange algorithm %v", kexAlgo)
 	}
+
+	magics := handshakeMagics{
+		clientVersion: myVersion,
+		serverVersion: serverVersion,
+		clientKexInit: kexInitPacket,
+		serverKexInit: packet,
+	}
+	result, err := kex.Client(c, c.config.rand(), &magics)
 	if err != nil {
 		return err
 	}
@@ -164,7 +148,8 @@ func (c *ClientConn) handshake() error {
 	if err = c.writePacket([]byte{msgNewKeys}); err != nil {
 		return err
 	}
-	if err = c.transport.writer.setupKeys(clientKeys, result.K, result.H, result.H, result.Hash); err != nil {
+
+	if err = c.transport.writer.setupKeys(clientKeys, result.K, result.H, result.H, kex.Hash()); err != nil {
 		return err
 	}
 	if packet, err = c.readPacket(); err != nil {
@@ -173,70 +158,10 @@ func (c *ClientConn) handshake() error {
 	if packet[0] != msgNewKeys {
 		return UnexpectedMessageError{msgNewKeys, packet[0]}
 	}
-	if err := c.transport.reader.setupKeys(serverKeys, result.K, result.H, result.H, result.Hash); err != nil {
+	if err := c.transport.reader.setupKeys(serverKeys, result.K, result.H, result.H, kex.Hash()); err != nil {
 		return err
 	}
 	return c.authenticate(result.H)
-}
-
-// kexECDH performs Elliptic Curve Diffie-Hellman key exchange as
-// described in RFC 5656, section 4.
-func (c *ClientConn) kexECDH(curve elliptic.Curve, magics *handshakeMagics, hostKeyAlgo string) (*kexResult, error) {
-	ephKey, err := ecdsa.GenerateKey(curve, c.config.rand())
-	if err != nil {
-		return nil, err
-	}
-
-	kexInit := kexECDHInitMsg{
-		ClientPubKey: elliptic.Marshal(curve, ephKey.PublicKey.X, ephKey.PublicKey.Y),
-	}
-
-	serialized := marshal(msgKexECDHInit, kexInit)
-	if err := c.writePacket(serialized); err != nil {
-		return nil, err
-	}
-
-	packet, err := c.readPacket()
-	if err != nil {
-		return nil, err
-	}
-
-	var reply kexECDHReplyMsg
-	if err = unmarshal(&reply, packet, msgKexECDHReply); err != nil {
-		return nil, err
-	}
-
-	x, y := elliptic.Unmarshal(curve, reply.EphemeralPubKey)
-	if x == nil {
-		return nil, errors.New("ssh: elliptic.Unmarshal failure")
-	}
-	if !validateECPublicKey(curve, x, y) {
-		return nil, errors.New("ssh: ephemeral server key not on curve")
-	}
-
-	// generate shared secret
-	secret, _ := curve.ScalarMult(x, y, ephKey.D.Bytes())
-
-	hashFunc := ecHash(curve)
-	h := hashFunc.New()
-	writeString(h, magics.clientVersion)
-	writeString(h, magics.serverVersion)
-	writeString(h, magics.clientKexInit)
-	writeString(h, magics.serverKexInit)
-	writeString(h, reply.HostKey)
-	writeString(h, kexInit.ClientPubKey)
-	writeString(h, reply.EphemeralPubKey)
-	K := make([]byte, intLength(secret))
-	marshalInt(K, secret)
-	h.Write(K)
-
-	return &kexResult{
-		H:         h.Sum(nil),
-		K:         K,
-		HostKey:   reply.HostKey,
-		Signature: reply.Signature,
-		Hash:      hashFunc,
-	}, nil
 }
 
 // Verify the host key obtained in the key exchange.
@@ -258,74 +183,6 @@ func verifyHostKeySignature(hostKeyAlgo string, hostKeyBytes []byte, data []byte
 		return errors.New("ssh: host key signature error")
 	}
 	return nil
-}
-
-// kexResult captures the outcome of a key exchange.
-type kexResult struct {
-	// Session hash. See also RFC 4253, section 8.
-	H []byte
-
-	// Shared secret. See also RFC 4253, section 8.
-	K []byte
-
-	// Host key as hashed into H
-	HostKey []byte
-
-	// Signature of H
-	Signature []byte
-
-	// Hash function that was used.
-	Hash crypto.Hash
-}
-
-// kexDH performs Diffie-Hellman key agreement on a ClientConn.
-func (c *ClientConn) kexDH(hashFunc crypto.Hash, group *dhGroup, magics *handshakeMagics, hostKeyAlgo string) (*kexResult, error) {
-	x, err := rand.Int(c.config.rand(), group.p)
-	if err != nil {
-		return nil, err
-	}
-	X := new(big.Int).Exp(group.g, x, group.p)
-	kexDHInit := kexDHInitMsg{
-		X: X,
-	}
-	if err := c.writePacket(marshal(msgKexDHInit, kexDHInit)); err != nil {
-		return nil, err
-	}
-
-	packet, err := c.readPacket()
-	if err != nil {
-		return nil, err
-	}
-
-	var kexDHReply kexDHReplyMsg
-	if err = unmarshal(&kexDHReply, packet, msgKexDHReply); err != nil {
-		return nil, err
-	}
-
-	kInt, err := group.diffieHellman(kexDHReply.Y, x)
-	if err != nil {
-		return nil, err
-	}
-
-	h := hashFunc.New()
-	writeString(h, magics.clientVersion)
-	writeString(h, magics.serverVersion)
-	writeString(h, magics.clientKexInit)
-	writeString(h, magics.serverKexInit)
-	writeString(h, kexDHReply.HostKey)
-	writeInt(h, X)
-	writeInt(h, kexDHReply.Y)
-	K := make([]byte, intLength(kInt))
-	marshalInt(K, kInt)
-	h.Write(K)
-
-	return &kexResult{
-		H:         h.Sum(nil),
-		K:         K,
-		HostKey:   kexDHReply.HostKey,
-		Signature: kexDHReply.Signature,
-		Hash:      hashFunc,
-	}, nil
 }
 
 // mainLoop reads incoming messages and routes channel messages
@@ -633,18 +490,18 @@ type chanList struct {
 }
 
 // Allocate a new ClientChan with the next avail local id.
-func (c *chanList) newChan(t *transport) *clientChan {
+func (c *chanList) newChan(p packetConn) *clientChan {
 	c.Lock()
 	defer c.Unlock()
 	for i := range c.chans {
 		if c.chans[i] == nil {
-			ch := newClientChan(t, uint32(i))
+			ch := newClientChan(p, uint32(i))
 			c.chans[i] = ch
 			return ch
 		}
 	}
 	i := len(c.chans)
-	ch := newClientChan(t, uint32(i))
+	ch := newClientChan(p, uint32(i))
 	c.chans = append(c.chans, ch)
 	return ch
 }

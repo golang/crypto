@@ -7,84 +7,73 @@ package ssh
 // Key exchange tests.
 
 import (
-	"fmt"
-	"net"
+	"crypto/rand"
+	"io"
+	"reflect"
 	"testing"
 )
 
-func pipe() (net.Conn, net.Conn, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return nil, nil, err
-	}
-	conn1, err := net.Dial("tcp", l.Addr().String())
-	if err != nil {
-		return nil, nil, err
-	}
-
-	conn2, err := l.Accept()
-	if err != nil {
-		conn1.Close()
-		return nil, nil, err
-	}
-	l.Close()
-	return conn1, conn2, nil
+// An in-memory packetConn.
+type memTransport struct {
+	r, w chan []byte
 }
 
-func testKexAlgorithm(algo string) error {
-	crypto := CryptoConfig{
-		KeyExchanges: []string{algo},
-	}
-	serverConfig := ServerConfig{
-		PasswordCallback: func(conn *ServerConn, user, password string) bool {
-			return password == "password"
-		},
-		Crypto: crypto,
+func (t *memTransport) readPacket() ([]byte, error) {
+	p, ok := <-t.r
+	if !ok {
+		return nil, io.EOF
 	}
 
-	if err := serverConfig.SetRSAPrivateKey([]byte(testServerPrivateKey)); err != nil {
-		return fmt.Errorf("SetRSAPrivateKey: %v", err)
-	}
+	return p, nil
+}
 
-	clientConfig := ClientConfig{
-		User:   "user",
-		Auth:   []ClientAuth{ClientAuthPassword(password("password"))},
-		Crypto: crypto,
-	}
-
-	conn1, conn2, err := pipe()
-	if err != nil {
-		return err
-	}
-
-	defer conn1.Close()
-	defer conn2.Close()
-
-	server := Server(conn2, &serverConfig)
-	serverHS := make(chan error, 1)
-	go func() {
-		serverHS <- server.Handshake()
-	}()
-
-	// Client runs the handshake.
-	_, err = Client(conn1, &clientConfig)
-	if err != nil {
-		return fmt.Errorf("Client: %v", err)
-	}
-
-	if err := <-serverHS; err != nil {
-		return fmt.Errorf("server.Handshake: %v", err)
-	}
-
-	// Here we could check that we now can send data between client &
-	// server.
+func (t *memTransport) Close() error {
+	close(t.w)
 	return nil
 }
 
-func TestKexAlgorithms(t *testing.T) {
-	for _, algo := range []string{kexAlgoECDH256, kexAlgoECDH384, kexAlgoECDH521, kexAlgoDH1SHA1, kexAlgoDH14SHA1} {
-		if err := testKexAlgorithm(algo); err != nil {
-			t.Errorf("algorithm %s: %v", algo, err)
+func (t *memTransport) writePacket(p []byte) error {
+	t.w <- p
+	return nil
+}
+
+func memPipe() (a, b packetConn) {
+	p := make(chan []byte, 1)
+	q := make(chan []byte, 1)
+	return &memTransport{p, q}, &memTransport{q, p}
+}
+
+func TestKexes(t *testing.T) {
+	type kexResultErr struct {
+		result *kexResult
+		err    error
+	}
+
+	for name, kex := range kexAlgoMap {
+		a, b := memPipe()
+
+		s := make(chan kexResultErr, 1)
+		c := make(chan kexResultErr, 1)
+		var magics handshakeMagics
+		go func() {
+			r, e := kex.Client(a, rand.Reader, &magics)
+			c <- kexResultErr{r, e}
+		}()
+		go func() {
+			r, e := kex.Server(b, rand.Reader, &magics, ecdsaKey)
+			s <- kexResultErr{r, e}
+		}()
+
+		clientRes := <-c
+		serverRes := <-s
+		if clientRes.err != nil {
+			t.Errorf("client: %v", clientRes.err)
+		}
+		if serverRes.err != nil {
+			t.Errorf("server: %v", serverRes.err)
+		}
+		if !reflect.DeepEqual(clientRes.result, serverRes.result) {
+			t.Errorf("kex %q: mismatch %#v, %#v", name, clientRes.result, serverRes.result)
 		}
 	}
 }

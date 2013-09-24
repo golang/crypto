@@ -29,13 +29,16 @@ const (
 	maxPacket = 256 * 1024
 )
 
-// conn represents an ssh transport that implements packet based
+// packetConn represents a transport that implements packet based
 // operations.
-type conn interface {
+type packetConn interface {
 	// Encrypt and send a packet of data to the remote peer.
 	writePacket(packet []byte) error
 
-	// Close closes the connection.
+	// Read a packet from the connection
+	readPacket() ([]byte, error)
+
+	// Close closes the write-side of the connection.
 	Close() error
 }
 
@@ -74,7 +77,7 @@ type common struct {
 }
 
 // Read and decrypt a single packet from the remote peer.
-func (r *reader) readOnePacket() ([]byte, error) {
+func (r *reader) readPacket() ([]byte, error) {
 	var lengthBytes = make([]byte, 5)
 	var macSize uint32
 	if _, err := io.ReadFull(r, lengthBytes); err != nil {
@@ -128,7 +131,7 @@ func (r *reader) readOnePacket() ([]byte, error) {
 // Read and decrypt next packet discarding debug and noop messages.
 func (t *transport) readPacket() ([]byte, error) {
 	for {
-		packet, err := t.readOnePacket()
+		packet, err := t.reader.readPacket()
 		if err != nil {
 			return nil, err
 		}
