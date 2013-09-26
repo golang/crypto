@@ -12,6 +12,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
@@ -557,8 +558,8 @@ func NewPublicKey(k interface{}) (PublicKey, error) {
 	return sshKey, nil
 }
 
-// ParsePublicKey parses a PEM encoded private key. Currently, only
-// PKCS#1, RSA and ECDSA private keys are supported.
+// ParsePublicKey parses a PEM encoded private key. It supports
+// PKCS#1, RSA, DSA and ECDSA private keys.
 func ParsePrivateKey(pemBytes []byte) (Signer, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
@@ -579,12 +580,48 @@ func ParsePrivateKey(pemBytes []byte) (Signer, error) {
 			return nil, err
 		}
 		rawkey = ec
-
-		// TODO(hanwen): find doc for format and implement PEM parsing
-		// for DSA keys.
+	case "DSA PRIVATE KEY":
+		ec, err := parseDSAPrivate(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		rawkey = ec
 	default:
 		return nil, fmt.Errorf("ssh: unsupported key type %q", block.Type)
 	}
 
 	return NewSignerFromKey(rawkey)
+}
+
+// parseDSAPrivate parses a DSA key in ASN.1 DER encoding, as
+// documented in the OpenSSL DSA manpage.
+// TODO(hanwen): move this in to crypto/x509 after the Go 1.2 freeze.
+func parseDSAPrivate(p []byte) (*dsa.PrivateKey, error) {
+	k := struct {
+		Version int
+		P       *big.Int
+		Q       *big.Int
+		G       *big.Int
+		Priv    *big.Int
+		Pub     *big.Int
+	}{}
+	rest, err := asn1.Unmarshal(p, &k)
+	if err != nil {
+		return nil, errors.New("ssh: failed to parse DSA key: " + err.Error())
+	}
+	if len(rest) > 0 {
+		return nil, errors.New("ssh: garbage after DSA key")
+	}
+
+	return &dsa.PrivateKey{
+		PublicKey: dsa.PublicKey{
+			Parameters: dsa.Parameters{
+				P: k.P,
+				Q: k.Q,
+				G: k.G,
+			},
+			Y: k.Priv,
+		},
+		X: k.Pub,
+	}, nil
 }

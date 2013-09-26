@@ -132,6 +132,37 @@ AwEHoUQDQgAEi9Hdw6KvZcWxfg2IDhA7UkpDtzzt6ZqJXSsFdLd+Kx4S3Sx4cVO+
 	}
 }
 
+// ssh-keygen -t dsa -f /tmp/idsa.pem
+var dsaPEM = `-----BEGIN DSA PRIVATE KEY-----
+MIIBuwIBAAKBgQD6PDSEyXiI9jfNs97WuM46MSDCYlOqWw80ajN16AohtBncs1YB
+lHk//dQOvCYOsYaE+gNix2jtoRjwXhDsc25/IqQbU1ahb7mB8/rsaILRGIbA5WH3
+EgFtJmXFovDz3if6F6TzvhFpHgJRmLYVR8cqsezL3hEZOvvs2iH7MorkxwIVAJHD
+nD82+lxh2fb4PMsIiaXudAsBAoGAQRf7Q/iaPRn43ZquUhd6WwvirqUj+tkIu6eV
+2nZWYmXLlqFQKEy4Tejl7Wkyzr2OSYvbXLzo7TNxLKoWor6ips0phYPPMyXld14r
+juhT24CrhOzuLMhDduMDi032wDIZG4Y+K7ElU8Oufn8Sj5Wge8r6ANmmVgmFfynr
+FhdYCngCgYEA3ucGJ93/Mx4q4eKRDxcWD3QzWyqpbRVRRV1Vmih9Ha/qC994nJFz
+DQIdjxDIT2Rk2AGzMqFEB68Zc3O+Wcsmz5eWWzEwFxaTwOGWTyDqsDRLm3fD+QYj
+nOwuxb0Kce+gWI8voWcqC9cyRm09jGzu2Ab3Bhtpg8JJ8L7gS3MRZK4CFEx4UAfY
+Fmsr0W6fHB9nhS4/UXM8
+-----END DSA PRIVATE KEY-----`
+
+func TestParseDSA(t *testing.T) {
+	s, err := ParsePrivateKey([]byte(dsaPEM))
+	if err != nil {
+		t.Fatalf("ParsePrivateKey returned error: %s", err)
+	}
+
+	data := []byte("sign me")
+	sig, err := s.Sign(rand.Reader, data)
+	if err != nil {
+		t.Fatalf("dsa.Sign: %v", err)
+	}
+
+	if !s.PublicKey().Verify(data, sig) {
+		t.Error("Verify failed.")
+	}
+}
+
 func init() {
 	raw, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	ecdsaKey, _ = NewSignerFromKey(raw)
