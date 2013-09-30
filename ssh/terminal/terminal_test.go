@@ -102,6 +102,18 @@ var keyPressTests = []struct {
 		throwAwayLines: 2,
 	},
 	{
+		// Ctrl-A to move to beginning of line followed by ^K to kill
+		// line.
+		in:   "a b \001\013\r",
+		line: "",
+	},
+	{
+		// Ctrl-A to move to beginning of line, Ctrl-E to move to end,
+		// finally ^K to kill nothing.
+		in:   "a b \001\005\013\r",
+		line: "a b ",
+	},
+	{
 		in:   "\027\r",
 		line: "",
 	},

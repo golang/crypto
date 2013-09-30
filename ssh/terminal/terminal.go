@@ -132,6 +132,10 @@ func bytesToKey(b []byte) (rune, []byte) {
 	}
 
 	switch b[0] {
+	case 1: // ^A
+		return keyHome, b[1:]
+	case 5: // ^E
+		return keyEnd, b[1:]
 	case 8: // ^H
 		return keyBackspace, b[1:]
 	case 11: // ^K
