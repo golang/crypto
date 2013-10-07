@@ -48,22 +48,32 @@ HostbasedAuthentication no
 `
 
 var (
-	configTmpl template.Template
-	privateKey ssh.Signer
-	hostKey    ssh.Signer
+	configTmpl   template.Template
+	privateKey   ssh.Signer
+	hostKeyRSA   ssh.Signer
+	hostKeyECDSA ssh.Signer
+	hostKeyDSA   ssh.Signer
 )
 
 func init() {
 	template.Must(configTmpl.Parse(sshd_config))
 
-	var err error
-	hostKey, err = ssh.ParsePrivateKey([]byte(keys["ssh_host_rsa_key"]))
-	if err != nil {
-		panic("ParsePrivateKey: " + err.Error())
+	for n, k := range map[string]*ssh.Signer{
+		"ssh_host_ecdsa_key": &hostKeyECDSA,
+		"ssh_host_rsa_key":   &hostKeyRSA,
+		"ssh_host_dsa_key":   &hostKeyDSA,
+	} {
+		var err error
+		*k, err = ssh.ParsePrivateKey([]byte(keys[n]))
+		if err != nil {
+			panic(fmt.Sprintf("ParsePrivateKey(%q): %v", n, err))
+		}
 	}
+
+	var err error
 	privateKey, err = ssh.ParsePrivateKey([]byte(testClientPrivateKey))
 	if err != nil {
-		panic("ParsePrivateKey: " + err.Error())
+		panic(fmt.Sprintf("ParsePrivateKey: %v", err))
 	}
 }
 
@@ -103,7 +113,7 @@ func (k *storedHostKey) Add(key ssh.PublicKey) {
 	if k.keys == nil {
 		k.keys = map[string][]byte{}
 	}
-	k.keys[key.PublicKeyAlgo()] = append([]byte(nil), ssh.MarshalPublicKey(key)...)
+	k.keys[key.PublicKeyAlgo()] = ssh.MarshalPublicKey(key)
 }
 
 func (k *storedHostKey) Check(addr string, remote net.Addr, algo string, key []byte) error {
@@ -115,7 +125,9 @@ func (k *storedHostKey) Check(addr string, remote net.Addr, algo string, key []b
 
 func clientConfig() *ssh.ClientConfig {
 	keyChecker := storedHostKey{}
-	keyChecker.Add(hostKey.PublicKey())
+	keyChecker.Add(hostKeyECDSA.PublicKey())
+	keyChecker.Add(hostKeyRSA.PublicKey())
+	keyChecker.Add(hostKeyDSA.PublicKey())
 
 	kc := new(keychain)
 	kc.keys = append(kc.keys, privateKey)

@@ -16,8 +16,6 @@ import (
 
 // These are string constants in the SSH protocol.
 const (
-	hostAlgoRSA     = "ssh-rsa"
-	hostAlgoDSA     = "ssh-dss"
 	compressionNone = "none"
 	serviceUserAuth = "ssh-userauth"
 	serviceSSH      = "ssh-connection"
@@ -28,7 +26,11 @@ var supportedKexAlgos = []string{
 	kexAlgoDH14SHA1, kexAlgoDH1SHA1,
 }
 
-var supportedHostKeyAlgos = []string{hostAlgoRSA}
+var supportedHostKeyAlgos = []string{
+	KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521,
+	KeyAlgoRSA, KeyAlgoDSA,
+}
+
 var supportedCompressions = []string{compressionNone}
 
 // hashFuncs keeps the mapping of supported algorithms to their respective

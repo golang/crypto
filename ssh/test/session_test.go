@@ -40,8 +40,10 @@ func TestHostKeyCheck(t *testing.T) {
 	conf := clientConfig()
 	k := conf.HostKeyChecker.(*storedHostKey)
 
-	// change the key.
-	k.keys["ssh-rsa"][25]++
+	// change the keys.
+	k.keys[ssh.KeyAlgoRSA][25]++
+	k.keys[ssh.KeyAlgoDSA][25]++
+	k.keys[ssh.KeyAlgoECDSA256][25]++
 
 	conn, err := server.TryDial(conf)
 	if err == nil {
