@@ -43,7 +43,7 @@ func Client(c net.Conn, config *ClientConfig) (*ClientConn, error) {
 
 func clientWithAddress(c net.Conn, addr string, config *ClientConfig) (*ClientConn, error) {
 	conn := &ClientConn{
-		transport:     newTransport(c, config.rand()),
+		transport:     newTransport(c, config.rand(), true /* is client */),
 		config:        config,
 		globalRequest: globalRequest{response: make(chan interface{}, 1)},
 		dialAddress:   addr,
@@ -104,12 +104,12 @@ func (c *ClientConn) handshake() error {
 		return err
 	}
 
-	kexAlgo, hostKeyAlgo, ok := findAgreedAlgorithms(c.transport, &clientKexInit, &serverKexInit)
-	if !ok {
+	algs := findAgreedAlgorithms(&clientKexInit, &serverKexInit)
+	if algs == nil {
 		return errors.New("ssh: no common algorithms")
 	}
 
-	if serverKexInit.FirstKexFollows && kexAlgo != serverKexInit.KexAlgos[0] {
+	if serverKexInit.FirstKexFollows && algs.kex != serverKexInit.KexAlgos[0] {
 		// The server sent a Kex message for the wrong algorithm,
 		// which we have to ignore.
 		if _, err := c.readPacket(); err != nil {
@@ -117,9 +117,9 @@ func (c *ClientConn) handshake() error {
 		}
 	}
 
-	kex, ok := kexAlgoMap[kexAlgo]
+	kex, ok := kexAlgoMap[algs.kex]
 	if !ok {
-		return fmt.Errorf("ssh: unexpected key exchange algorithm %v", kexAlgo)
+		return fmt.Errorf("ssh: unexpected key exchange algorithm %v", algs.kex)
 	}
 
 	magics := handshakeMagics{
@@ -133,23 +133,21 @@ func (c *ClientConn) handshake() error {
 		return err
 	}
 
-	err = verifyHostKeySignature(hostKeyAlgo, result.HostKey, result.H, result.Signature)
+	err = verifyHostKeySignature(algs.hostKey, result.HostKey, result.H, result.Signature)
 	if err != nil {
 		return err
 	}
 
 	if checker := c.config.HostKeyChecker; checker != nil {
-		err = checker.Check(c.dialAddress, c.RemoteAddr(), hostKeyAlgo, result.HostKey)
+		err = checker.Check(c.dialAddress, c.RemoteAddr(), algs.hostKey, result.HostKey)
 		if err != nil {
 			return err
 		}
 	}
 
-	if err = c.writePacket([]byte{msgNewKeys}); err != nil {
-		return err
-	}
+	c.transport.prepareKeyChange(algs, result)
 
-	if err = c.transport.writer.setupKeys(clientKeys, result.K, result.H, result.H, kex.Hash()); err != nil {
+	if err = c.writePacket([]byte{msgNewKeys}); err != nil {
 		return err
 	}
 	if packet, err = c.readPacket(); err != nil {
@@ -157,9 +155,6 @@ func (c *ClientConn) handshake() error {
 	}
 	if packet[0] != msgNewKeys {
 		return UnexpectedMessageError{msgNewKeys, packet[0]}
-	}
-	if err := c.transport.reader.setupKeys(serverKeys, result.K, result.H, result.H, kex.Hash()); err != nil {
-		return err
 	}
 	return c.authenticate(result.H)
 }

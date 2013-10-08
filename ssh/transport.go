@@ -6,7 +6,6 @@ package ssh
 
 import (
 	"bufio"
-	"crypto"
 	"crypto/cipher"
 	"crypto/subtle"
 	"encoding/binary"
@@ -48,6 +47,10 @@ type transport struct {
 	writer
 
 	net.Conn
+
+	// Initial H used for the session ID. Once assigned this does
+	// not change, even during subsequent key exchanges.
+	sessionID []byte
 }
 
 // reader represents the incoming connection state.
@@ -64,6 +67,28 @@ type writer struct {
 	common
 }
 
+// prepareKeyChange sets up key material for a keychange. The key changes in
+// both directions are triggered by reading and writing a msgNewKey packet
+// respectively.
+func (t *transport) prepareKeyChange(algs *algorithms, kexResult *kexResult) error {
+	t.writer.cipherAlgo = algs.wCipher
+	t.writer.macAlgo = algs.wMAC
+	t.writer.compressionAlgo = algs.wCompression
+
+	t.reader.cipherAlgo = algs.rCipher
+	t.reader.macAlgo = algs.rMAC
+	t.reader.compressionAlgo = algs.rCompression
+
+	if t.sessionID == nil {
+		t.sessionID = kexResult.H
+	}
+
+	kexResult.SessionID = t.sessionID
+	t.reader.pendingKeyChange <- kexResult
+	t.writer.pendingKeyChange <- kexResult
+	return nil
+}
+
 // common represents the cipher state needed to process messages in a single
 // direction.
 type common struct {
@@ -74,6 +99,9 @@ type common struct {
 	cipherAlgo      string
 	macAlgo         string
 	compressionAlgo string
+
+	dir              direction
+	pendingKeyChange chan *kexResult
 }
 
 // Read and decrypt a single packet from the remote peer.
@@ -125,7 +153,19 @@ func (r *reader) readPacket() ([]byte, error) {
 	}
 
 	r.seqNum++
-	return packet[:length-paddingLength-1], nil
+	packet = packet[:length-paddingLength-1]
+
+	if len(packet) > 0 && packet[0] == msgNewKeys {
+		select {
+		case k := <-r.pendingKeyChange:
+			if err := r.setupKeys(r.dir, k); err != nil {
+				return nil, err
+			}
+		default:
+			return nil, errors.New("ssh: got bogus newkeys message.")
+		}
+	}
+	return packet, nil
 }
 
 // Read and decrypt next packet discarding debug and noop messages.
@@ -138,6 +178,7 @@ func (t *transport) readPacket() ([]byte, error) {
 		if len(packet) == 0 {
 			return nil, errors.New("ssh: zero length packet")
 		}
+
 		if packet[0] != msgIgnore && packet[0] != msgDebug {
 			return packet, nil
 		}
@@ -147,6 +188,8 @@ func (t *transport) readPacket() ([]byte, error) {
 
 // Encrypt and send a packet of data to the remote peer.
 func (w *writer) writePacket(packet []byte) error {
+	changeKeys := len(packet) > 0 && packet[0] == msgNewKeys
+
 	if len(packet) > maxPacket {
 		return errors.New("ssh: packet too large")
 	}
@@ -209,26 +252,49 @@ func (w *writer) writePacket(packet []byte) error {
 	}
 
 	w.seqNum++
-	return w.Flush()
+	if err = w.Flush(); err != nil {
+		return err
+	}
+
+	if changeKeys {
+		select {
+		case k := <-w.pendingKeyChange:
+			err = w.setupKeys(w.dir, k)
+		default:
+			panic("ssh: no key material for msgNewKeys")
+		}
+	}
+	return err
 }
 
-func newTransport(conn net.Conn, rand io.Reader) *transport {
-	return &transport{
+func newTransport(conn net.Conn, rand io.Reader, isClient bool) *transport {
+	t := &transport{
 		reader: reader{
 			Reader: bufio.NewReader(conn),
 			common: common{
-				cipher: noneCipher{},
+				cipher:           noneCipher{},
+				pendingKeyChange: make(chan *kexResult, 1),
 			},
 		},
 		writer: writer{
 			Writer: bufio.NewWriter(conn),
 			rand:   rand,
 			common: common{
-				cipher: noneCipher{},
+				cipher:           noneCipher{},
+				pendingKeyChange: make(chan *kexResult, 1),
 			},
 		},
 		Conn: conn,
 	}
+	if isClient {
+		t.reader.dir = serverKeys
+		t.writer.dir = clientKeys
+	} else {
+		t.reader.dir = clientKeys
+		t.writer.dir = serverKeys
+	}
+
+	return t
 }
 
 type direction struct {
@@ -246,7 +312,7 @@ var (
 // setupKeys sets the cipher and MAC keys from kex.K, kex.H and sessionId, as
 // described in RFC 4253, section 6.4. direction should either be serverKeys
 // (to setup server->client keys) or clientKeys (for client->server keys).
-func (c *common) setupKeys(d direction, K, H, sessionId []byte, hashFunc crypto.Hash) error {
+func (c *common) setupKeys(d direction, r *kexResult) error {
 	cipherMode := cipherModes[c.cipherAlgo]
 	macMode := macModes[c.macAlgo]
 
@@ -254,10 +320,10 @@ func (c *common) setupKeys(d direction, K, H, sessionId []byte, hashFunc crypto.
 	key := make([]byte, cipherMode.keySize)
 	macKey := make([]byte, macMode.keySize)
 
-	h := hashFunc.New()
-	generateKeyMaterial(iv, d.ivTag, K, H, sessionId, h)
-	generateKeyMaterial(key, d.keyTag, K, H, sessionId, h)
-	generateKeyMaterial(macKey, d.macKeyTag, K, H, sessionId, h)
+	h := r.Hash.New()
+	generateKeyMaterial(iv, d.ivTag, r.K, r.H, r.SessionID, h)
+	generateKeyMaterial(key, d.keyTag, r.K, r.H, r.SessionID, h)
+	generateKeyMaterial(macKey, d.macKeyTag, r.K, r.H, r.SessionID, h)
 
 	c.mac = macMode.new(macKey)
 

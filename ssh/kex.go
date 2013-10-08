@@ -35,6 +35,15 @@ type kexResult struct {
 
 	// Signature of H
 	Signature []byte
+
+	// A cryptographic hash function that matches the security
+	// level of the key exchange algorithm. It is used for
+	// calculating H, and for deriving keys from H and K.
+	Hash crypto.Hash
+
+	// The session ID, which is the first H computed. This is used
+	// to signal data inside transport.
+	SessionID []byte
 }
 
 // handshakeMagics contains data that is always included in the
@@ -60,21 +69,11 @@ type kexAlgorithm interface {
 	// Client runs the client-side key agreement. Caller is
 	// responsible for verifying the host key signature.
 	Client(p packetConn, rand io.Reader, magics *handshakeMagics) (*kexResult, error)
-
-	// Hash returns a cryptographic hash function that matches the
-	// security level of the key exchange algorithm. It is used
-	// for calculating kexResult.H, and for deriving keys from
-	// data in kexResult.
-	Hash() crypto.Hash
 }
 
 // dhGroup is a multiplicative group suitable for implementing Diffie-Hellman key agreement.
 type dhGroup struct {
 	g, p *big.Int
-}
-
-func (group *dhGroup) Hash() crypto.Hash {
-	return crypto.SHA1
 }
 
 func (group *dhGroup) diffieHellman(theirPublic, myPrivate *big.Int) (*big.Int, error) {
@@ -128,6 +127,7 @@ func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handsha
 		K:         K,
 		HostKey:   kexDHReply.HostKey,
 		Signature: kexDHReply.Signature,
+		Hash:      crypto.SHA1,
 	}, nil
 }
 
@@ -187,6 +187,7 @@ func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handsha
 		K:         K,
 		HostKey:   hostKeyBytes,
 		Signature: sig,
+		Hash:      crypto.SHA1,
 	}, nil
 }
 
@@ -243,6 +244,7 @@ func (kex *ecdh) Client(c packetConn, rand io.Reader, magics *handshakeMagics) (
 		K:         K,
 		HostKey:   reply.HostKey,
 		Signature: reply.Signature,
+		Hash:      ecHash(kex.curve),
 	}, nil
 }
 
@@ -354,11 +356,8 @@ func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, p
 		K:         K,
 		HostKey:   reply.HostKey,
 		Signature: sig,
+		Hash:      ecHash(kex.curve),
 	}, nil
-}
-
-func (kex *ecdh) Hash() crypto.Hash {
-	return ecHash(kex.curve)
 }
 
 var kexAlgoMap = map[string]kexAlgorithm{}

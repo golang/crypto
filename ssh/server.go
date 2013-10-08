@@ -121,17 +121,13 @@ type ServerConn struct {
 	// ClientVersion is the client's version, populated after
 	// Handshake is called. It should not be modified.
 	ClientVersion []byte
-
-	// Initial H used for the session ID. Once assigned this must not change
-	// even during subsequent key exchanges.
-	sessionId []byte
 }
 
 // Server returns a new SSH server connection
 // using c as the underlying transport.
 func Server(c net.Conn, config *ServerConfig) *ServerConn {
 	return &ServerConn{
-		transport: newTransport(c, config.rand()),
+		transport: newTransport(c, config.rand(), false /* not client */),
 		channels:  make(map[uint32]*serverChan),
 		config:    config,
 	}
@@ -186,7 +182,7 @@ func (s *ServerConn) Handshake() (err error) {
 		return
 	}
 
-	if err = s.authenticate(s.sessionId); err != nil {
+	if err = s.authenticate(s.transport.sessionID); err != nil {
 		return
 	}
 	return
@@ -222,11 +218,12 @@ func (s *ServerConn) clientInitHandshake(clientKexInit *kexInitMsg, clientKexIni
 		}
 	}
 
-	kexAlgo, hostKeyAlgo, ok := findAgreedAlgorithms(s.transport, clientKexInit, &serverKexInit)
-	if !ok {
+	algs := findAgreedAlgorithms(clientKexInit, &serverKexInit)
+	if algs == nil {
 		return errors.New("ssh: no common algorithms")
 	}
-	if clientKexInit.FirstKexFollows && kexAlgo != clientKexInit.KexAlgos[0] {
+
+	if clientKexInit.FirstKexFollows && algs.kex != clientKexInit.KexAlgos[0] {
 		// The client sent a Kex message for the wrong algorithm,
 		// which we have to ignore.
 		if _, err = s.readPacket(); err != nil {
@@ -236,14 +233,14 @@ func (s *ServerConn) clientInitHandshake(clientKexInit *kexInitMsg, clientKexIni
 
 	var hostKey Signer
 	for _, k := range s.config.hostKeys {
-		if hostKeyAlgo == k.PublicKey().PublicKeyAlgo() {
+		if algs.hostKey == k.PublicKey().PublicKeyAlgo() {
 			hostKey = k
 		}
 	}
 
-	kex, ok := kexAlgoMap[kexAlgo]
+	kex, ok := kexAlgoMap[algs.kex]
 	if !ok {
-		return fmt.Errorf("ssh: unexpected key exchange algorithm %v", kexAlgo)
+		return fmt.Errorf("ssh: unexpected key exchange algorithm %v", algs.kex)
 	}
 
 	magics := handshakeMagics{
@@ -257,28 +254,17 @@ func (s *ServerConn) clientInitHandshake(clientKexInit *kexInitMsg, clientKexIni
 		return err
 	}
 
-	// sessionId must only be assigned during initial handshake.
-	if s.sessionId == nil {
-		s.sessionId = result.H
+	if err = s.transport.prepareKeyChange(algs, result); err != nil {
+		return err
 	}
-
-	var packet []byte
 
 	if err = s.writePacket([]byte{msgNewKeys}); err != nil {
 		return
 	}
-	if err = s.transport.writer.setupKeys(serverKeys, result.K, result.H, s.sessionId, kex.Hash()); err != nil {
-		return
-	}
-
-	if packet, err = s.readPacket(); err != nil {
-		return
-	}
-	if packet[0] != msgNewKeys {
+	if packet, err := s.readPacket(); err != nil {
+		return err
+	} else if packet[0] != msgNewKeys {
 		return UnexpectedMessageError{msgNewKeys, packet[0]}
-	}
-	if err = s.transport.reader.setupKeys(clientKeys, result.K, result.H, s.sessionId, kex.Hash()); err != nil {
-		return
 	}
 
 	return
