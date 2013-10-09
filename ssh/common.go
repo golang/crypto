@@ -201,7 +201,7 @@ func serializeSignature(name string, sig []byte) []byte {
 // generating an authorized_keys or host_keys file.
 func MarshalPublicKey(key PublicKey) []byte {
 	// See also RFC 4253 6.6.
-	algoname := key.PrivateKeyAlgo()
+	algoname := key.PublicKeyAlgo()
 	blob := key.Marshal()
 
 	length := stringLength(len(algoname))

@@ -60,6 +60,17 @@ var certAlgoNames = map[string]string{
 	KeyAlgoECDSA521: CertAlgoECDSA521v01,
 }
 
+// certToPrivAlgo returns the underlying algorithm for a certificate algorithm.
+// Panics if a non-certificate algorithm is passed.
+func certToPrivAlgo(algo string) string {
+	for privAlgo, pubAlgo := range certAlgoNames {
+		if pubAlgo == algo {
+			return privAlgo
+		}
+	}
+	panic("unknown cert algorithm")
+}
+
 func (c *OpenSSHCertV01) PublicKeyAlgo() string {
 	algo, ok := certAlgoNames[c.Key.PublicKeyAlgo()]
 	if !ok {
@@ -83,12 +94,14 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 		return
 	}
 
-	cert.Key, in, ok = ParsePublicKey(in)
+	privAlgo := certToPrivAlgo(algo)
+	cert.Key, in, ok = parsePubKey(in, privAlgo)
 	if !ok {
 		return
 	}
 
-	if cert.Key.PrivateKeyAlgo() != algo {
+	// We test PublicKeyAlgo to make sure we don't use some weird sub-cert.
+	if cert.Key.PublicKeyAlgo() != privAlgo {
 		ok = false
 		return
 	}
@@ -139,7 +152,7 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 	if !ok {
 		return
 	}
-	if cert.SignatureKey, _, ok = parsePubKey(sigKey); !ok {
+	if cert.SignatureKey, _, ok = ParsePublicKey(sigKey); !ok {
 		return
 	}
 
@@ -152,8 +165,7 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 }
 
 func (cert *OpenSSHCertV01) Marshal() []byte {
-	pubKey := MarshalPublicKey(cert.Key)
-
+	pubKey := cert.Key.Marshal()
 	sigKey := MarshalPublicKey(cert.SignatureKey)
 
 	length := stringLength(len(cert.Nonce))

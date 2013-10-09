@@ -406,7 +406,7 @@ userAuthLoop:
 					break
 				}
 				signedData := buildDataSignedForAuth(H, userAuthReq, algoBytes, pubKey)
-				key, _, ok := parsePubKey(pubKey)
+				key, _, ok := ParsePublicKey(pubKey)
 				if !ok {
 					return ParseError{msgUserAuthRequest}
 				}

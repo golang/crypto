@@ -100,7 +100,7 @@ func (ak *AgentKey) String() string {
 
 // Key returns an agent's public key as one of the supported key or certificate types.
 func (ak *AgentKey) Key() (PublicKey, error) {
-	if key, _, ok := parsePubKey(ak.blob); ok {
+	if key, _, ok := ParsePublicKey(ak.blob); ok {
 		return key, nil
 	}
 	return nil, errors.New("ssh: failed to parse key blob")

@@ -31,14 +31,10 @@ const (
 	KeyAlgoECDSA521 = "ecdsa-sha2-nistp521"
 )
 
-// parsePubKey parses a public key according to RFC 4253, section 6.6.
-func parsePubKey(in []byte) (pubKey PublicKey, rest []byte, ok bool) {
-	algo, in, ok := parseString(in)
-	if !ok {
-		return
-	}
-
-	switch string(algo) {
+// parsePubKey parses a public key of the given algorithm.
+// Use ParsePublicKey for keys with prepended algorithm.
+func parsePubKey(in []byte, algo string) (pubKey PublicKey, rest []byte, ok bool) {
+	switch algo {
 	case KeyAlgoRSA:
 		return parseRSA(in)
 	case KeyAlgoDSA:
@@ -46,7 +42,7 @@ func parsePubKey(in []byte) (pubKey PublicKey, rest []byte, ok bool) {
 	case KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521:
 		return parseECDSA(in)
 	case CertAlgoRSAv01, CertAlgoDSAv01, CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01:
-		return parseOpenSSHCertV01(in, string(algo))
+		return parseOpenSSHCertV01(in, algo)
 	}
 	return nil, nil, false
 }
@@ -54,7 +50,7 @@ func parsePubKey(in []byte) (pubKey PublicKey, rest []byte, ok bool) {
 // parseAuthorizedKey parses a public key in OpenSSH authorized_keys format
 // (see sshd(8) manual page) once the options and key type fields have been
 // removed.
-func parseAuthorizedKey(in []byte) (out interface{}, comment string, ok bool) {
+func parseAuthorizedKey(in []byte) (out PublicKey, comment string, ok bool) {
 	in = bytes.TrimSpace(in)
 
 	i := bytes.IndexAny(in, " \t")
@@ -69,7 +65,7 @@ func parseAuthorizedKey(in []byte) (out interface{}, comment string, ok bool) {
 		return
 	}
 	key = key[:n]
-	out, _, ok = parsePubKey(key)
+	out, _, ok = ParsePublicKey(key)
 	if !ok {
 		return nil, "", false
 	}
@@ -79,7 +75,7 @@ func parseAuthorizedKey(in []byte) (out interface{}, comment string, ok bool) {
 
 // ParseAuthorizedKeys parses a public key from an authorized_keys
 // file used in OpenSSH according to the sshd(8) manual page.
-func ParseAuthorizedKey(in []byte) (out interface{}, comment string, options []string, rest []byte, ok bool) {
+func ParseAuthorizedKey(in []byte) (out PublicKey, comment string, options []string, rest []byte, ok bool) {
 	for len(in) > 0 {
 		end := bytes.IndexByte(in, '\n')
 		if end != -1 {
@@ -179,9 +175,14 @@ func ParseAuthorizedKey(in []byte) (out interface{}, comment string, options []s
 }
 
 // ParsePublicKey parses an SSH public key formatted for use in
-// the SSH wire protocol.
+// the SSH wire protocol according to RFC 4253, section 6.6.
 func ParsePublicKey(in []byte) (out PublicKey, rest []byte, ok bool) {
-	return parsePubKey(in)
+	algo, in, ok := parseString(in)
+	if !ok {
+		return
+	}
+
+	return parsePubKey(in, string(algo))
 }
 
 // MarshalAuthorizedKey returns a byte stream suitable for inclusion
