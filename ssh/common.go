@@ -234,7 +234,7 @@ func pubAlgoToPrivAlgo(pubAlgo string) string {
 }
 
 // buildDataSignedForAuth returns the data that is signed in order to prove
-// posession of a private key. See RFC 4252, section 7.
+// possession of a private key. See RFC 4252, section 7.
 func buildDataSignedForAuth(sessionId []byte, req userAuthRequestMsg, algo, pubKey []byte) []byte {
 	user := []byte(req.User)
 	service := []byte(req.Service)

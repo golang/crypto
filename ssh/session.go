@@ -348,7 +348,7 @@ func (s *Session) Shell() error {
 		return err
 	}
 	if err := s.waitForResponse(); err != nil {
-		return fmt.Errorf("ssh: cound not execute shell: %v", err)
+		return fmt.Errorf("ssh: could not execute shell: %v", err)
 	}
 	return s.start()
 }
@@ -531,7 +531,7 @@ func (s *Session) StdinPipe() (io.WriteCloser, error) {
 // remote command's standard output when the command starts.
 // There is a fixed amount of buffering that is shared between
 // stdout and stderr streams. If the StdoutPipe reader is
-// not serviced fast enought it may eventually cause the
+// not serviced fast enough it may eventually cause the
 // remote command to block.
 func (s *Session) StdoutPipe() (io.Reader, error) {
 	if s.Stdout != nil {
@@ -548,7 +548,7 @@ func (s *Session) StdoutPipe() (io.Reader, error) {
 // remote command's standard error when the command starts.
 // There is a fixed amount of buffering that is shared between
 // stdout and stderr streams. If the StderrPipe reader is
-// not serviced fast enought it may eventually cause the
+// not serviced fast enough it may eventually cause the
 // remote command to block.
 func (s *Session) StderrPipe() (io.Reader, error) {
 	if s.Stderr != nil {

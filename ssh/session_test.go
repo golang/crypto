@@ -528,7 +528,7 @@ func TestServerWindow(t *testing.T) {
 	}
 	written, err := copyNRandomly("stdin", serverStdin, origBuf, windowTestBytes)
 	if err != nil {
-		t.Fatalf("falied to copy origBuf to serverStdin: %v", err)
+		t.Fatalf("failed to copy origBuf to serverStdin: %v", err)
 	}
 	if written != windowTestBytes {
 		t.Fatalf("Wrote only %d of %d bytes to server", written, windowTestBytes)

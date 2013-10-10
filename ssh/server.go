@@ -35,7 +35,7 @@ type ServerConfig struct {
 	PasswordCallback func(conn *ServerConn, user, password string) bool
 
 	// PublicKeyCallback, if non-nil, is called when a client attempts public
-	// key authentication. It must return true iff the given public key is
+	// key authentication. It must return true if the given public key is
 	// valid for the given user.
 	PublicKeyCallback func(conn *ServerConn, user, algo string, pubkey []byte) bool
 
@@ -378,7 +378,7 @@ userAuthLoop:
 			}
 			if isQuery {
 				// The client can query if the given public key
-				// would be ok.
+				// would be okay.
 				if len(payload) > 0 {
 					return ParseError{msgUserAuthRequest}
 				}

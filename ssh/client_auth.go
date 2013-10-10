@@ -172,7 +172,7 @@ type publickeyAuthMsg struct {
 	User    string
 	Service string
 	Method  string
-	// HasSig indicates to the reciver packet that the auth request is signed and
+	// HasSig indicates to the receiver packet that the auth request is signed and
 	// should be used for authentication of the request.
 	HasSig   bool
 	Algoname string

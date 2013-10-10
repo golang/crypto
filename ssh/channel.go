@@ -49,7 +49,7 @@ type Channel interface {
 	// ChannelType returns the type of the channel, as supplied by the
 	// client.
 	ChannelType() string
-	// ExtraData returns the arbitary payload for this channel, as supplied
+	// ExtraData returns the arbitrary payload for this channel, as supplied
 	// by the client. This data is specific to the channel type.
 	ExtraData() []byte
 }
@@ -516,7 +516,7 @@ func (w *chanWriter) Write(data []byte) (written int, err error) {
 			return
 		}
 		// never send more data than maxPacket even if
-		// there is sufficent window.
+		// there is sufficient window.
 		n := min(w.maxPacket-headerLength, len(data))
 		r := w.remoteWin.reserve(n)
 		n = r

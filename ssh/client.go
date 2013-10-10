@@ -196,7 +196,7 @@ func (c *ClientConn) mainLoop() {
 		}
 		// TODO(dfc) A note on blocking channel use.
 		// The msg, data and dataExt channels of a clientChan can
-		// cause this loop to block indefinately if the consumer does
+		// cause this loop to block indefinitely if the consumer does
 		// not service them.
 		switch packet[0] {
 		case msgChannelData:
@@ -343,7 +343,7 @@ func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
 		if !ok {
 			// TODO: print on a more structured log.
 			fmt.Println("could not find forward list entry for", laddr)
-			// Section 7.2, implementations MUST reject suprious incoming
+			// Section 7.2, implementations MUST reject spurious incoming
 			// connections.
 			c.sendConnectionFailed(msg.PeersId)
 			return

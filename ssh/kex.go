@@ -282,7 +282,7 @@ func validateECPublicKey(curve elliptic.Curve, x, y *big.Int) bool {
 	// We don't check if N * PubKey == 0, since
 	//
 	// - the NIST curves have cofactor = 1, so this is implicit.
-	// (We don't forsee an implementation that supports non NIST
+	// (We don't foresee an implementation that supports non NIST
 	// curves)
 	//
 	// - for ephemeral keys, we don't need to worry about small
