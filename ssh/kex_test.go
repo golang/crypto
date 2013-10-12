@@ -8,40 +8,9 @@ package ssh
 
 import (
 	"crypto/rand"
-	"io"
 	"reflect"
 	"testing"
 )
-
-// An in-memory packetConn.
-type memTransport struct {
-	r, w chan []byte
-}
-
-func (t *memTransport) readPacket() ([]byte, error) {
-	p, ok := <-t.r
-	if !ok {
-		return nil, io.EOF
-	}
-
-	return p, nil
-}
-
-func (t *memTransport) Close() error {
-	close(t.w)
-	return nil
-}
-
-func (t *memTransport) writePacket(p []byte) error {
-	t.w <- p
-	return nil
-}
-
-func memPipe() (a, b packetConn) {
-	p := make(chan []byte, 1)
-	q := make(chan []byte, 1)
-	return &memTransport{p, q}, &memTransport{q, p}
-}
 
 func TestKexes(t *testing.T) {
 	type kexResultErr struct {
