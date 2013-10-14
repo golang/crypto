@@ -77,6 +77,21 @@ const (
 	ResourceShortage
 )
 
+// String converts the rejection reason to human readable form.
+func (r RejectionReason) String() string {
+	switch r {
+	case Prohibited:
+		return "administratively prohibited"
+	case ConnectionFailed:
+		return "connect failed"
+	case UnknownChannelType:
+		return "unknown channel type"
+	case ResourceShortage:
+		return "resource shortage"
+	}
+	return fmt.Sprintf("unknown reason %d", int(r))
+}
+
 type channel struct {
 	packetConn        // the underlying transport
 	localId, remoteId uint32
