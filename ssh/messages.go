@@ -227,17 +227,20 @@ type userAuthPubKeyOkMsg struct {
 	PubKey string
 }
 
-// unmarshal parses the SSH wire data in packet into out using reflection.
-// expectedType is the expected SSH message type. It either returns nil on
-// success, or a ParseError or UnexpectedMessageError on error.
+// unmarshal parses the SSH wire data in packet into out using
+// reflection. expectedType, if non-zero, is the SSH message type that
+// the packet is expected to start with.  unmarshal either returns nil
+// on success, or a ParseError or UnexpectedMessageError on error.
 func unmarshal(out interface{}, packet []byte, expectedType uint8) error {
 	if len(packet) == 0 {
 		return ParseError{expectedType}
 	}
-	if packet[0] != expectedType {
-		return UnexpectedMessageError{expectedType, packet[0]}
+	if expectedType > 0 {
+		if packet[0] != expectedType {
+			return UnexpectedMessageError{expectedType, packet[0]}
+		}
+		packet = packet[1:]
 	}
-	packet = packet[1:]
 
 	v := reflect.ValueOf(out).Elem()
 	structType := v.Type()
@@ -319,10 +322,13 @@ func unmarshal(out interface{}, packet []byte, expectedType uint8) error {
 	return nil
 }
 
-// marshal serializes the message in msg, using the given message type.
+// marshal serializes the message in msg. The given message type is
+// prepended if it is non-zero.
 func marshal(msgType uint8, msg interface{}) []byte {
-	out := make([]byte, 1, 64)
-	out[0] = msgType
+	out := make([]byte, 0, 64)
+	if msgType > 0 {
+		out = append(out, msgType)
+	}
 
 	v := reflect.ValueOf(msg)
 	for i, n := 0, v.NumField(); i < n; i++ {
