@@ -30,5 +30,5 @@ func TestCustomClientVersion(t *testing.T) {
 }
 
 func TestDefaultClientVersion(t *testing.T) {
-	testClientVersion(t, &ClientConfig{}, string(clientVersion))
+	testClientVersion(t, &ClientConfig{}, packageVersion)
 }

@@ -121,6 +121,9 @@ type ServerConn struct {
 	// ClientVersion is the client's version, populated after
 	// Handshake is called. It should not be modified.
 	ClientVersion []byte
+
+	// Our version.
+	serverVersion []byte
 }
 
 // Server returns a new SSH server connection
@@ -144,33 +147,25 @@ func signAndMarshal(k Signer, rand io.Reader, data []byte) ([]byte, error) {
 	return serializeSignature(k.PublicKey().PrivateKeyAlgo(), sig), nil
 }
 
-// serverVersion is the fixed identification string that Server will use.
-var serverVersion = []byte("SSH-2.0-Go\r\n")
-
 // Handshake performs an SSH transport and client authentication on the given ServerConn.
-func (s *ServerConn) Handshake() (err error) {
-	if _, err = s.Write(serverVersion); err != nil {
-		return
-	}
-	if err := s.Flush(); err != nil {
+func (s *ServerConn) Handshake() error {
+	var err error
+	s.serverVersion = []byte(packageVersion)
+	s.ClientVersion, err = exchangeVersions(s.transport.Conn, s.serverVersion)
+	if err != nil {
 		return err
 	}
-
-	s.ClientVersion, err = readVersion(s)
-	if err != nil {
-		return
-	}
-	if err = s.clientInitHandshake(nil, nil); err != nil {
-		return
+	if err := s.clientInitHandshake(nil, nil); err != nil {
+		return err
 	}
 
 	var packet []byte
 	if packet, err = s.readPacket(); err != nil {
-		return
+		return err
 	}
 	var serviceRequest serviceRequestMsg
-	if err = unmarshal(&serviceRequest, packet, msgServiceRequest); err != nil {
-		return
+	if err := unmarshal(&serviceRequest, packet, msgServiceRequest); err != nil {
+		return err
 	}
 	if serviceRequest.Service != serviceUserAuth {
 		return errors.New("ssh: requested service '" + serviceRequest.Service + "' before authenticating")
@@ -178,14 +173,14 @@ func (s *ServerConn) Handshake() (err error) {
 	serviceAccept := serviceAcceptMsg{
 		Service: serviceUserAuth,
 	}
-	if err = s.writePacket(marshal(msgServiceAccept, serviceAccept)); err != nil {
-		return
+	if err := s.writePacket(marshal(msgServiceAccept, serviceAccept)); err != nil {
+		return err
 	}
 
-	if err = s.authenticate(s.transport.sessionID); err != nil {
-		return
+	if err := s.authenticate(s.transport.sessionID); err != nil {
+		return err
 	}
-	return
+	return err
 }
 
 func (s *ServerConn) clientInitHandshake(clientKexInit *kexInitMsg, clientKexInitPacket []byte) (err error) {
@@ -244,7 +239,7 @@ func (s *ServerConn) clientInitHandshake(clientKexInit *kexInitMsg, clientKexIni
 	}
 
 	magics := handshakeMagics{
-		serverVersion: serverVersion[:len(serverVersion)-2],
+		serverVersion: s.serverVersion,
 		clientVersion: s.ClientVersion,
 		serverKexInit: marshal(msgKexInit, serverKexInit),
 		clientKexInit: clientKexInitPacket,

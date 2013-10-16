@@ -358,18 +358,41 @@ func generateKeyMaterial(out, tag []byte, K, H, sessionId []byte, h hash.Hash) {
 	}
 }
 
-// maxVersionStringBytes is the maximum number of bytes that we'll accept as a
-// version string. In the event that the client is talking a different protocol
-// we need to set a limit otherwise we will keep using more and more memory
-// while searching for the end of the version handshake.
-const maxVersionStringBytes = 1024
+const packageVersion = "SSH-2.0-Go"
+
+// Sends and receives a version line.  The versionLine string should
+// be US ASCII, start with "SSH-2.0-", and should not include a
+// newline. exchangeVersions returns the other side's version line.
+func exchangeVersions(rw io.ReadWriter, versionLine []byte) (them []byte, err error) {
+	// Contrary to the RFC, we do not ignore lines that don't
+	// start with "SSH-2.0-" to make the library usable with
+	// nonconforming servers.
+	for _, c := range versionLine {
+		// The spec disallows non US-ASCII chars, and
+		// specifically forbids null chars.
+		if c < 32 {
+			return nil, errors.New("ssh: junk character in version line")
+		}
+	}
+	if _, err = rw.Write(append(versionLine, '\r', '\n')); err != nil {
+		return
+	}
+
+	them, err = readVersion(rw)
+	return them, err
+}
+
+// maxVersionStringBytes is the maximum number of bytes that we'll
+// accept as a version string. RFC 4253 section 4.2 limits this at 255
+// chars
+const maxVersionStringBytes = 255
 
 // Read version string as specified by RFC 4253, section 4.2.
 func readVersion(r io.Reader) ([]byte, error) {
 	versionString := make([]byte, 0, 64)
 	var ok bool
 	var buf [1]byte
-forEachByte:
+
 	for len(versionString) < maxVersionStringBytes {
 		_, err := io.ReadFull(r, buf[:])
 		if err != nil {
@@ -379,13 +402,20 @@ forEachByte:
 		// but several SSH servers actually only send a \n.
 		if buf[0] == '\n' {
 			ok = true
-			break forEachByte
+			break
 		}
+
+		// non ASCII chars are disallowed, but we are lenient,
+		// since Go doesn't use null-terminated strings.
+
+		// The RFC allows a comment after a space, however,
+		// all of it (version and comments) goes into the
+		// session hash.
 		versionString = append(versionString, buf[0])
 	}
 
 	if !ok {
-		return nil, errors.New("ssh: failed to read version string")
+		return nil, errors.New("ssh: overflow reading version string")
 	}
 
 	// There might be a '\r' on the end which we should remove.
