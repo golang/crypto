@@ -27,14 +27,6 @@ func (c *ClientConn) Listen(n, addr string) (net.Listener, error) {
 	return c.ListenTCP(laddr)
 }
 
-// RFC 4254 7.1
-type channelForwardMsg struct {
-	Message   string
-	WantReply bool
-	raddr     string
-	rport     uint32
-}
-
 // Automatic port allocation is broken with OpenSSH before 6.0. See
 // also https://bugzilla.mindrot.org/show_bug.cgi?id=2017.  In
 // particular, OpenSSH 5.9 sends a channelOpenMsg with port number 0,
@@ -81,6 +73,14 @@ func (c *ClientConn) autoPortListenWorkaround(laddr *net.TCPAddr) (net.Listener,
 		}
 	}
 	return nil, fmt.Errorf("ssh: listen on random port failed after %d tries: %v", tries, err)
+}
+
+// RFC 4254 7.1
+type channelForwardMsg struct {
+	Message   string
+	WantReply bool
+	raddr     string
+	rport     uint32
 }
 
 // ListenTCP requests the remote peer open a listening socket
