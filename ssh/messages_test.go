@@ -78,6 +78,39 @@ func TestMarshalUnmarshal(t *testing.T) {
 	}
 }
 
+func TestUnmarshalEmptyPacket(t *testing.T) {
+	var b []byte
+	var m channelRequestSuccessMsg
+	err := unmarshal(&m, b, msgChannelRequest)
+	want := ParseError{msgChannelRequest}
+	if _, ok := err.(ParseError); !ok {
+		t.Fatalf("got %T, want %T", err, want)
+	}
+	if got := err.(ParseError); want != got {
+		t.Fatal("got %#v, want %#v", got, want)
+	}
+}
+
+func TestUnmarshalUnexpectedPacket(t *testing.T) {
+	type S struct {
+		I uint32
+		S string
+		B bool
+	}
+
+	s := S{42, "hello", true}
+	packet := marshal(42, s)
+	roundtrip := S{}
+	err := unmarshal(&roundtrip, packet, 43)
+	if err == nil {
+		t.Fatal("expected error, not nil")
+	}
+	want := UnexpectedMessageError{43, 42}
+	if got, ok := err.(UnexpectedMessageError); !ok || want != got {
+		t.Fatal("expected %q, got %q", want, got)
+	}
+}
+
 func TestBareMarshalUnmarshal(t *testing.T) {
 	type S struct {
 		I uint32
