@@ -52,6 +52,13 @@ type OpenSSHCertV01 struct {
 	Signature               *signature
 }
 
+// validateOpenSSHCertV01Signature uses the cert's SignatureKey to verify that
+// the cert's Signature.Blob is the result of signing the cert bytes starting
+// from the algorithm string and going up to and including the SignatureKey.
+func validateOpenSSHCertV01Signature(cert *OpenSSHCertV01) bool {
+	return cert.SignatureKey.Verify(cert.BytesForSigning(), cert.Signature.Blob)
+}
+
 var certAlgoNames = map[string]string{
 	KeyAlgoRSA:      CertAlgoRSAv01,
 	KeyAlgoDSA:      CertAlgoDSAv01,
@@ -69,6 +76,66 @@ func certToPrivAlgo(algo string) string {
 		}
 	}
 	panic("unknown cert algorithm")
+}
+
+func (cert *OpenSSHCertV01) marshal(includeAlgo, includeSig bool) []byte {
+	algoName := cert.PublicKeyAlgo()
+	pubKey := cert.Key.Marshal()
+	sigKey := MarshalPublicKey(cert.SignatureKey)
+
+	var length int
+	if includeAlgo {
+		length += stringLength(len(algoName))
+	}
+	length += stringLength(len(cert.Nonce))
+	length += len(pubKey)
+	length += 8 // Length of Serial
+	length += 4 // Length of Type
+	length += stringLength(len(cert.KeyId))
+	length += lengthPrefixedNameListLength(cert.ValidPrincipals)
+	length += 8 // Length of ValidAfter
+	length += 8 // Length of ValidBefore
+	length += tupleListLength(cert.CriticalOptions)
+	length += tupleListLength(cert.Extensions)
+	length += stringLength(len(cert.Reserved))
+	length += stringLength(len(sigKey))
+	if includeSig {
+		length += signatureLength(cert.Signature)
+	}
+
+	ret := make([]byte, length)
+	r := ret
+	if includeAlgo {
+		r = marshalString(r, []byte(algoName))
+	}
+	r = marshalString(r, cert.Nonce)
+	copy(r, pubKey)
+	r = r[len(pubKey):]
+	r = marshalUint64(r, cert.Serial)
+	r = marshalUint32(r, cert.Type)
+	r = marshalString(r, []byte(cert.KeyId))
+	r = marshalLengthPrefixedNameList(r, cert.ValidPrincipals)
+	r = marshalUint64(r, uint64(cert.ValidAfter.Unix()))
+	r = marshalUint64(r, uint64(cert.ValidBefore.Unix()))
+	r = marshalTupleList(r, cert.CriticalOptions)
+	r = marshalTupleList(r, cert.Extensions)
+	r = marshalString(r, cert.Reserved)
+	r = marshalString(r, sigKey)
+	if includeSig {
+		r = marshalSignature(r, cert.Signature)
+	}
+	if len(r) > 0 {
+		panic("ssh: internal error, marshaling certificate did not fill the entire buffer")
+	}
+	return ret
+}
+
+func (cert *OpenSSHCertV01) BytesForSigning() []byte {
+	return cert.marshal(true, false)
+}
+
+func (cert *OpenSSHCertV01) Marshal() []byte {
+	return cert.marshal(false, true)
 }
 
 func (c *OpenSSHCertV01) PublicKeyAlgo() string {
@@ -110,7 +177,7 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 		return
 	}
 
-	if cert.Type, in, ok = parseUint32(in); !ok || cert.Type != UserCert && cert.Type != HostCert {
+	if cert.Type, in, ok = parseUint32(in); !ok {
 		return
 	}
 
@@ -162,45 +229,6 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 
 	ok = true
 	return cert, in, ok
-}
-
-func (cert *OpenSSHCertV01) Marshal() []byte {
-	pubKey := cert.Key.Marshal()
-	sigKey := MarshalPublicKey(cert.SignatureKey)
-
-	length := stringLength(len(cert.Nonce))
-	length += len(pubKey)
-	length += 8 // Length of Serial
-	length += 4 // Length of Type
-	length += stringLength(len(cert.KeyId))
-	length += lengthPrefixedNameListLength(cert.ValidPrincipals)
-	length += 8 // Length of ValidAfter
-	length += 8 // Length of ValidBefore
-	length += tupleListLength(cert.CriticalOptions)
-	length += tupleListLength(cert.Extensions)
-	length += stringLength(len(cert.Reserved))
-	length += stringLength(len(sigKey))
-	length += signatureLength(cert.Signature)
-
-	ret := make([]byte, length)
-	r := marshalString(ret, cert.Nonce)
-	copy(r, pubKey)
-	r = r[len(pubKey):]
-	r = marshalUint64(r, cert.Serial)
-	r = marshalUint32(r, cert.Type)
-	r = marshalString(r, []byte(cert.KeyId))
-	r = marshalLengthPrefixedNameList(r, cert.ValidPrincipals)
-	r = marshalUint64(r, uint64(cert.ValidAfter.Unix()))
-	r = marshalUint64(r, uint64(cert.ValidBefore.Unix()))
-	r = marshalTupleList(r, cert.CriticalOptions)
-	r = marshalTupleList(r, cert.Extensions)
-	r = marshalString(r, cert.Reserved)
-	r = marshalString(r, sigKey)
-	r = marshalSignature(r, cert.Signature)
-	if len(r) > 0 {
-		panic("internal error")
-	}
-	return ret
 }
 
 func lengthPrefixedNameListLength(namelist []string) int {
@@ -320,6 +348,9 @@ func parseSignature(in []byte) (out *signature, rest []byte, ok bool) {
 		return
 	}
 
-	// TODO(hanwen): this is a bug; 'rest' gets swallowed.
-	return parseSignatureBody(sigBytes)
+	out, sigBytes, ok = parseSignatureBody(sigBytes)
+	if !ok || len(sigBytes) > 0 {
+		return nil, nil, false
+	}
+	return
 }

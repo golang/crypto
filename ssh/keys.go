@@ -102,22 +102,8 @@ func ParseAuthorizedKey(in []byte) (out PublicKey, comment string, options []str
 			continue
 		}
 
-		field := string(in[:i])
-		switch field {
-		case KeyAlgoRSA, KeyAlgoDSA:
-			out, comment, ok = parseAuthorizedKey(in[i:])
-			if ok {
-				return
-			}
-		case KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521:
-			// We don't support these keys.
-			in = rest
-			continue
-		case CertAlgoRSAv01, CertAlgoDSAv01,
-			CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01:
-			// We don't support these certificates.
-			in = rest
-			continue
+		if out, comment, ok = parseAuthorizedKey(in[i:]); ok {
+			return
 		}
 
 		// No key type recognised. Maybe there's an options field at
@@ -157,14 +143,9 @@ func ParseAuthorizedKey(in []byte) (out PublicKey, comment string, options []str
 			continue
 		}
 
-		field = string(in[:i])
-		switch field {
-		case KeyAlgoRSA, KeyAlgoDSA:
-			out, comment, ok = parseAuthorizedKey(in[i:])
-			if ok {
-				options = candidateOptions
-				return
-			}
+		if out, comment, ok = parseAuthorizedKey(in[i:]); ok {
+			options = candidateOptions
+			return
 		}
 
 		in = rest
