@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 )
 
 var (
@@ -46,9 +45,9 @@ func init() {
 		Nonce:           []byte{}, // To pass reflect.DeepEqual after marshal & parse, this must be non-nil
 		Key:             ecdsaKey.PublicKey(),
 		ValidPrincipals: []string{"gopher1", "gopher2"}, // increases test coverage
-		ValidAfter:      time.Now().Truncate(time.Second),
-		ValidBefore:     time.Now().Truncate(time.Second).Add(time.Hour),
-		Reserved:        []byte{}, // To pass reflect.DeepEqual after marshal & parse, this must be non-nil
+		ValidAfter:      0,                              // unix epoch
+		ValidBefore:     maxUint64,                      // The end of currently representable time.
+		Reserved:        []byte{},                       // To pass reflect.DeepEqual after marshal & parse, this must be non-nil
 		SignatureKey:    rsaKey.PublicKey(),
 	}
 	sigBytes, _ := rsaKey.Sign(rand.Reader, testCert.BytesForSigning())

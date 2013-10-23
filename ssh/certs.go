@@ -35,6 +35,28 @@ type tuple struct {
 	Data string
 }
 
+const (
+	maxUint64 = 1<<64 - 1
+	maxInt64  = 1<<63 - 1
+)
+
+// CertTime represents an unsigned 64-bit time value in seconds starting from
+// UNIX epoch.  We use CertTime instead of time.Time in order to properly handle
+// the "infinite" time value ^0, which would become negative when expressed as
+// an int64.
+type CertTime uint64
+
+func (ct CertTime) Time() time.Time {
+	if ct > maxInt64 {
+		return time.Unix(maxInt64, 0)
+	}
+	return time.Unix(int64(ct), 0)
+}
+
+func (ct CertTime) IsInfinite() bool {
+	return ct == maxUint64
+}
+
 // An OpenSSHCertV01 represents an OpenSSH certificate as defined in
 // [PROTOCOL.certkeys]?rev=1.8.
 type OpenSSHCertV01 struct {
@@ -44,7 +66,7 @@ type OpenSSHCertV01 struct {
 	Type                    uint32
 	KeyId                   string
 	ValidPrincipals         []string
-	ValidAfter, ValidBefore time.Time
+	ValidAfter, ValidBefore CertTime
 	CriticalOptions         []tuple
 	Extensions              []tuple
 	Reserved                []byte
@@ -115,8 +137,8 @@ func (cert *OpenSSHCertV01) marshal(includeAlgo, includeSig bool) []byte {
 	r = marshalUint32(r, cert.Type)
 	r = marshalString(r, []byte(cert.KeyId))
 	r = marshalLengthPrefixedNameList(r, cert.ValidPrincipals)
-	r = marshalUint64(r, uint64(cert.ValidAfter.Unix()))
-	r = marshalUint64(r, uint64(cert.ValidBefore.Unix()))
+	r = marshalUint64(r, uint64(cert.ValidAfter))
+	r = marshalUint64(r, uint64(cert.ValidBefore))
 	r = marshalTupleList(r, cert.CriticalOptions)
 	r = marshalTupleList(r, cert.Extensions)
 	r = marshalString(r, cert.Reserved)
@@ -195,13 +217,13 @@ func parseOpenSSHCertV01(in []byte, algo string) (out *OpenSSHCertV01, rest []by
 	if !ok {
 		return
 	}
-	cert.ValidAfter = time.Unix(int64(va), 0)
+	cert.ValidAfter = CertTime(va)
 
 	vb, in, ok := parseUint64(in)
 	if !ok {
 		return
 	}
-	cert.ValidBefore = time.Unix(int64(vb), 0)
+	cert.ValidBefore = CertTime(vb)
 
 	if cert.CriticalOptions, in, ok = parseTupleList(in); !ok {
 		return
