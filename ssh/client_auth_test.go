@@ -361,6 +361,8 @@ func TestClientUnsupportedKex(t *testing.T) {
 	c, err := Dial("tcp", newMockAuthServer(t), config)
 	if err == nil || !strings.Contains(err.Error(), "no common algorithms") {
 		t.Errorf("got %v, expected 'no common algorithms'", err)
+	}
+	if c != nil {
 		c.Close()
 	}
 }
