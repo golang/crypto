@@ -14,10 +14,10 @@ import (
 // authenticate authenticates with the remote server. See RFC 4252.
 func (c *ClientConn) authenticate(session []byte) error {
 	// initiate user auth session
-	if err := c.writePacket(marshal(msgServiceRequest, serviceRequestMsg{serviceUserAuth})); err != nil {
+	if err := c.transport.writePacket(marshal(msgServiceRequest, serviceRequestMsg{serviceUserAuth})); err != nil {
 		return err
 	}
-	packet, err := c.readPacket()
+	packet, err := c.transport.readPacket()
 	if err != nil {
 		return err
 	}

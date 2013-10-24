@@ -16,7 +16,7 @@ import (
 
 // ClientConn represents the client side of an SSH connection.
 type ClientConn struct {
-	*transport
+	transport   *transport
 	config      *ClientConfig
 	chanList    // channels associated with this connection
 	forwardList // forwarded tcpip connections from the remote side
@@ -47,12 +47,21 @@ func clientWithAddress(c net.Conn, addr string, config *ClientConfig) (*ClientCo
 	}
 
 	if err := conn.handshake(); err != nil {
-		conn.Close()
+		conn.transport.Close()
 		return nil, fmt.Errorf("handshake failed: %v", err)
 	}
 	go conn.mainLoop()
 	return conn, nil
 }
+
+// Close closes the connection.
+func (c *ClientConn) Close() error { return c.transport.Close() }
+
+// LocalAddr returns the local network address.
+func (c *ClientConn) LocalAddr() net.Addr { return c.transport.LocalAddr() }
+
+// RemoteAddr returns the remote network address.
+func (c *ClientConn) RemoteAddr() net.Addr { return c.transport.RemoteAddr() }
 
 // handshake performs the client side key exchange. See RFC 4253 Section 7.
 func (c *ClientConn) handshake() error {
@@ -78,10 +87,10 @@ func (c *ClientConn) handshake() error {
 		CompressionServerClient: supportedCompressions,
 	}
 	kexInitPacket := marshal(msgKexInit, clientKexInit)
-	if err := c.writePacket(kexInitPacket); err != nil {
+	if err := c.transport.writePacket(kexInitPacket); err != nil {
 		return err
 	}
-	packet, err := c.readPacket()
+	packet, err := c.transport.readPacket()
 	if err != nil {
 		return err
 	}
@@ -99,7 +108,7 @@ func (c *ClientConn) handshake() error {
 	if serverKexInit.FirstKexFollows && algs.kex != serverKexInit.KexAlgos[0] {
 		// The server sent a Kex message for the wrong algorithm,
 		// which we have to ignore.
-		if _, err := c.readPacket(); err != nil {
+		if _, err := c.transport.readPacket(); err != nil {
 			return err
 		}
 	}
@@ -115,7 +124,7 @@ func (c *ClientConn) handshake() error {
 		clientKexInit: kexInitPacket,
 		serverKexInit: packet,
 	}
-	result, err := kex.Client(c, c.config.rand(), &magics)
+	result, err := kex.Client(c.transport, c.config.rand(), &magics)
 	if err != nil {
 		return err
 	}
@@ -126,7 +135,7 @@ func (c *ClientConn) handshake() error {
 	}
 
 	if checker := c.config.HostKeyChecker; checker != nil {
-		err = checker.Check(c.dialAddress, c.RemoteAddr(), algs.hostKey, result.HostKey)
+		err = checker.Check(c.dialAddress, c.transport.RemoteAddr(), algs.hostKey, result.HostKey)
 		if err != nil {
 			return err
 		}
@@ -134,10 +143,10 @@ func (c *ClientConn) handshake() error {
 
 	c.transport.prepareKeyChange(algs, result)
 
-	if err = c.writePacket([]byte{msgNewKeys}); err != nil {
+	if err = c.transport.writePacket([]byte{msgNewKeys}); err != nil {
 		return err
 	}
-	if packet, err = c.readPacket(); err != nil {
+	if packet, err = c.transport.readPacket(); err != nil {
 		return err
 	}
 	if packet[0] != msgNewKeys {
@@ -171,13 +180,13 @@ func verifyHostKeySignature(hostKeyAlgo string, hostKeyBytes []byte, data []byte
 // to their respective ClientChans.
 func (c *ClientConn) mainLoop() {
 	defer func() {
-		c.Close()
+		c.transport.Close()
 		c.chanList.closeAll()
 		c.forwardList.closeAll()
 	}()
 
 	for {
-		packet, err := c.readPacket()
+		packet, err := c.transport.readPacket()
 		if err != nil {
 			break
 		}
@@ -298,7 +307,7 @@ func (c *ClientConn) mainLoop() {
 				// This handles keepalive messages and matches
 				// the behaviour of OpenSSH.
 				if msg.WantReply {
-					c.writePacket(marshal(msgRequestFailure, globalRequestFailureMsg{}))
+					c.transport.writePacket(marshal(msgRequestFailure, globalRequestFailureMsg{}))
 				}
 			case *globalRequestSuccessMsg, *globalRequestFailureMsg:
 				c.globalRequest.response <- msg
@@ -355,7 +364,7 @@ func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
 			MaxPacketSize: 1 << 15,
 		}
 
-		c.writePacket(marshal(msgChannelOpenConfirm, m))
+		c.transport.writePacket(marshal(msgChannelOpenConfirm, m))
 		l <- forward{ch, raddr}
 	default:
 		// unknown channel type
@@ -365,7 +374,7 @@ func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
 			Message:  fmt.Sprintf("unknown channel type: %v", msg.ChanType),
 			Language: "en_US.UTF-8",
 		}
-		c.writePacket(marshal(msgChannelOpenFailure, m))
+		c.transport.writePacket(marshal(msgChannelOpenFailure, m))
 	}
 }
 
@@ -375,7 +384,7 @@ func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
 func (c *ClientConn) sendGlobalRequest(m interface{}) (*globalRequestSuccessMsg, error) {
 	c.globalRequest.Lock()
 	defer c.globalRequest.Unlock()
-	if err := c.writePacket(marshal(msgGlobalRequest, m)); err != nil {
+	if err := c.transport.writePacket(marshal(msgGlobalRequest, m)); err != nil {
 		return nil, err
 	}
 	r := <-c.globalRequest.response
@@ -394,7 +403,7 @@ func (c *ClientConn) sendConnectionFailed(remoteId uint32) error {
 		Message:  "invalid request",
 		Language: "en_US.UTF-8",
 	}
-	return c.writePacket(marshal(msgChannelOpenFailure, m))
+	return c.transport.writePacket(marshal(msgChannelOpenFailure, m))
 }
 
 // parseTCPAddr parses the originating address from the remote into a *net.TCPAddr.
