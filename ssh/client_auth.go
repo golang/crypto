@@ -215,16 +215,17 @@ func (p *publickeyAuth) auth(session []byte, user string, c packetConn, rand io.
 	for i, key := range validKeys {
 		pubkey := MarshalPublicKey(key)
 		algoname := key.PublicKeyAlgo()
-		sign, err := p.Sign(i, rand, buildDataSignedForAuth(session, userAuthRequestMsg{
+		data := buildDataSignedForAuth(session, userAuthRequestMsg{
 			User:    user,
 			Service: serviceSSH,
 			Method:  p.method(),
-		}, []byte(algoname), pubkey))
+		}, []byte(algoname), pubkey)
+		sigBlob, err := p.Sign(i, rand, data)
 		if err != nil {
 			return false, nil, err
 		}
 		// manually wrap the serialized signature in a string
-		s := serializeSignature(key.PublicKeyAlgo(), sign)
+		s := serializeSignature(key.PublicKeyAlgo(), sigBlob)
 		sig := make([]byte, stringLength(len(s)))
 		marshalString(sig, s)
 		msg := publickeyAuthMsg{
