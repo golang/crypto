@@ -186,7 +186,7 @@ func (s *ServerConn) Handshake() error {
 		return err
 	}
 
-	if err := s.authenticate(s.transport.sessionID); err != nil {
+	if err := s.authenticate(); err != nil {
 		return err
 	}
 	return err
@@ -310,7 +310,7 @@ func (s *ServerConn) testPubKey(user, algo string, pubKey []byte) bool {
 	return result
 }
 
-func (s *ServerConn) authenticate(H []byte) error {
+func (s *ServerConn) authenticate() error {
 	var userAuthReq userAuthRequestMsg
 	var err error
 	var packet []byte
@@ -409,7 +409,7 @@ userAuthLoop:
 				if !isAcceptableAlgo(algo) || !isAcceptableAlgo(sig.Format) || pubAlgoToPrivAlgo(algo) != sig.Format {
 					break
 				}
-				signedData := buildDataSignedForAuth(H, userAuthReq, algoBytes, pubKey)
+				signedData := buildDataSignedForAuth(s.transport.sessionID, userAuthReq, algoBytes, pubKey)
 				key, _, ok := ParsePublicKey(pubKey)
 				if !ok {
 					return ParseError{msgUserAuthRequest}

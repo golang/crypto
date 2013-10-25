@@ -152,7 +152,7 @@ func (c *ClientConn) handshake() error {
 	if packet[0] != msgNewKeys {
 		return UnexpectedMessageError{msgNewKeys, packet[0]}
 	}
-	return c.authenticate(result.H)
+	return c.authenticate()
 }
 
 // Verify the host key obtained in the key exchange.
