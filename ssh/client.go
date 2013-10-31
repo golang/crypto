@@ -356,12 +356,10 @@ func (c *ClientConn) handleChanOpen(msg *channelOpenMsg) {
 		ch.maxPacket = msg.MaxPacketSize
 
 		m := channelOpenConfirmMsg{
-			PeersId:  ch.remoteId,
-			MyId:     ch.localId,
-			MyWindow: 1 << 14,
-
-			// As per RFC 4253 6.1, 32k is also the minimum.
-			MaxPacketSize: 1 << 15,
+			PeersId:       ch.remoteId,
+			MyId:          ch.localId,
+			MyWindow:      channelWindowSize,
+			MaxPacketSize: channelMaxPacketSize,
 		}
 
 		c.transport.writePacket(marshal(msgChannelOpenConfirm, m))

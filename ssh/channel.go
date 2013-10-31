@@ -22,6 +22,12 @@ const (
 
 	// minPacketLength defines the smallest valid packet
 	minPacketLength = 9
+
+	// channelMaxPacketSize defines the maximum packet size advertised in open messages
+	channelMaxPacketSize = 1 << 15 // RFC 4253 6.1, minimum 32 KiB
+
+	// channelWindowSize defines the window size advertised in open messages
+	channelWindowSize = 64 * channelMaxPacketSize // Like OpenSSH
 )
 
 // A Channel is an ordered, reliable, duplex stream that is multiplexed over an

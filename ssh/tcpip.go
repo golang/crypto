@@ -299,8 +299,8 @@ func (c *ClientConn) dial(laddr string, lport int, raddr string, rport int) (*tc
 	if err := c.transport.writePacket(marshal(msgChannelOpen, channelOpenDirectMsg{
 		ChanType:      "direct-tcpip",
 		PeersId:       ch.localId,
-		PeersWindow:   1 << 14,
-		MaxPacketSize: 1 << 15, // RFC 4253 6.1
+		PeersWindow:   channelWindowSize,
+		MaxPacketSize: channelMaxPacketSize,
 		raddr:         raddr,
 		rport:         uint32(rport),
 		laddr:         laddr,
