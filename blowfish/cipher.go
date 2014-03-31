@@ -26,11 +26,10 @@ func (k KeySizeError) Error() string {
 }
 
 // NewCipher creates and returns a Cipher.
-// The key argument should be the Blowfish key, 4 to 56 bytes.
+// The key argument should be the Blowfish key, from 1 to 56 bytes.
 func NewCipher(key []byte) (*Cipher, error) {
 	var result Cipher
-	k := len(key)
-	if k < 4 || k > 56 {
+	if k := len(key); k < 1 || k > 56 {
 		return nil, KeySizeError(k)
 	}
 	initCipher(key, &result)
@@ -44,8 +43,7 @@ func NewCipher(key []byte) (*Cipher, error) {
 // bytes. Only the first 16 bytes of salt are used.
 func NewSaltedCipher(key, salt []byte) (*Cipher, error) {
 	var result Cipher
-	k := len(key)
-	if k < 4 {
+	if k := len(key); k < 1 {
 		return nil, KeySizeError(k)
 	}
 	initCipher(key, &result)
