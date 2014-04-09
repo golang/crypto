@@ -30,10 +30,10 @@ type kexResult struct {
 	// Shared secret. See also RFC 4253, section 8.
 	K []byte
 
-	// Host key as hashed into H
+	// Host key as hashed into H.
 	HostKey []byte
 
-	// Signature of H
+	// Signature of H.
 	Signature []byte
 
 	// A cryptographic hash function that matches the security
@@ -94,7 +94,7 @@ func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handsha
 	kexDHInit := kexDHInitMsg{
 		X: X,
 	}
-	if err := c.writePacket(marshal(msgKexDHInit, kexDHInit)); err != nil {
+	if err := c.writePacket(Marshal(&kexDHInit)); err != nil {
 		return nil, err
 	}
 
@@ -104,7 +104,7 @@ func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handsha
 	}
 
 	var kexDHReply kexDHReplyMsg
-	if err = unmarshal(&kexDHReply, packet, msgKexDHReply); err != nil {
+	if err = Unmarshal(packet, &kexDHReply); err != nil {
 		return nil, err
 	}
 
@@ -138,7 +138,7 @@ func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handsha
 		return
 	}
 	var kexDHInit kexDHInitMsg
-	if err = unmarshal(&kexDHInit, packet, msgKexDHInit); err != nil {
+	if err = Unmarshal(packet, &kexDHInit); err != nil {
 		return
 	}
 
@@ -153,7 +153,7 @@ func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handsha
 		return nil, err
 	}
 
-	hostKeyBytes := MarshalPublicKey(priv.PublicKey())
+	hostKeyBytes := priv.PublicKey().Marshal()
 
 	h := hashFunc.New()
 	magics.write(h)
@@ -179,7 +179,7 @@ func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handsha
 		Y:         Y,
 		Signature: sig,
 	}
-	packet = marshal(msgKexDHReply, kexDHReply)
+	packet = Marshal(&kexDHReply)
 
 	err = c.writePacket(packet)
 	return &kexResult{
@@ -207,7 +207,7 @@ func (kex *ecdh) Client(c packetConn, rand io.Reader, magics *handshakeMagics) (
 		ClientPubKey: elliptic.Marshal(kex.curve, ephKey.PublicKey.X, ephKey.PublicKey.Y),
 	}
 
-	serialized := marshal(msgKexECDHInit, kexInit)
+	serialized := Marshal(&kexInit)
 	if err := c.writePacket(serialized); err != nil {
 		return nil, err
 	}
@@ -218,7 +218,7 @@ func (kex *ecdh) Client(c packetConn, rand io.Reader, magics *handshakeMagics) (
 	}
 
 	var reply kexECDHReplyMsg
-	if err = unmarshal(&reply, packet, msgKexECDHReply); err != nil {
+	if err = Unmarshal(packet, &reply); err != nil {
 		return nil, err
 	}
 
@@ -297,7 +297,7 @@ func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, p
 	}
 
 	var kexECDHInit kexECDHInitMsg
-	if err = unmarshal(&kexECDHInit, packet, msgKexECDHInit); err != nil {
+	if err = Unmarshal(packet, &kexECDHInit); err != nil {
 		return nil, err
 	}
 
@@ -314,7 +314,7 @@ func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, p
 		return nil, err
 	}
 
-	hostKeyBytes := MarshalPublicKey(priv.PublicKey())
+	hostKeyBytes := priv.PublicKey().Marshal()
 
 	serializedEphKey := elliptic.Marshal(kex.curve, ephKey.PublicKey.X, ephKey.PublicKey.Y)
 
@@ -346,7 +346,7 @@ func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, p
 		Signature:       sig,
 	}
 
-	serialized := marshal(msgKexECDHReply, reply)
+	serialized := Marshal(&reply)
 	if err := c.writePacket(serialized); err != nil {
 		return nil, err
 	}

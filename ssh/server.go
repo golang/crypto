@@ -6,38 +6,52 @@ package ssh
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"net"
-	"sync"
-
-	_ "crypto/sha1"
 )
 
-type ServerConfig struct {
-	hostKeys []Signer
+// The Permissions type holds fine-grained permissions that are
+// specific to a user or a specific authentication method for a
+// user. Permissions, except for "source-address", must be enforced in
+// the server application layer, after successful authentication. The
+// Permissions are passed on in ServerConn so a server implementation
+// can honor them.
+type Permissions struct {
+	// Critical options restrict default permissions. Common
+	// restrictions are "source-address" and "force-command". If
+	// the server cannot enforce the restriction, or does not
+	// recognize it, the user should not authenticate.
+	CriticalOptions map[string]string
 
-	// Rand provides the source of entropy for key exchange. If Rand is
-	// nil, the cryptographic random reader in package crypto/rand will
-	// be used.
-	Rand io.Reader
+	// Extensions are extra functionality that the server may
+	// offer on authenticated connections. Common extensions are
+	// "permit-agent-forwarding", "permit-X11-forwarding". Lack of
+	// support for an extension does not preclude authenticating a
+	// user.
+	Extensions map[string]string
+}
+
+// ServerConfig holds server specific configuration data.
+type ServerConfig struct {
+	// Config contains configuration shared between client and server.
+	Config
+
+	hostKeys []Signer
 
 	// NoClientAuth is true if clients are allowed to connect without
 	// authenticating.
 	NoClientAuth bool
 
-	// PasswordCallback, if non-nil, is called when a user attempts to
-	// authenticate using a password. It may be called concurrently from
-	// several goroutines.
-	PasswordCallback func(conn *ServerConn, user, password string) bool
+	// PasswordCallback, if non-nil, is called when a user
+	// attempts to authenticate using a password.
+	PasswordCallback func(conn ConnMetadata, password []byte) (*Permissions, error)
 
 	// PublicKeyCallback, if non-nil, is called when a client attempts public
 	// key authentication. It must return true if the given public key is
-	// valid for the given user.
-	PublicKeyCallback func(conn *ServerConn, user, algo string, pubkey []byte) bool
+	// valid for the given user. For example, see CertChecker.Authenticate.
+	PublicKeyCallback func(conn ConnMetadata, key PublicKey) (*Permissions, error)
 
 	// KeyboardInteractiveCallback, if non-nil, is called when
 	// keyboard-interactive authentication is selected (RFC
@@ -46,24 +60,19 @@ type ServerConfig struct {
 	// Challenge rounds. To avoid information leaks, the client
 	// should be presented a challenge even if the user is
 	// unknown.
-	KeyboardInteractiveCallback func(conn *ServerConn, user string, client ClientKeyboardInteractive) bool
+	KeyboardInteractiveCallback func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error)
 
-	// Cryptographic-related configuration.
-	Crypto CryptoConfig
-}
-
-func (c *ServerConfig) rand() io.Reader {
-	if c.Rand == nil {
-		return rand.Reader
-	}
-	return c.Rand
+	// AuthLogCallback, if non-nil, is called to log all authentication
+	// attempts.
+	AuthLogCallback func(conn ConnMetadata, method string, err error)
 }
 
 // AddHostKey adds a private key as a host key. If an existing host
-// key exists with the same algorithm, it is overwritten.
+// key exists with the same algorithm, it is overwritten. Each server
+// config must have at least one host key.
 func (s *ServerConfig) AddHostKey(key Signer) {
 	for i, k := range s.hostKeys {
-		if k.PublicKey().PublicKeyAlgo() == key.PublicKey().PublicKeyAlgo() {
+		if k.PublicKey().Type() == key.PublicKey().Type() {
 			s.hostKeys[i] = key
 			return
 		}
@@ -72,68 +81,73 @@ func (s *ServerConfig) AddHostKey(key Signer) {
 	s.hostKeys = append(s.hostKeys, key)
 }
 
-// SetRSAPrivateKey sets the private key for a Server. A Server must have a
-// private key configured in order to accept connections. The private key must
-// be in the form of a PEM encoded, PKCS#1, RSA private key. The file "id_rsa"
-// typically contains such a key.
-func (s *ServerConfig) SetRSAPrivateKey(pemBytes []byte) error {
-	priv, err := ParsePrivateKey(pemBytes)
-	if err != nil {
-		return err
-	}
-	s.AddHostKey(priv)
-	return nil
+// cachedPubKey contains the results of querying whether a public key is
+// acceptable for a user.
+type cachedPubKey struct {
+	user       string
+	pubKeyData []byte
+	result     error
+	perms      *Permissions
 }
 
-// cachedPubKey contains the results of querying whether a public key is
-// acceptable for a user. The cache only applies to a single ServerConn.
-type cachedPubKey struct {
-	user, algo string
-	pubKey     []byte
-	result     bool
+func (k1 *cachedPubKey) Equal(k2 *cachedPubKey) bool {
+	return k1.user == k2.user && bytes.Equal(k1.pubKeyData, k2.pubKeyData)
 }
 
 const maxCachedPubKeys = 16
 
-// A ServerConn represents an incoming connection.
-type ServerConn struct {
-	transport *transport
-	config    *ServerConfig
-
-	channels   map[uint32]*serverChan
-	nextChanId uint32
-
-	// lock protects err and channels.
-	lock sync.Mutex
-	err  error
-
-	// cachedPubKeys contains the cache results of tests for public keys.
-	// Since SSH clients will query whether a public key is acceptable
-	// before attempting to authenticate with it, we end up with duplicate
-	// queries for public key validity.
-	cachedPubKeys []cachedPubKey
-
-	// User holds the successfully authenticated user name.
-	// It is empty if no authentication is used.  It is populated before
-	// any authentication callback is called and not assigned to after that.
-	User string
-
-	// ClientVersion is the client's version, populated after
-	// Handshake is called. It should not be modified.
-	ClientVersion []byte
-
-	// Our version.
-	serverVersion []byte
+// pubKeyCache caches tests for public keys.  Since SSH clients
+// will query whether a public key is acceptable before attempting to
+// authenticate with it, we end up with duplicate queries for public
+// key validity.  The cache only applies to a single ServerConn.
+type pubKeyCache struct {
+	keys []cachedPubKey
 }
 
-// Server returns a new SSH server connection
-// using c as the underlying transport.
-func Server(c net.Conn, config *ServerConfig) *ServerConn {
-	return &ServerConn{
-		transport: newTransport(c, config.rand(), false /* not client */),
-		channels:  make(map[uint32]*serverChan),
-		config:    config,
+// get returns the result for a given user/algo/key tuple.
+func (c *pubKeyCache) get(candidate cachedPubKey) (result error, ok bool) {
+	for _, k := range c.keys {
+		if k.Equal(&candidate) {
+			return k.result, true
+		}
 	}
+	return errors.New("ssh: not in cache"), false
+}
+
+// add adds the given tuple to the cache.
+func (c *pubKeyCache) add(candidate cachedPubKey) {
+	if len(c.keys) < maxCachedPubKeys {
+		c.keys = append(c.keys, candidate)
+	}
+}
+
+// ServerConn is an authenticated SSH connection, as seen from the
+// server
+type ServerConn struct {
+	Conn
+
+	// If the succeeding authentication callback returned a
+	// non-nil Permissions pointer, it is stored here.
+	Permissions *Permissions
+}
+
+// NewServerConn starts a new SSH server with c as the underlying
+// transport.  It starts with a handshake and, if the handshake is
+// unsuccessful, it closes the connection and returns an error.  The
+// Request and NewChannel channels must be serviced, or the connection
+// will hang.
+func NewServerConn(c net.Conn, config *ServerConfig) (*ServerConn, <-chan NewChannel, <-chan *Request, error) {
+	fullConf := *config
+	fullConf.SetDefaults()
+	s := &connection{
+		sshConn: sshConn{conn: c},
+	}
+	perms, err := s.serverHandshake(&fullConf)
+	if err != nil {
+		c.Close()
+		return nil, nil, nil, err
+	}
+	return &ServerConn{s, perms}, s.mux.incomingChannels, s.mux.incomingRequests, nil
 }
 
 // signAndMarshal signs the data with the appropriate algorithm,
@@ -144,134 +158,60 @@ func signAndMarshal(k Signer, rand io.Reader, data []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	return serializeSignature(k.PublicKey().PrivateKeyAlgo(), sig), nil
+	return Marshal(sig), nil
 }
 
-// Close closes the connection.
-func (s *ServerConn) Close() error { return s.transport.Close() }
+// handshake performs key exchange and user authentication.
+func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error) {
+	if len(config.hostKeys) == 0 {
+		return nil, errors.New("ssh: server has no host keys")
+	}
 
-// LocalAddr returns the local network address.
-func (c *ServerConn) LocalAddr() net.Addr { return c.transport.LocalAddr() }
-
-// RemoteAddr returns the remote network address.
-func (c *ServerConn) RemoteAddr() net.Addr { return c.transport.RemoteAddr() }
-
-// Handshake performs an SSH transport and client authentication on the given ServerConn.
-func (s *ServerConn) Handshake() error {
 	var err error
 	s.serverVersion = []byte(packageVersion)
-	s.ClientVersion, err = exchangeVersions(s.transport.Conn, s.serverVersion)
+	s.clientVersion, err = exchangeVersions(s.sshConn.conn, s.serverVersion)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	if err := s.clientInitHandshake(nil, nil); err != nil {
-		return err
+
+	tr := newTransport(s.sshConn.conn, config.Rand, false /* not client */)
+	s.transport = newServerTransport(tr, s.clientVersion, s.serverVersion, config)
+
+	if err := s.transport.requestKeyChange(); err != nil {
+		return nil, err
+	}
+
+	if packet, err := s.transport.readPacket(); err != nil {
+		return nil, err
+	} else if packet[0] != msgNewKeys {
+		return nil, unexpectedMessageError(msgNewKeys, packet[0])
 	}
 
 	var packet []byte
 	if packet, err = s.transport.readPacket(); err != nil {
-		return err
+		return nil, err
 	}
+
 	var serviceRequest serviceRequestMsg
-	if err := unmarshal(&serviceRequest, packet, msgServiceRequest); err != nil {
-		return err
+	if err = Unmarshal(packet, &serviceRequest); err != nil {
+		return nil, err
 	}
 	if serviceRequest.Service != serviceUserAuth {
-		return errors.New("ssh: requested service '" + serviceRequest.Service + "' before authenticating")
+		return nil, errors.New("ssh: requested service '" + serviceRequest.Service + "' before authenticating")
 	}
 	serviceAccept := serviceAcceptMsg{
 		Service: serviceUserAuth,
 	}
-	if err := s.transport.writePacket(marshal(msgServiceAccept, serviceAccept)); err != nil {
-		return err
+	if err := s.transport.writePacket(Marshal(&serviceAccept)); err != nil {
+		return nil, err
 	}
 
-	if err := s.authenticate(); err != nil {
-		return err
-	}
-	return err
-}
-
-func (s *ServerConn) clientInitHandshake(clientKexInit *kexInitMsg, clientKexInitPacket []byte) (err error) {
-	serverKexInit := kexInitMsg{
-		KexAlgos:                s.config.Crypto.kexes(),
-		CiphersClientServer:     s.config.Crypto.ciphers(),
-		CiphersServerClient:     s.config.Crypto.ciphers(),
-		MACsClientServer:        s.config.Crypto.macs(),
-		MACsServerClient:        s.config.Crypto.macs(),
-		CompressionClientServer: supportedCompressions,
-		CompressionServerClient: supportedCompressions,
-	}
-	for _, k := range s.config.hostKeys {
-		serverKexInit.ServerHostKeyAlgos = append(
-			serverKexInit.ServerHostKeyAlgos, k.PublicKey().PublicKeyAlgo())
-	}
-
-	serverKexInitPacket := marshal(msgKexInit, serverKexInit)
-	if err = s.transport.writePacket(serverKexInitPacket); err != nil {
-		return
-	}
-
-	if clientKexInitPacket == nil {
-		clientKexInit = new(kexInitMsg)
-		if clientKexInitPacket, err = s.transport.readPacket(); err != nil {
-			return
-		}
-		if err = unmarshal(clientKexInit, clientKexInitPacket, msgKexInit); err != nil {
-			return
-		}
-	}
-
-	algs := findAgreedAlgorithms(clientKexInit, &serverKexInit)
-	if algs == nil {
-		return errors.New("ssh: no common algorithms")
-	}
-
-	if clientKexInit.FirstKexFollows && algs.kex != clientKexInit.KexAlgos[0] {
-		// The client sent a Kex message for the wrong algorithm,
-		// which we have to ignore.
-		if _, err = s.transport.readPacket(); err != nil {
-			return
-		}
-	}
-
-	var hostKey Signer
-	for _, k := range s.config.hostKeys {
-		if algs.hostKey == k.PublicKey().PublicKeyAlgo() {
-			hostKey = k
-		}
-	}
-
-	kex, ok := kexAlgoMap[algs.kex]
-	if !ok {
-		return fmt.Errorf("ssh: unexpected key exchange algorithm %v", algs.kex)
-	}
-
-	magics := handshakeMagics{
-		serverVersion: s.serverVersion,
-		clientVersion: s.ClientVersion,
-		serverKexInit: marshal(msgKexInit, serverKexInit),
-		clientKexInit: clientKexInitPacket,
-	}
-	result, err := kex.Server(s.transport, s.config.rand(), &magics, hostKey)
+	perms, err := s.serverAuthenticate(config)
 	if err != nil {
-		return err
+		return nil, err
 	}
-
-	if err = s.transport.prepareKeyChange(algs, result); err != nil {
-		return err
-	}
-
-	if err = s.transport.writePacket([]byte{msgNewKeys}); err != nil {
-		return
-	}
-	if packet, err := s.transport.readPacket(); err != nil {
-		return err
-	} else if packet[0] != msgNewKeys {
-		return UnexpectedMessageError{msgNewKeys, packet[0]}
-	}
-
-	return
+	s.mux = newMux(s.transport)
+	return perms, err
 }
 
 func isAcceptableAlgo(algo string) bool {
@@ -283,181 +223,213 @@ func isAcceptableAlgo(algo string) bool {
 	return false
 }
 
-// testPubKey returns true if the given public key is acceptable for the user.
-func (s *ServerConn) testPubKey(user, algo string, pubKey []byte) bool {
-	if s.config.PublicKeyCallback == nil || !isAcceptableAlgo(algo) {
-		return false
+func checkSourceAddress(addr net.Addr, sourceAddr string) error {
+	if addr == nil {
+		return errors.New("ssh: no address known for client, but source-address match required")
 	}
 
-	for _, c := range s.cachedPubKeys {
-		if c.user == user && c.algo == algo && bytes.Equal(c.pubKey, pubKey) {
-			return c.result
+	tcpAddr, ok := addr.(*net.TCPAddr)
+	if !ok {
+		return fmt.Errorf("ssh: remote address %v is not an TCP address when checking source-address match", addr)
+	}
+
+	if allowedIP := net.ParseIP(sourceAddr); allowedIP != nil {
+		if bytes.Equal(allowedIP, tcpAddr.IP) {
+			return nil
+		}
+	} else {
+		_, ipNet, err := net.ParseCIDR(sourceAddr)
+		if err != nil {
+			return fmt.Errorf("ssh: error parsing source-address restriction %q: %v", sourceAddr, err)
+		}
+
+		if ipNet.Contains(tcpAddr.IP) {
+			return nil
 		}
 	}
 
-	result := s.config.PublicKeyCallback(s, user, algo, pubKey)
-	if len(s.cachedPubKeys) < maxCachedPubKeys {
-		c := cachedPubKey{
-			user:   user,
-			algo:   algo,
-			pubKey: make([]byte, len(pubKey)),
-			result: result,
-		}
-		copy(c.pubKey, pubKey)
-		s.cachedPubKeys = append(s.cachedPubKeys, c)
-	}
-
-	return result
+	return fmt.Errorf("ssh: remote address %v is not allowed because of source-address restriction", addr)
 }
 
-func (s *ServerConn) authenticate() error {
-	var userAuthReq userAuthRequestMsg
+func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, error) {
 	var err error
-	var packet []byte
+	var cache pubKeyCache
+	var perms *Permissions
 
 userAuthLoop:
 	for {
-		if packet, err = s.transport.readPacket(); err != nil {
-			return err
-		}
-		if err = unmarshal(&userAuthReq, packet, msgUserAuthRequest); err != nil {
-			return err
+		var userAuthReq userAuthRequestMsg
+		if packet, err := s.transport.readPacket(); err != nil {
+			return nil, err
+		} else if err = Unmarshal(packet, &userAuthReq); err != nil {
+			return nil, err
 		}
 
 		if userAuthReq.Service != serviceSSH {
-			return errors.New("ssh: client attempted to negotiate for unknown service: " + userAuthReq.Service)
+			return nil, errors.New("ssh: client attempted to negotiate for unknown service: " + userAuthReq.Service)
 		}
+
+		s.user = userAuthReq.User
+		perms = nil
+		authErr := errors.New("no auth passed yet")
 
 		switch userAuthReq.Method {
 		case "none":
-			if s.config.NoClientAuth {
-				break userAuthLoop
+			if config.NoClientAuth {
+				s.user = ""
+				authErr = nil
 			}
 		case "password":
-			if s.config.PasswordCallback == nil {
+			if config.PasswordCallback == nil {
+				authErr = errors.New("ssh: password auth not configured")
 				break
 			}
 			payload := userAuthReq.Payload
 			if len(payload) < 1 || payload[0] != 0 {
-				return ParseError{msgUserAuthRequest}
+				return nil, parseError(msgUserAuthRequest)
 			}
 			payload = payload[1:]
 			password, payload, ok := parseString(payload)
 			if !ok || len(payload) > 0 {
-				return ParseError{msgUserAuthRequest}
+				return nil, parseError(msgUserAuthRequest)
 			}
 
-			s.User = userAuthReq.User
-			if s.config.PasswordCallback(s, userAuthReq.User, string(password)) {
-				break userAuthLoop
-			}
+			perms, authErr = config.PasswordCallback(s, password)
 		case "keyboard-interactive":
-			if s.config.KeyboardInteractiveCallback == nil {
+			if config.KeyboardInteractiveCallback == nil {
+				authErr = errors.New("ssh: keyboard-interactive auth not configubred")
 				break
 			}
 
-			s.User = userAuthReq.User
-			if s.config.KeyboardInteractiveCallback(s, s.User, &sshClientKeyboardInteractive{s}) {
-				break userAuthLoop
-			}
+			prompter := &sshClientKeyboardInteractive{s}
+			perms, authErr = config.KeyboardInteractiveCallback(s, prompter.Challenge)
 		case "publickey":
-			if s.config.PublicKeyCallback == nil {
+			if config.PublicKeyCallback == nil {
+				authErr = errors.New("ssh: publickey auth not configured")
 				break
 			}
 			payload := userAuthReq.Payload
 			if len(payload) < 1 {
-				return ParseError{msgUserAuthRequest}
+				return nil, parseError(msgUserAuthRequest)
 			}
 			isQuery := payload[0] == 0
 			payload = payload[1:]
 			algoBytes, payload, ok := parseString(payload)
 			if !ok {
-				return ParseError{msgUserAuthRequest}
+				return nil, parseError(msgUserAuthRequest)
 			}
 			algo := string(algoBytes)
-
-			pubKey, payload, ok := parseString(payload)
-			if !ok {
-				return ParseError{msgUserAuthRequest}
+			if !isAcceptableAlgo(algo) {
+				authErr = fmt.Errorf("ssh: algorithm %q not accepted", algo)
+				break
 			}
+
+			pubKeyData, payload, ok := parseString(payload)
+			if !ok {
+				return nil, parseError(msgUserAuthRequest)
+			}
+
+			pubKey, err := ParsePublicKey(pubKeyData)
+			if err != nil {
+				return nil, err
+			}
+			candidate := cachedPubKey{
+				user:       s.user,
+				pubKeyData: pubKeyData,
+			}
+			candidate.result, ok = cache.get(candidate)
+			if !ok {
+				candidate.perms, candidate.result = config.PublicKeyCallback(s, pubKey)
+				if candidate.result == nil && candidate.perms != nil && candidate.perms.CriticalOptions != nil && candidate.perms.CriticalOptions[sourceAddressCriticalOption] != "" {
+					candidate.result = checkSourceAddress(
+						s.RemoteAddr(),
+						candidate.perms.CriticalOptions[sourceAddressCriticalOption])
+				}
+				cache.add(candidate)
+			}
+
 			if isQuery {
 				// The client can query if the given public key
 				// would be okay.
 				if len(payload) > 0 {
-					return ParseError{msgUserAuthRequest}
+					return nil, parseError(msgUserAuthRequest)
 				}
-				if s.testPubKey(userAuthReq.User, algo, pubKey) {
+
+				if candidate.result == nil {
 					okMsg := userAuthPubKeyOkMsg{
 						Algo:   algo,
-						PubKey: string(pubKey),
+						PubKey: pubKeyData,
 					}
-					if err = s.transport.writePacket(marshal(msgUserAuthPubKeyOk, okMsg)); err != nil {
-						return err
+					if err = s.transport.writePacket(Marshal(&okMsg)); err != nil {
+						return nil, err
 					}
 					continue userAuthLoop
 				}
+				authErr = candidate.result
 			} else {
 				sig, payload, ok := parseSignature(payload)
 				if !ok || len(payload) > 0 {
-					return ParseError{msgUserAuthRequest}
+					return nil, parseError(msgUserAuthRequest)
 				}
 				// Ensure the public key algo and signature algo
 				// are supported.  Compare the private key
 				// algorithm name that corresponds to algo with
 				// sig.Format.  This is usually the same, but
 				// for certs, the names differ.
-				if !isAcceptableAlgo(algo) || !isAcceptableAlgo(sig.Format) || pubAlgoToPrivAlgo(algo) != sig.Format {
+				if !isAcceptableAlgo(sig.Format) {
 					break
 				}
-				signedData := buildDataSignedForAuth(s.transport.sessionID, userAuthReq, algoBytes, pubKey)
-				key, _, ok := ParsePublicKey(pubKey)
-				if !ok {
-					return ParseError{msgUserAuthRequest}
+				signedData := buildDataSignedForAuth(s.transport.getSessionID(), userAuthReq, algoBytes, pubKeyData)
+
+				if err := pubKey.Verify(signedData, sig); err != nil {
+					return nil, err
 				}
 
-				if !key.Verify(signedData, sig.Blob) {
-					return ParseError{msgUserAuthRequest}
-				}
-				// TODO(jmpittman): Implement full validation for certificates.
-				s.User = userAuthReq.User
-				if s.testPubKey(userAuthReq.User, algo, pubKey) {
-					break userAuthLoop
-				}
+				authErr = candidate.result
+				perms = candidate.perms
 			}
+		default:
+			authErr = fmt.Errorf("ssh: unknown method %q", userAuthReq.Method)
+		}
+
+		if config.AuthLogCallback != nil {
+			config.AuthLogCallback(s, userAuthReq.Method, authErr)
+		}
+
+		if authErr == nil {
+			break userAuthLoop
 		}
 
 		var failureMsg userAuthFailureMsg
-		if s.config.PasswordCallback != nil {
+		if config.PasswordCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "password")
 		}
-		if s.config.PublicKeyCallback != nil {
+		if config.PublicKeyCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "publickey")
 		}
-		if s.config.KeyboardInteractiveCallback != nil {
+		if config.KeyboardInteractiveCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "keyboard-interactive")
 		}
 
 		if len(failureMsg.Methods) == 0 {
-			return errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
+			return nil, errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
 		}
 
-		if err = s.transport.writePacket(marshal(msgUserAuthFailure, failureMsg)); err != nil {
-			return err
+		if err = s.transport.writePacket(Marshal(&failureMsg)); err != nil {
+			return nil, err
 		}
 	}
 
-	packet = []byte{msgUserAuthSuccess}
-	if err = s.transport.writePacket(packet); err != nil {
-		return err
+	if err = s.transport.writePacket([]byte{msgUserAuthSuccess}); err != nil {
+		return nil, err
 	}
-
-	return nil
+	return perms, nil
 }
 
 // sshClientKeyboardInteractive implements a ClientKeyboardInteractive by
 // asking the client on the other side of a ServerConn.
 type sshClientKeyboardInteractive struct {
-	*ServerConn
+	*connection
 }
 
 func (c *sshClientKeyboardInteractive) Challenge(user, instruction string, questions []string, echos []bool) (answers []string, err error) {
@@ -471,7 +443,7 @@ func (c *sshClientKeyboardInteractive) Challenge(user, instruction string, quest
 		prompts = appendBool(prompts, echos[i])
 	}
 
-	if err := c.transport.writePacket(marshal(msgUserAuthInfoRequest, userAuthInfoRequestMsg{
+	if err := c.transport.writePacket(Marshal(&userAuthInfoRequestMsg{
 		Instruction: instruction,
 		NumPrompts:  uint32(len(questions)),
 		Prompts:     prompts,
@@ -484,19 +456,19 @@ func (c *sshClientKeyboardInteractive) Challenge(user, instruction string, quest
 		return nil, err
 	}
 	if packet[0] != msgUserAuthInfoResponse {
-		return nil, UnexpectedMessageError{msgUserAuthInfoResponse, packet[0]}
+		return nil, unexpectedMessageError(msgUserAuthInfoResponse, packet[0])
 	}
 	packet = packet[1:]
 
 	n, packet, ok := parseUint32(packet)
 	if !ok || int(n) != len(questions) {
-		return nil, &ParseError{msgUserAuthInfoResponse}
+		return nil, parseError(msgUserAuthInfoResponse)
 	}
 
 	for i := uint32(0); i < n; i++ {
 		ans, rest, ok := parseString(packet)
 		if !ok {
-			return nil, &ParseError{msgUserAuthInfoResponse}
+			return nil, parseError(msgUserAuthInfoResponse)
 		}
 
 		answers = append(answers, string(ans))
@@ -507,186 +479,4 @@ func (c *sshClientKeyboardInteractive) Challenge(user, instruction string, quest
 	}
 
 	return answers, nil
-}
-
-const defaultWindowSize = 32768
-
-// Accept reads and processes messages on a ServerConn. It must be called
-// in order to demultiplex messages to any resulting Channels.
-func (s *ServerConn) Accept() (Channel, error) {
-	// TODO(dfc) s.lock is not held here so visibility of s.err is not guaranteed.
-	if s.err != nil {
-		return nil, s.err
-	}
-
-	for {
-		packet, err := s.transport.readPacket()
-		if err != nil {
-
-			s.lock.Lock()
-			s.err = err
-			s.lock.Unlock()
-
-			// TODO(dfc) s.lock protects s.channels but isn't being held here.
-			for _, c := range s.channels {
-				c.setDead()
-				c.handleData(nil)
-			}
-
-			return nil, err
-		}
-
-		switch packet[0] {
-		case msgChannelData:
-			if len(packet) < 9 {
-				// malformed data packet
-				return nil, ParseError{msgChannelData}
-			}
-			remoteId := binary.BigEndian.Uint32(packet[1:5])
-			s.lock.Lock()
-			c, ok := s.channels[remoteId]
-			if !ok {
-				s.lock.Unlock()
-				continue
-			}
-			if length := binary.BigEndian.Uint32(packet[5:9]); length > 0 {
-				packet = packet[9:]
-				c.handleData(packet[:length])
-			}
-			s.lock.Unlock()
-		default:
-			decoded, err := decode(packet)
-			if err != nil {
-				return nil, err
-			}
-			switch msg := decoded.(type) {
-			case *channelOpenMsg:
-				if msg.MaxPacketSize < minPacketLength || msg.MaxPacketSize > 1<<31 {
-					return nil, errors.New("ssh: invalid MaxPacketSize from peer")
-				}
-				c := &serverChan{
-					channel: channel{
-						packetConn: s.transport,
-						remoteId:   msg.PeersId,
-						remoteWin:  window{Cond: newCond()},
-						maxPacket:  msg.MaxPacketSize,
-					},
-					chanType:    msg.ChanType,
-					extraData:   msg.TypeSpecificData,
-					myWindow:    defaultWindowSize,
-					serverConn:  s,
-					cond:        newCond(),
-					pendingData: make([]byte, defaultWindowSize),
-				}
-				c.remoteWin.add(msg.PeersWindow)
-				s.lock.Lock()
-				c.localId = s.nextChanId
-				s.nextChanId++
-				s.channels[c.localId] = c
-				s.lock.Unlock()
-				return c, nil
-
-			case *channelRequestMsg:
-				s.lock.Lock()
-				c, ok := s.channels[msg.PeersId]
-				if !ok {
-					s.lock.Unlock()
-					continue
-				}
-				c.handlePacket(msg)
-				s.lock.Unlock()
-
-			case *windowAdjustMsg:
-				s.lock.Lock()
-				c, ok := s.channels[msg.PeersId]
-				if !ok {
-					s.lock.Unlock()
-					continue
-				}
-				c.handlePacket(msg)
-				s.lock.Unlock()
-
-			case *channelEOFMsg:
-				s.lock.Lock()
-				c, ok := s.channels[msg.PeersId]
-				if !ok {
-					s.lock.Unlock()
-					continue
-				}
-				c.handlePacket(msg)
-				s.lock.Unlock()
-
-			case *channelCloseMsg:
-				s.lock.Lock()
-				c, ok := s.channels[msg.PeersId]
-				if !ok {
-					s.lock.Unlock()
-					continue
-				}
-				c.handlePacket(msg)
-				s.lock.Unlock()
-
-			case *globalRequestMsg:
-				if msg.WantReply {
-					if err := s.transport.writePacket([]byte{msgRequestFailure}); err != nil {
-						return nil, err
-					}
-				}
-
-			case *kexInitMsg:
-				s.lock.Lock()
-				if err := s.clientInitHandshake(msg, packet); err != nil {
-					s.lock.Unlock()
-					return nil, err
-				}
-				s.lock.Unlock()
-			case *disconnectMsg:
-				return nil, io.EOF
-			default:
-				// Unknown message. Ignore.
-			}
-		}
-	}
-
-	panic("unreachable")
-}
-
-// A Listener implements a network listener (net.Listener) for SSH connections.
-type Listener struct {
-	listener net.Listener
-	config   *ServerConfig
-}
-
-// Addr returns the listener's network address.
-func (l *Listener) Addr() net.Addr {
-	return l.listener.Addr()
-}
-
-// Close closes the listener.
-func (l *Listener) Close() error {
-	return l.listener.Close()
-}
-
-// Accept waits for and returns the next incoming SSH connection.
-// The receiver should call Handshake() in another goroutine
-// to avoid blocking the accepter.
-func (l *Listener) Accept() (*ServerConn, error) {
-	c, err := l.listener.Accept()
-	if err != nil {
-		return nil, err
-	}
-	return Server(c, l.config), nil
-}
-
-// Listen creates an SSH listener accepting connections on
-// the given network address using net.Listen.
-func Listen(network, addr string, config *ServerConfig) (*Listener, error) {
-	l, err := net.Listen(network, addr)
-	if err != nil {
-		return nil, err
-	}
-	return &Listener{
-		l,
-		config,
-	}, nil
 }

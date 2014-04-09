@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// +build darwin freebsd linux netbsd openbsd plan9
+// +build darwin freebsd linux netbsd openbsd
 
 package test
 
@@ -11,7 +11,6 @@ package test
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -23,13 +22,14 @@ import (
 	"text/template"
 
 	"code.google.com/p/go.crypto/ssh"
+	"code.google.com/p/go.crypto/ssh/testdata"
 )
 
 const sshd_config = `
 Protocol 2
-HostKey {{.Dir}}/ssh_host_rsa_key
-HostKey {{.Dir}}/ssh_host_dsa_key
-HostKey {{.Dir}}/ssh_host_ecdsa_key
+HostKey {{.Dir}}/id_rsa
+HostKey {{.Dir}}/id_dsa
+HostKey {{.Dir}}/id_ecdsa
 Pidfile {{.Dir}}/sshd.pid
 #UsePrivilegeSeparation no
 KeyRegenerationInterval 3600
@@ -41,41 +41,14 @@ PermitRootLogin no
 StrictModes no
 RSAAuthentication yes
 PubkeyAuthentication yes
-AuthorizedKeysFile	{{.Dir}}/authorized_keys
+AuthorizedKeysFile	{{.Dir}}/id_user.pub
+TrustedUserCAKeys {{.Dir}}/id_ecdsa.pub
 IgnoreRhosts yes
 RhostsRSAAuthentication no
 HostbasedAuthentication no
 `
 
-var (
-	configTmpl   template.Template
-	privateKey   ssh.Signer
-	hostKeyRSA   ssh.Signer
-	hostKeyECDSA ssh.Signer
-	hostKeyDSA   ssh.Signer
-)
-
-func init() {
-	template.Must(configTmpl.Parse(sshd_config))
-
-	for n, k := range map[string]*ssh.Signer{
-		"ssh_host_ecdsa_key": &hostKeyECDSA,
-		"ssh_host_rsa_key":   &hostKeyRSA,
-		"ssh_host_dsa_key":   &hostKeyDSA,
-	} {
-		var err error
-		*k, err = ssh.ParsePrivateKey([]byte(keys[n]))
-		if err != nil {
-			panic(fmt.Sprintf("ParsePrivateKey(%q): %v", n, err))
-		}
-	}
-
-	var err error
-	privateKey, err = ssh.ParsePrivateKey([]byte(testClientPrivateKey))
-	if err != nil {
-		panic(fmt.Sprintf("ParsePrivateKey: %v", err))
-	}
-}
+var configTmpl = template.Must(template.New("").Parse(sshd_config))
 
 type server struct {
 	t          *testing.T
@@ -107,36 +80,44 @@ func username() string {
 type storedHostKey struct {
 	// keys map from an algorithm string to binary key data.
 	keys map[string][]byte
+
+	// checkCount counts the Check calls. Used for testing
+	// rekeying.
+	checkCount int
 }
 
 func (k *storedHostKey) Add(key ssh.PublicKey) {
 	if k.keys == nil {
 		k.keys = map[string][]byte{}
 	}
-	k.keys[key.PublicKeyAlgo()] = ssh.MarshalPublicKey(key)
+	k.keys[key.Type()] = key.Marshal()
 }
 
-func (k *storedHostKey) Check(addr string, remote net.Addr, algo string, key []byte) error {
-	if k.keys == nil || bytes.Compare(key, k.keys[algo]) != 0 {
+func (k *storedHostKey) Check(addr string, remote net.Addr, key ssh.PublicKey) error {
+	k.checkCount++
+	algo := key.Type()
+
+	if k.keys == nil || bytes.Compare(key.Marshal(), k.keys[algo]) != 0 {
 		return fmt.Errorf("host key mismatch. Got %q, want %q", key, k.keys[algo])
 	}
 	return nil
 }
 
-func clientConfig() *ssh.ClientConfig {
-	keyChecker := storedHostKey{}
-	keyChecker.Add(hostKeyECDSA.PublicKey())
-	keyChecker.Add(hostKeyRSA.PublicKey())
-	keyChecker.Add(hostKeyDSA.PublicKey())
+func hostKeyDB() *storedHostKey {
+	keyChecker := &storedHostKey{}
+	keyChecker.Add(testPublicKeys["ecdsa"])
+	keyChecker.Add(testPublicKeys["rsa"])
+	keyChecker.Add(testPublicKeys["dsa"])
+	return keyChecker
+}
 
-	kc := new(keychain)
-	kc.keys = append(kc.keys, privateKey)
+func clientConfig() *ssh.ClientConfig {
 	config := &ssh.ClientConfig{
 		User: username(),
-		Auth: []ssh.ClientAuth{
-			ssh.ClientAuthKeyring(kc),
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(testSigners["user"]),
 		},
-		HostKeyChecker: &keyChecker,
+		HostKeyCallback: hostKeyDB().Check,
 	}
 	return config
 }
@@ -171,7 +152,7 @@ func unixConnection() (*net.UnixConn, *net.UnixConn, error) {
 	return c1.(*net.UnixConn), c2.(*net.UnixConn), nil
 }
 
-func (s *server) TryDial(config *ssh.ClientConfig) (*ssh.ClientConn, error) {
+func (s *server) TryDial(config *ssh.ClientConfig) (*ssh.Client, error) {
 	sshd, err := exec.LookPath("sshd")
 	if err != nil {
 		s.t.Skipf("skipping test: %v", err)
@@ -197,10 +178,14 @@ func (s *server) TryDial(config *ssh.ClientConfig) (*ssh.ClientConn, error) {
 		s.t.Fatalf("s.cmd.Start: %v", err)
 	}
 	s.clientConn = c1
-	return ssh.Client(c1, config)
+	conn, chans, reqs, err := ssh.NewClientConn(c1, "", config)
+	if err != nil {
+		return nil, err
+	}
+	return ssh.NewClient(conn, chans, reqs), nil
 }
 
-func (s *server) Dial(config *ssh.ClientConfig) *ssh.ClientConn {
+func (s *server) Dial(config *ssh.ClientConfig) *ssh.Client {
 	conn, err := s.TryDial(config)
 	if err != nil {
 		s.t.Fail()
@@ -226,6 +211,17 @@ func (s *server) Shutdown() {
 	s.cleanup()
 }
 
+func writeFile(path string, contents []byte) {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
+	if _, err := f.Write(contents); err != nil {
+		panic(err)
+	}
+}
+
 // newServer returns a new mock ssh server.
 func newServer(t *testing.T) *server {
 	dir, err := ioutil.TempDir("", "sshtest")
@@ -244,15 +240,10 @@ func newServer(t *testing.T) *server {
 	}
 	f.Close()
 
-	for k, v := range keys {
-		f, err := os.OpenFile(filepath.Join(dir, k), os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if _, err := f.Write([]byte(v)); err != nil {
-			t.Fatal(err)
-		}
-		f.Close()
+	for k, v := range testdata.PEMBytes {
+		filename := "id_" + k
+		writeFile(filepath.Join(dir, filename), v)
+		writeFile(filepath.Join(dir, filename+".pub"), ssh.MarshalAuthorizedKey(testPublicKeys[k]))
 	}
 
 	return &server{
@@ -264,33 +255,4 @@ func newServer(t *testing.T) *server {
 			}
 		},
 	}
-}
-
-// keychain implements the ClientKeyring interface.
-type keychain struct {
-	keys []ssh.Signer
-}
-
-func (k *keychain) Key(i int) (ssh.PublicKey, error) {
-	if i < 0 || i >= len(k.keys) {
-		return nil, nil
-	}
-	return k.keys[i].PublicKey(), nil
-}
-
-func (k *keychain) Sign(i int, rand io.Reader, data []byte) (sig []byte, err error) {
-	return k.keys[i].Sign(rand, data)
-}
-
-func (k *keychain) loadPEM(file string) error {
-	buf, err := ioutil.ReadFile(file)
-	if err != nil {
-		return err
-	}
-	key, err := ssh.ParsePrivateKey(buf)
-	if err != nil {
-		return err
-	}
-	k.keys = append(k.keys, key)
-	return nil
 }

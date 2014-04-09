@@ -36,15 +36,21 @@ func (t *memTransport) readPacket() ([]byte, error) {
 	}
 }
 
-func (t *memTransport) Close() error {
-	t.write.Lock()
-	defer t.write.Unlock()
-	if t.write.eof {
+func (t *memTransport) closeSelf() error {
+	t.Lock()
+	defer t.Unlock()
+	if t.eof {
 		return io.EOF
 	}
-	t.write.eof = true
-	t.write.Cond.Broadcast()
+	t.eof = true
+	t.Cond.Broadcast()
 	return nil
+}
+
+func (t *memTransport) Close() error {
+	err := t.write.closeSelf()
+	t.closeSelf()
+	return err
 }
 
 func (t *memTransport) writePacket(p []byte) error {
