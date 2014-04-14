@@ -103,6 +103,12 @@ var cipherModes = map[string]*streamCipherMode{
 	"arcfour128": {16, 0, 1536, newRC4},
 	"arcfour256": {32, 0, 1536, newRC4},
 
+	// Cipher defined in RFC 4253, which describes SSH Transport Layer Protocol.
+	// Note that this cipher is not safe, as stated in RFC 4253: "Arcfour (and
+	// RC4) has problems with weak keys, and should be used with caution."
+	// RFC4345 introduces improved versions of Arcfour.
+	"arcfour": {16, 0, 0, newRC4},
+
 	// AES-GCM is not a stream cipher, so it is constructed with a
 	// special case. If we add any more non-stream ciphers, we
 	// should invest a cleaner way to do this.
