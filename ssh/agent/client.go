@@ -296,7 +296,7 @@ func (c *client) List() ([]*Key, error) {
 	switch msg := msg.(type) {
 	case *identitiesAnswerAgentMsg:
 		if msg.NumKeys > maxAgentResponseBytes/8 {
-			return nil, errors.New("ssh: too many keys in agent reply")
+			return nil, errors.New("agent: too many keys in agent reply")
 		}
 		keys := make([]*Key, msg.NumKeys)
 		data := msg.Keys
@@ -310,7 +310,7 @@ func (c *client) List() ([]*Key, error) {
 		}
 		return keys, nil
 	case *failureAgentMsg:
-		return nil, errors.New("ssh: failed to list keys")
+		return nil, errors.New("agent: failed to list keys")
 	}
 	panic("unreachable")
 }
@@ -337,7 +337,7 @@ func (c *client) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) {
 
 		return &sig, nil
 	case *failureAgentMsg:
-		return nil, errors.New("ssh: failed to sign challenge")
+		return nil, errors.New("agent: failed to sign challenge")
 	}
 	panic("unreachable")
 }
@@ -402,7 +402,7 @@ func (c *client) insertKey(s interface{}, comment string) error {
 	switch k := s.(type) {
 	case *rsa.PrivateKey:
 		if len(k.Primes) != 2 {
-			return fmt.Errorf("ssh: unsupported RSA key with %d primes", len(k.Primes))
+			return fmt.Errorf("agent: unsupported RSA key with %d primes", len(k.Primes))
 		}
 		k.Precompute()
 		req = ssh.Marshal(rsaKeyMsg{
@@ -435,7 +435,7 @@ func (c *client) insertKey(s interface{}, comment string) error {
 			Comments: comment,
 		})
 	default:
-		return fmt.Errorf("ssh: unsupported key type %T", s)
+		return fmt.Errorf("agent: unsupported key type %T", s)
 	}
 	resp, err := c.call(req)
 	if err != nil {
@@ -444,7 +444,7 @@ func (c *client) insertKey(s interface{}, comment string) error {
 	if _, ok := resp.(*successAgentMsg); ok {
 		return nil
 	}
-	return errors.New("ssh: failure")
+	return errors.New("agent: failure")
 }
 
 type rsaCertMsg struct {
@@ -486,7 +486,7 @@ func (c *client) insertCert(s interface{}, cert *ssh.Certificate, comment string
 	switch k := s.(type) {
 	case *rsa.PrivateKey:
 		if len(k.Primes) != 2 {
-			return fmt.Errorf("ssh: unsupported RSA key with %d primes", len(k.Primes))
+			return fmt.Errorf("agent: unsupported RSA key with %d primes", len(k.Primes))
 		}
 		k.Precompute()
 		req = ssh.Marshal(rsaCertMsg{
@@ -513,7 +513,7 @@ func (c *client) insertCert(s interface{}, cert *ssh.Certificate, comment string
 			Comments:  comment,
 		})
 	default:
-		return fmt.Errorf("ssh: unsupported key type %T", s)
+		return fmt.Errorf("agent: unsupported key type %T", s)
 	}
 
 	signer, err := ssh.NewSignerFromKey(s)
@@ -521,7 +521,7 @@ func (c *client) insertCert(s interface{}, cert *ssh.Certificate, comment string
 		return err
 	}
 	if bytes.Compare(cert.Key.Marshal(), signer.PublicKey().Marshal()) != 0 {
-		return errors.New("ssh: signer and cert have different public key")
+		return errors.New("agent: signer and cert have different public key")
 	}
 
 	resp, err := c.call(req)
@@ -531,7 +531,7 @@ func (c *client) insertCert(s interface{}, cert *ssh.Certificate, comment string
 	if _, ok := resp.(*successAgentMsg); ok {
 		return nil
 	}
-	return errors.New("ssh: failure")
+	return errors.New("agent: failure")
 }
 
 // Signers provides a callback for client authentication.
