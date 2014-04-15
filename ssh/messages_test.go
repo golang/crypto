@@ -51,7 +51,7 @@ func (t *msgAllTypes) Generate(rand *rand.Rand, size int) reflect.Value {
 	m.Bool = rand.Intn(2) == 1
 	randomBytes(m.Array[:], rand)
 	m.Uint64 = uint64(rand.Int63n(1<<63 - 1))
-	m.Uint32 = uint32(rand.Intn(1 << 32))
+	m.Uint32 = uint32(rand.Intn((1 << 31) - 1))
 	m.Uint8 = uint8(rand.Intn(1 << 8))
 	m.String = string(m.Array[:])
 	m.Strings = randomNameList(rand)
