@@ -79,7 +79,7 @@ func testAgent(t *testing.T, key interface{}, cert *ssh.Certificate) {
 func testAgentInterface(t *testing.T, agent Agent, key interface{}, cert *ssh.Certificate) {
 	signer, err := ssh.NewSignerFromKey(key)
 	if err != nil {
-		t.Fatalf("NewSignerFromKey: %v", err)
+		t.Fatalf("NewSignerFromKey(%T): %v", key, err)
 	}
 	// The agent should start up empty.
 	if keys, err := agent.List(); err != nil {
@@ -98,7 +98,7 @@ func testAgentInterface(t *testing.T, agent Agent, key interface{}, cert *ssh.Ce
 		pubKey = signer.PublicKey()
 	}
 	if err != nil {
-		t.Fatalf("insert: %v", err)
+		t.Fatalf("insert(%T): %v", key, err)
 	}
 
 	// Did the key get inserted successfully?
@@ -116,17 +116,16 @@ func testAgentInterface(t *testing.T, agent Agent, key interface{}, cert *ssh.Ce
 	data := []byte("hello")
 	sig, err := agent.Sign(pubKey, data)
 	if err != nil {
-		t.Fatalf("Sign: %v", err)
+		t.Fatalf("Sign(%s): %v", pubKey.Type(), err)
 	}
 
 	if err := pubKey.Verify(data, sig); err != nil {
-		t.Fatalf("key signature Verify: %v", err)
+		t.Fatalf("Verify(%s): %v", pubKey.Type(), err)
 	}
 }
 
 func TestAgent(t *testing.T) {
 	for _, keyType := range []string{"rsa", "dsa", "ecdsa"} {
-		t.Log(keyType)
 		testAgent(t, testPrivateKeys[keyType], nil)
 	}
 }
