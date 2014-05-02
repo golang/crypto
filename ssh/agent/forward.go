@@ -14,7 +14,7 @@ import (
 )
 
 // RequestAgentForwarding sets up agent forwarding for the session.
-// SetupForwardKeyring or SetupForwardAgent should be called to route
+// ForwardToAgent or ForwardToRemote should be called to route
 // the authentication requests.
 func RequestAgentForwarding(session *ssh.Session) error {
 	ok, err := session.SendRequest("auth-agent-req@openssh.com", true, nil)
