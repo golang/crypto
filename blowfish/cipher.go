@@ -32,7 +32,7 @@ func NewCipher(key []byte) (*Cipher, error) {
 	if k := len(key); k < 1 || k > 56 {
 		return nil, KeySizeError(k)
 	}
-	initCipher(key, &result)
+	initCipher(&result)
 	ExpandKey(key, &result)
 	return &result, nil
 }
@@ -46,7 +46,7 @@ func NewSaltedCipher(key, salt []byte) (*Cipher, error) {
 	if k := len(key); k < 1 {
 		return nil, KeySizeError(k)
 	}
-	initCipher(key, &result)
+	initCipher(&result)
 	expandKeyWithSalt(key, salt, &result)
 	return &result, nil
 }
@@ -79,7 +79,7 @@ func (c *Cipher) Decrypt(dst, src []byte) {
 	dst[4], dst[5], dst[6], dst[7] = byte(r>>24), byte(r>>16), byte(r>>8), byte(r)
 }
 
-func initCipher(key []byte, c *Cipher) {
+func initCipher(c *Cipher) {
 	copy(c.p[0:], p[0:])
 	copy(c.s0[0:], s0[0:])
 	copy(c.s1[0:], s1[0:])
