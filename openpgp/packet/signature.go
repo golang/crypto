@@ -17,6 +17,14 @@ import (
 	"time"
 )
 
+const (
+	// See RFC 4880, section 5.2.3.21 for details.
+	KeyFlagCertify = 1 << iota
+	KeyFlagSign
+	KeyFlagEncryptCommunications
+	KeyFlagEncryptStorage
+)
+
 // Signature represents a signature. See RFC 4880, section 5.2.
 type Signature struct {
 	SigType    SignatureType
@@ -49,6 +57,11 @@ type Signature struct {
 	// 5.2.3.21 for details.
 	FlagsValid                                                           bool
 	FlagCertify, FlagSign, FlagEncryptCommunications, FlagEncryptStorage bool
+
+	// RevocationReason is set if this signature has been revoked.
+	// See RFC 4880, section 5.2.3.23 for details.
+	RevocationReason     *uint8
+	RevocationReasonText string
 
 	outSubpackets []outputSubpacket
 }
@@ -176,6 +189,7 @@ const (
 	prefCompressionSubpacket     signatureSubpacketType = 22
 	primaryUserIdSubpacket       signatureSubpacketType = 25
 	keyFlagsSubpacket            signatureSubpacketType = 27
+	reasonForRevocationSubpacket signatureSubpacketType = 29
 )
 
 // parseSignatureSubpacket parses a single subpacket. len(subpacket) is >= 1.
@@ -305,18 +319,30 @@ func parseSignatureSubpacket(sig *Signature, subpacket []byte, isHashed bool) (r
 			return
 		}
 		sig.FlagsValid = true
-		if subpacket[0]&1 != 0 {
+		if subpacket[0]&KeyFlagCertify != 0 {
 			sig.FlagCertify = true
 		}
-		if subpacket[0]&2 != 0 {
+		if subpacket[0]&KeyFlagSign != 0 {
 			sig.FlagSign = true
 		}
-		if subpacket[0]&4 != 0 {
+		if subpacket[0]&KeyFlagEncryptCommunications != 0 {
 			sig.FlagEncryptCommunications = true
 		}
-		if subpacket[0]&8 != 0 {
+		if subpacket[0]&KeyFlagEncryptStorage != 0 {
 			sig.FlagEncryptStorage = true
 		}
+	case reasonForRevocationSubpacket:
+		// Reason For Revocation, section 5.2.3.23
+		if !isHashed {
+			return
+		}
+		if len(subpacket) == 0 {
+			err = errors.StructuralError("empty revocation reason subpacket")
+			return
+		}
+		sig.RevocationReason = new(uint8)
+		*sig.RevocationReason = subpacket[0]
+		sig.RevocationReasonText = string(subpacket[1:])
 
 	default:
 		if isCritical {
@@ -595,16 +621,16 @@ func (sig *Signature) buildSubpackets() (subpackets []outputSubpacket) {
 	if sig.FlagsValid {
 		var flags byte
 		if sig.FlagCertify {
-			flags |= 1
+			flags |= KeyFlagCertify
 		}
 		if sig.FlagSign {
-			flags |= 2
+			flags |= KeyFlagSign
 		}
 		if sig.FlagEncryptCommunications {
-			flags |= 4
+			flags |= KeyFlagEncryptCommunications
 		}
 		if sig.FlagEncryptStorage {
-			flags |= 8
+			flags |= KeyFlagEncryptStorage
 		}
 		subpackets = append(subpackets, outputSubpacket{true, keyFlagsSubpacket, false, []byte{flags}})
 	}

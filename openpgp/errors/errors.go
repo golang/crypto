@@ -57,6 +57,14 @@ func (unknownIssuerError) Error() string {
 
 var ErrUnknownIssuer error = unknownIssuerError(0)
 
+type keyRevokedError int
+
+func (keyRevokedError) Error() string {
+	return "openpgp: signature made by revoked key"
+}
+
+var ErrKeyRevoked error = keyRevokedError(0)
+
 type UnknownPacketTypeError uint8
 
 func (upte UnknownPacketTypeError) Error() string {

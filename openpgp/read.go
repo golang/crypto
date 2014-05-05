@@ -249,13 +249,9 @@ FindLiteralData:
 
 			md.IsSigned = true
 			md.SignedByKeyId = p.KeyId
-			keys := keyring.KeysById(p.KeyId)
-			for i, key := range keys {
-				if key.SelfSignature.FlagsValid && !key.SelfSignature.FlagSign {
-					continue
-				}
-				md.SignedBy = &keys[i]
-				break
+			keys := keyring.KeysByIdUsage(p.KeyId, packet.KeyFlagSign)
+			if len(keys) > 0 {
+				md.SignedBy = &keys[0]
 			}
 		case *packet.LiteralData:
 			md.LiteralData = p
@@ -382,11 +378,6 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signe
 		return nil, errors.StructuralError("non signature packet found")
 	}
 
-	keys := keyring.KeysById(issuerKeyId)
-	if len(keys) == 0 {
-		return nil, errors.ErrUnknownIssuer
-	}
-
 	h, wrappedHash, err := hashForSignature(hashFunc, sigType)
 	if err != nil {
 		return
@@ -397,10 +388,12 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signe
 		return
 	}
 
+	keys := keyring.KeysByIdUsage(issuerKeyId, packet.KeyFlagSign)
+	if len(keys) == 0 {
+		return nil, errors.ErrUnknownIssuer
+	}
+
 	for _, key := range keys {
-		if key.SelfSignature.FlagsValid && !key.SelfSignature.FlagSign {
-			continue
-		}
 		switch sig := p.(type) {
 		case *packet.Signature:
 			err = key.PublicKey.VerifySignature(h, sig)
@@ -410,10 +403,6 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signe
 		if err == nil {
 			return key.Entity, nil
 		}
-	}
-
-	if err != nil {
-		return
 	}
 
 	return nil, errors.ErrUnknownIssuer

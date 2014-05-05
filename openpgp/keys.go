@@ -23,10 +23,11 @@ var PrivateKeyType = "PGP PRIVATE KEY BLOCK"
 // (which must be a signing key), one or more identities claimed by that key,
 // and zero or more subkeys, which may be encryption keys.
 type Entity struct {
-	PrimaryKey *packet.PublicKey
-	PrivateKey *packet.PrivateKey
-	Identities map[string]*Identity // indexed by Identity.Name
-	Subkeys    []Subkey
+	PrimaryKey  *packet.PublicKey
+	PrivateKey  *packet.PrivateKey
+	Identities  map[string]*Identity // indexed by Identity.Name
+	Revocations []*packet.Signature
+	Subkeys     []Subkey
 }
 
 // An Identity represents an identity claimed by an Entity and zero or more
@@ -59,6 +60,11 @@ type Key struct {
 type KeyRing interface {
 	// KeysById returns the set of keys that have the given key id.
 	KeysById(id uint64) []Key
+	// KeysByIdAndUsage returns the set of keys with the given id
+	// that also meet the key usage given by requiredUsage.
+	// The requiredUsage is expressed as the bitwise-OR of
+	// packet.KeyFlag* values.
+	KeysByIdUsage(id uint64, requiredUsage byte) []Key
 	// DecryptionKeys returns all private keys that are valid for
 	// decryption.
 	DecryptionKeys() []Key
@@ -169,6 +175,43 @@ func (el EntityList) KeysById(id uint64) (keys []Key) {
 				keys = append(keys, Key{e, subKey.PublicKey, subKey.PrivateKey, subKey.Sig})
 			}
 		}
+	}
+	return
+}
+
+// KeysByIdAndUsage returns the set of keys with the given id that also meet
+// the key usage given by requiredUsage.  The requiredUsage is expressed as
+// the bitwise-OR of packet.KeyFlag* values.
+func (el EntityList) KeysByIdUsage(id uint64, requiredUsage byte) (keys []Key) {
+	for _, key := range el.KeysById(id) {
+		if len(key.Entity.Revocations) > 0 {
+			continue
+		}
+
+		if key.SelfSignature.RevocationReason != nil {
+			continue
+		}
+
+		if key.SelfSignature.FlagsValid && requiredUsage != 0 {
+			var usage byte
+			if key.SelfSignature.FlagCertify {
+				usage |= packet.KeyFlagCertify
+			}
+			if key.SelfSignature.FlagSign {
+				usage |= packet.KeyFlagSign
+			}
+			if key.SelfSignature.FlagEncryptCommunications {
+				usage |= packet.KeyFlagEncryptCommunications
+			}
+			if key.SelfSignature.FlagEncryptStorage {
+				usage |= packet.KeyFlagEncryptStorage
+			}
+			if usage&requiredUsage != requiredUsage {
+				continue
+			}
+		}
+
+		keys = append(keys, key)
 	}
 	return
 }
@@ -290,6 +333,7 @@ func ReadEntity(packets *packet.Reader) (*Entity, error) {
 	}
 
 	var current *Identity
+	var revocations []*packet.Signature
 EachPacket:
 	for {
 		p, err := packets.Next()
@@ -329,10 +373,17 @@ EachPacket:
 				current.Signatures = append(current.Signatures, sig)
 			}
 		case *packet.Signature:
-			if current == nil {
+			if pkt.SigType == packet.SigTypeKeyRevocation {
+				revocations = append(revocations, pkt)
+			} else if pkt.SigType == packet.SigTypeDirectSignature {
+				// TODO: RFC4880 5.2.1 permits signatures
+				// directly on keys (eg. to bind additional
+				// revocation keys).
+			} else if current == nil {
 				return nil, errors.StructuralError("signature packet found before user id packet")
+			} else {
+				current.Signatures = append(current.Signatures, pkt)
 			}
-			current.Signatures = append(current.Signatures, pkt)
 		case *packet.PrivateKey:
 			if pkt.IsSubkey == false {
 				packets.Unread(p)
@@ -360,6 +411,16 @@ EachPacket:
 		return nil, errors.StructuralError("entity without any identities")
 	}
 
+	for _, revocation := range revocations {
+		err = e.PrimaryKey.VerifyRevocationSignature(revocation)
+		if err == nil {
+			e.Revocations = append(e.Revocations, revocation)
+		} else {
+			// TODO: RFC 4880 5.2.3.15 defines revocation keys.
+			return nil, errors.StructuralError("revocation signature signed by alternate key")
+		}
+	}
+
 	return e, nil
 }
 
@@ -379,7 +440,7 @@ func addSubkey(e *Entity, packets *packet.Reader, pub *packet.PublicKey, priv *p
 	if !ok {
 		return errors.StructuralError("subkey packet not followed by signature")
 	}
-	if subKey.Sig.SigType != packet.SigTypeSubkeyBinding {
+	if subKey.Sig.SigType != packet.SigTypeSubkeyBinding && subKey.Sig.SigType != packet.SigTypeSubkeyRevocation {
 		return errors.StructuralError("subkey signature with wrong type")
 	}
 	err = e.PrimaryKey.VerifyKeySignature(subKey.PublicKey, subKey.Sig)
