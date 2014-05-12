@@ -215,8 +215,8 @@ func (pk *PublicKeyV3) VerifySignatureV3(signed hash.Hash, sig *SignatureV3) (er
 }
 
 // VerifyUserIdSignatureV3 returns nil iff sig is a valid signature, made by this
-// public key, of id.
-func (pk *PublicKeyV3) VerifyUserIdSignatureV3(id string, sig *SignatureV3) (err error) {
+// public key, that id is the identity of pub.
+func (pk *PublicKeyV3) VerifyUserIdSignatureV3(id string, pub *PublicKeyV3, sig *SignatureV3) (err error) {
 	h, err := userIdSignatureV3Hash(id, pk, sig.Hash)
 	if err != nil {
 		return err

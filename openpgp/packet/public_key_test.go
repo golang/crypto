@@ -133,7 +133,7 @@ func TestEcc384Serialize(t *testing.T) {
 			t.Error(err)
 		}
 		uidSig := p.(*Signature)
-		err = pubkey.VerifyUserIdSignature(uid.Id, uidSig)
+		err = pubkey.VerifyUserIdSignature(uid.Id, pubkey, uidSig)
 		if err != nil {
 			t.Error(err, ": UID")
 		}

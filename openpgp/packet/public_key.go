@@ -620,9 +620,9 @@ func userIdSignatureHash(id string, pk *PublicKey, hashFunc crypto.Hash) (h hash
 }
 
 // VerifyUserIdSignature returns nil iff sig is a valid signature, made by this
-// public key, of id.
-func (pk *PublicKey) VerifyUserIdSignature(id string, sig *Signature) (err error) {
-	h, err := userIdSignatureHash(id, pk, sig.Hash)
+// public key, that id is the identity of pub.
+func (pk *PublicKey) VerifyUserIdSignature(id string, pub *PublicKey, sig *Signature) (err error) {
+	h, err := userIdSignatureHash(id, pub, sig.Hash)
 	if err != nil {
 		return err
 	}
@@ -630,9 +630,9 @@ func (pk *PublicKey) VerifyUserIdSignature(id string, sig *Signature) (err error
 }
 
 // VerifyUserIdSignatureV3 returns nil iff sig is a valid signature, made by this
-// public key, of id.
-func (pk *PublicKey) VerifyUserIdSignatureV3(id string, sig *SignatureV3) (err error) {
-	h, err := userIdSignatureV3Hash(id, pk, sig.Hash)
+// public key, that id is the identity of pub.
+func (pk *PublicKey) VerifyUserIdSignatureV3(id string, pub *PublicKey, sig *SignatureV3) (err error) {
+	h, err := userIdSignatureV3Hash(id, pub, sig.Hash)
 	if err != nil {
 		return err
 	}

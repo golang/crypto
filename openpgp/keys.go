@@ -364,7 +364,7 @@ EachPacket:
 				}
 
 				if (sig.SigType == packet.SigTypePositiveCert || sig.SigType == packet.SigTypeGenericCert) && sig.IssuerKeyId != nil && *sig.IssuerKeyId == e.PrimaryKey.KeyId {
-					if err = e.PrimaryKey.VerifyUserIdSignature(pkt.Id, sig); err != nil {
+					if err = e.PrimaryKey.VerifyUserIdSignature(pkt.Id, e.PrimaryKey, sig); err != nil {
 						return nil, errors.StructuralError("user ID self-signature invalid: " + err.Error())
 					}
 					current.SelfSignature = sig
@@ -616,7 +616,7 @@ func (e *Entity) SignIdentity(identity string, signer *Entity, config *packet.Co
 		CreationTime: config.Now(),
 		IssuerKeyId:  &signer.PrivateKey.KeyId,
 	}
-	if err := sig.SignKey(e.PrimaryKey, signer.PrivateKey, config); err != nil {
+	if err := sig.SignUserId(identity, e.PrimaryKey, signer.PrivateKey, config); err != nil {
 		return err
 	}
 	ident.Signatures = append(ident.Signatures, sig)
