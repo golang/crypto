@@ -343,3 +343,51 @@ func TestClientLoginCert(t *testing.T) {
 		t.Errorf("cert login with source-address succeeded")
 	}
 }
+
+func testPermissionsPassing(withPermissions bool, t *testing.T) {
+	serverConfig := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if conn.User() == "nopermissions" {
+				return nil, nil
+			} else {
+				return &Permissions{}, nil
+			}
+		},
+	}
+	serverConfig.AddHostKey(testSigners["rsa"])
+
+	clientConfig := &ClientConfig{
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+		},
+	}
+	if withPermissions {
+		clientConfig.User = "permissions"
+	} else {
+		clientConfig.User = "nopermissions"
+	}
+
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	go NewClientConn(c2, "", clientConfig)
+	serverConn, err := newServer(c1, serverConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p := serverConn.Permissions; (p != nil) != withPermissions {
+		t.Fatalf("withPermissions is %t, but Permissions object is %#v", withPermissions, p)
+	}
+}
+
+func TestPermissionsPassing(t *testing.T) {
+	testPermissionsPassing(true, t)
+}
+
+func TestNoPermissionsPassing(t *testing.T) {
+	testPermissionsPassing(false, t)
+}

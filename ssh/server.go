@@ -90,10 +90,6 @@ type cachedPubKey struct {
 	perms      *Permissions
 }
 
-func (k1 *cachedPubKey) Equal(k2 *cachedPubKey) bool {
-	return k1.user == k2.user && bytes.Equal(k1.pubKeyData, k2.pubKeyData)
-}
-
 const maxCachedPubKeys = 16
 
 // pubKeyCache caches tests for public keys.  Since SSH clients
@@ -105,13 +101,13 @@ type pubKeyCache struct {
 }
 
 // get returns the result for a given user/algo/key tuple.
-func (c *pubKeyCache) get(candidate cachedPubKey) (result error, ok bool) {
+func (c *pubKeyCache) get(user string, pubKeyData []byte) (cachedPubKey, bool) {
 	for _, k := range c.keys {
-		if k.Equal(&candidate) {
-			return k.result, true
+		if k.user == user && bytes.Equal(k.pubKeyData, pubKeyData) {
+			return k, true
 		}
 	}
-	return errors.New("ssh: not in cache"), false
+	return cachedPubKey{}, false
 }
 
 // add adds the given tuple to the cache.
@@ -333,12 +329,11 @@ userAuthLoop:
 			if err != nil {
 				return nil, err
 			}
-			candidate := cachedPubKey{
-				user:       s.user,
-				pubKeyData: pubKeyData,
-			}
-			candidate.result, ok = cache.get(candidate)
+
+			candidate, ok := cache.get(s.user, pubKeyData)
 			if !ok {
+				candidate.user = s.user
+				candidate.pubKeyData = pubKeyData
 				candidate.perms, candidate.result = config.PublicKeyCallback(s, pubKey)
 				if candidate.result == nil && candidate.perms != nil && candidate.perms.CriticalOptions != nil && candidate.perms.CriticalOptions[sourceAddressCriticalOption] != "" {
 					candidate.result = checkSourceAddress(
