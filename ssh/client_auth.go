@@ -41,15 +41,17 @@ func (c *connection) clientAuthenticate(config *ClientConfig) error {
 		tried[auth.method()] = true
 
 		auth = nil
+
+	findNext:
 		for _, a := range config.Auth {
 			candidateMethod := a.method()
+			if tried[candidateMethod] {
+				continue
+			}
 			for _, meth := range methods {
-				if meth != candidateMethod {
-					continue
-				}
-				if !tried[meth] {
+				if meth == candidateMethod {
 					auth = a
-					break
+					break findNext
 				}
 			}
 		}

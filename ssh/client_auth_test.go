@@ -111,6 +111,29 @@ func TestAuthMethodPassword(t *testing.T) {
 	}
 }
 
+func TestAuthMethodFallback(t *testing.T) {
+	var passwordCalled bool
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+			PasswordCallback(
+				func() (string, error) {
+					passwordCalled = true
+					return "WRONG", nil
+				}),
+		},
+	}
+
+	if err := tryAuth(t, config); err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+
+	if passwordCalled {
+		t.Errorf("password auth tried before public-key auth.")
+	}
+}
+
 func TestAuthMethodWrongPassword(t *testing.T) {
 	config := &ClientConfig{
 		User: "testuser",
