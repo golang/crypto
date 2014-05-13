@@ -29,6 +29,7 @@ func (c *connection) clientAuthenticate(config *ClientConfig) error {
 	// during the authentication phase the client first attempts the "none" method
 	// then any untried methods suggested by the server.
 	tried := make(map[string]bool)
+	var lastMethods []string
 	for auth := AuthMethod(new(noneAuth)); auth != nil; {
 		ok, methods, err := auth.auth(c.transport.getSessionID(), config.User, c.transport, config.Rand)
 		if err != nil {
@@ -39,6 +40,10 @@ func (c *connection) clientAuthenticate(config *ClientConfig) error {
 			return nil
 		}
 		tried[auth.method()] = true
+		if methods == nil {
+			methods = lastMethods
+		}
+		lastMethods = methods
 
 		auth = nil
 
@@ -73,7 +78,8 @@ type AuthMethod interface {
 	// auth authenticates user over transport t.
 	// Returns true if authentication is successful.
 	// If authentication is not successful, a []string of alternative
-	// method names is returned.
+	// method names is returned. If the slice is nil, it will be ignored
+	// and the previous set of possible methods will be reused.
 	auth(session []byte, user string, p packetConn, rand io.Reader) (bool, []string, error)
 
 	// method returns the RFC 4252 method name.
@@ -223,7 +229,8 @@ func (cb publicKeyCallback) auth(session []byte, user string, c packetConn, rand
 		if err := c.writePacket(p); err != nil {
 			return false, nil, err
 		}
-		success, methods, err := handleAuthResponse(c)
+		var success bool
+		success, methods, err = handleAuthResponse(c)
 		if err != nil {
 			return false, nil, err
 		}
