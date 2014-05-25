@@ -42,13 +42,11 @@ func (f *hkdf) Read(p []byte) (int, error) {
 	p = p[n:]
 
 	// Fill the buffer
-	var input []byte
 	for len(p) > 0 {
-		input = append(f.prev, f.info...)
-		input = append(input, f.counter)
-
 		f.expander.Reset()
-		f.expander.Write(input)
+		f.expander.Write(f.prev)
+		f.expander.Write(f.info)
+		f.expander.Write([]byte{f.counter})
 		f.prev = f.expander.Sum(f.prev[:0])
 		f.counter++
 
