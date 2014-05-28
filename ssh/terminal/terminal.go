@@ -108,6 +108,7 @@ func NewTerminal(c io.ReadWriter, prompt string) *Terminal {
 
 const (
 	keyCtrlD     = 4
+	keyCtrlU     = 21
 	keyEnter     = '\r'
 	keyEscape    = 27
 	keyBackspace = 127
@@ -122,6 +123,7 @@ const (
 	keyEnd
 	keyDeleteWord
 	keyDeleteLine
+	keyClearScreen
 )
 
 // bytesToKey tries to parse a key sequence from b. If successful, it returns
@@ -140,6 +142,8 @@ func bytesToKey(b []byte) (rune, []byte) {
 		return keyBackspace, b[1:]
 	case 11: // ^K
 		return keyDeleteLine, b[1:]
+	case 12: // ^L
+		return keyClearScreen, b[1:]
 	case 23: // ^W
 		return keyDeleteWord, b[1:]
 	}
@@ -453,6 +457,23 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 		}
 		t.line = t.line[:t.pos]
 		t.moveCursorToPos(t.pos)
+	case keyCtrlD:
+		// Erase the character under the current position.
+		// The EOF case when the line is empty is handled in
+		// readLine().
+		if t.pos < len(t.line) {
+			t.pos++
+			t.eraseNPreviousChars(1)
+		}
+	case keyCtrlU:
+		t.eraseNPreviousChars(t.pos)
+	case keyClearScreen:
+		// Erases the screen and moves the cursor to the home position.
+		t.queue([]rune("\x1b[2J\x1b[H"))
+		t.queue([]rune(t.prompt))
+		t.cursorX = len(t.prompt)
+		t.cursorY = 0
+		t.setLine(t.line, t.pos)
 	default:
 		if t.AutoCompleteCallback != nil {
 			prefix := string(t.line[:t.pos])
@@ -604,7 +625,9 @@ func (t *Terminal) readLine() (line string, err error) {
 				break
 			}
 			if key == keyCtrlD {
-				return "", io.EOF
+				if len(t.line) == 0 {
+					return "", io.EOF
+				}
 			}
 			line, lineOk = t.handleKey(key)
 		}
