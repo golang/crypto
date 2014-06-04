@@ -276,10 +276,10 @@ FindLiteralData:
 // returns two hashes. The second should be used to hash the message itself and
 // performs any needed preprocessing.
 func hashForSignature(hashId crypto.Hash, sigType packet.SignatureType) (hash.Hash, hash.Hash, error) {
-	h := hashId.New()
-	if h == nil {
+	if !hashId.Available() {
 		return nil, nil, errors.UnsupportedError("hash not available: " + strconv.Itoa(int(hashId)))
 	}
+	h := hashId.New()
 
 	switch sigType {
 	case packet.SigTypeBinary:

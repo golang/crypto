@@ -296,10 +296,10 @@ func Encode(w io.Writer, privateKey *packet.PrivateKey, config *packet.Config) (
 		return nil, errors.UnsupportedError("unknown hash type: " + strconv.Itoa(int(hashType)))
 	}
 
-	h := hashType.New()
-	if h == nil {
+	if !hashType.Available() {
 		return nil, errors.UnsupportedError("unsupported hash type: " + strconv.Itoa(int(hashType)))
 	}
+	h := hashType.New()
 
 	buffered := bufio.NewWriter(w)
 	// start has a \n at the beginning that we don't want here.

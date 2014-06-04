@@ -91,10 +91,10 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	if !ok {
 		return nil, errors.UnsupportedError("hash for S2K function: " + strconv.Itoa(int(buf[1])))
 	}
-	h := hash.New()
-	if h == nil {
+	if !hash.Available() {
 		return nil, errors.UnsupportedError("hash not available: " + strconv.Itoa(int(hash)))
 	}
+	h := hash.New()
 
 	switch buf[0] {
 	case 0:
