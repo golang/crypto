@@ -279,6 +279,15 @@ func TestDetachedSignature(t *testing.T) {
 	testDetachedSignature(t, kring, readerFromHex(detachedSignatureHex), signedInput, "binary", testKey1KeyId)
 	testDetachedSignature(t, kring, readerFromHex(detachedSignatureTextHex), signedInput, "text", testKey1KeyId)
 	testDetachedSignature(t, kring, readerFromHex(detachedSignatureV3TextHex), signedInput, "v3", testKey1KeyId)
+
+	incorrectSignedInput := signedInput + "X"
+	_, err := CheckDetachedSignature(kring, bytes.NewBufferString(incorrectSignedInput), readerFromHex(detachedSignatureHex))
+	if err == nil {
+		t.Fatal("CheckDetachedSignature returned without error for bad signature")
+	}
+	if err == errors.ErrUnknownIssuer {
+		t.Fatal("CheckDetachedSignature returned ErrUnknownIssuer when the signer was known, but the signature invalid")
+	}
 }
 
 func TestDetachedSignatureDSA(t *testing.T) {

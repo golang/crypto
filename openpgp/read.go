@@ -405,7 +405,10 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader) (signe
 		}
 	}
 
-	return nil, errors.ErrUnknownIssuer
+	if err == nil {
+		err = errors.ErrUnknownIssuer
+	}
+	return nil, err
 }
 
 // CheckArmoredDetachedSignature performs the same actions as
