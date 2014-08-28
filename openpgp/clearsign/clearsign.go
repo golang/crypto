@@ -113,6 +113,7 @@ func Decode(data []byte) (b *Block, rest []byte) {
 		b.Headers.Add(string(key), string(val))
 	}
 
+	firstLine := true
 	for {
 		start := rest
 
@@ -126,9 +127,12 @@ func Decode(data []byte) (b *Block, rest []byte) {
 
 		// The final CRLF isn't included in the hash so we don't write it until
 		// we've seen the next line.
-		if len(b.Bytes) > 0 {
+		if firstLine {
+			firstLine = false
+		} else {
 			b.Bytes = append(b.Bytes, crlf...)
 		}
+
 		if bytes.HasPrefix(line, dashEscape) {
 			line = line[2:]
 		}

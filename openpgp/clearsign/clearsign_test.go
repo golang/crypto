@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-func TestParse(t *testing.T) {
-	b, rest := Decode(clearsignInput)
+func testParse(t *testing.T, input []byte, expected, expectedPlaintext string) {
+	b, rest := Decode(input)
 	if b == nil {
 		t.Fatal("failed to decode clearsign message")
 	}
@@ -21,14 +21,12 @@ func TestParse(t *testing.T) {
 	if b.ArmoredSignature.Type != "PGP SIGNATURE" {
 		t.Errorf("bad armor type, got:%s, want:PGP SIGNATURE", b.ArmoredSignature.Type)
 	}
-	expected := []byte("Hello world\r\nline 2")
-	if !bytes.Equal(b.Bytes, expected) {
+	if !bytes.Equal(b.Bytes, []byte(expected)) {
 		t.Errorf("bad body, got:%x want:%x", b.Bytes, expected)
 	}
 
-	expected = []byte("Hello world\nline 2\n")
-	if !bytes.Equal(b.Plaintext, expected) {
-		t.Errorf("bad plaintext, got:%x want:%x", b.Plaintext, expected)
+	if !bytes.Equal(b.Plaintext, []byte(expectedPlaintext)) {
+		t.Errorf("bad plaintext, got:%x want:%x", b.Plaintext, expectedPlaintext)
 	}
 
 	keyring, err := openpgp.ReadArmoredKeyRing(bytes.NewBufferString(signingKey))
@@ -39,6 +37,11 @@ func TestParse(t *testing.T) {
 	if _, err := openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body); err != nil {
 		t.Errorf("failed to check signature: %s", err)
 	}
+}
+
+func TestParse(t *testing.T) {
+	testParse(t, clearsignInput, "Hello world\r\nline 2", "Hello world\nline 2\n")
+	testParse(t, clearsignInput2, "\r\n\r\n(This message has a couple of blank lines at the start and end.)\r\n\r\n", "\n\n(This message has a couple of blank lines at the start and end.)\n\n\n")
 }
 
 func TestParseWithNoNewlineAtEnd(t *testing.T) {
@@ -123,6 +126,29 @@ pjnBUzZwqTDoDeINjZEoPDSpQAHGhjFjgaDx/Gj4fAl0dM4D0wuUEBb6QOrwflog
 MyTpno24AjIAGb+mH1U=
 =hIJ6
 -----END PGP SIGNATURE-----
+trailing`)
+
+var clearsignInput2 = []byte(`
+asdlfkjasdlkfjsadf
+
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA256
+
+
+
+(This message has a couple of blank lines at the start and end.)
+
+
+-----BEGIN PGP SIGNATURE-----
+Version: GnuPG v1.4.11 (GNU/Linux)
+
+iJwEAQEIAAYFAlPpSREACgkQO9o98PRieSpZTAP+M8QUoCt/7Rf3YbXPcdzIL32v
+pt1I+cMNeopzfLy0u4ioEFi8s5VkwpL1AFmirvgViCwlf82inoRxzZRiW05JQ5LI
+ESEzeCoy2LIdRCQ2hcrG8pIUPzUO4TqO5D/dMbdHwNH4h5nNmGJUAEG6FpURlPm+
+qZg6BaTvOxepqOxnhVU=
+=e+C6
+-----END PGP SIGNATURE-----
+
 trailing`)
 
 var signingKey = `-----BEGIN PGP PRIVATE KEY BLOCK-----
