@@ -732,11 +732,15 @@ func (t *Terminal) SetSize(width, height int) error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
+	if width == 0 {
+		width = 1
+	}
+
 	oldWidth := t.termWidth
 	t.termWidth, t.termHeight = width, height
 
 	switch {
-	case width == oldWidth || len(t.line) == 0:
+	case width == oldWidth:
 		// If the width didn't change then nothing else needs to be
 		// done.
 		return nil
@@ -752,6 +756,9 @@ func (t *Terminal) SetSize(width, height int) error {
 		// wrapping and turning into two. This causes the prompt on
 		// xterms to move upwards, which isn't great, but it avoids a
 		// huge mess with gnome-terminal.
+		if t.cursorX >= t.termWidth {
+			t.cursorX = t.termWidth - 1
+		}
 		t.cursorY *= 2
 		t.clearAndRepaintLinePlusNPrevious(t.maxLine * 2)
 	case width > oldWidth:
