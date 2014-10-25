@@ -196,8 +196,8 @@ func (pk *PrivateKey) Decrypt(passphrase []byte) error {
 	block := pk.cipher.new(key)
 	cfb := cipher.NewCFBDecrypter(block, pk.iv)
 
-	data := pk.encryptedData
-	cfb.XORKeyStream(data, data)
+	data := make([]byte, len(pk.encryptedData))
+	cfb.XORKeyStream(data, pk.encryptedData)
 
 	if pk.sha1Checksum {
 		if len(data) < sha1.Size {

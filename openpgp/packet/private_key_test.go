@@ -38,6 +38,12 @@ func TestPrivateKeyRead(t *testing.T) {
 			continue
 		}
 
+		err = privKey.Decrypt([]byte("wrong password"))
+		if err == nil {
+			t.Errorf("#%d: decrypted with incorrect key", i)
+			continue
+		}
+
 		err = privKey.Decrypt([]byte("testing"))
 		if err != nil {
 			t.Errorf("#%d: failed to decrypt: %s", i, err)
