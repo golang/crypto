@@ -7,12 +7,32 @@
 package s2k
 
 import (
-	"code.google.com/p/go.crypto/openpgp/errors"
 	"crypto"
 	"hash"
 	"io"
 	"strconv"
+
+	"code.google.com/p/go.crypto/openpgp/errors"
 )
+
+// Config collects configuration parameters for s2k key-stretching
+// transformatioms. A nil *Config is valid and results in all default
+// values. Currently, Config is used only by the Serialize function in
+// this package.
+type Config struct {
+	// Hash is the default hash function to be used. If
+	// nil, SHA1 is used.
+	Hash crypto.Hash
+}
+
+func (c *Config) hash() crypto.Hash {
+	if c == nil || uint(c.Hash) == 0 {
+		// SHA1 is the historical default in this package.
+		return crypto.SHA1
+	}
+
+	return c.Hash
+}
 
 // Simple writes to out the result of computing the Simple S2K function (RFC
 // 4880, section 3.7.1.1) using the given hash and input passphrase.
@@ -126,12 +146,14 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	return nil, errors.UnsupportedError("S2K function")
 }
 
-// Serialize salts and stretches the given passphrase and writes the resulting
-// key into key. It also serializes an S2K descriptor to w.
-func Serialize(w io.Writer, key []byte, rand io.Reader, passphrase []byte) error {
+// Serialize salts and stretches the given passphrase and writes the
+// resulting key into key. It also serializes an S2K descriptor to
+// w. The key stretching can be configured with c, which may be
+// nil. In that case, sensible defaults will be used.
+func Serialize(w io.Writer, key []byte, rand io.Reader, passphrase []byte, c *Config) error {
 	var buf [11]byte
 	buf[0] = 3 /* iterated and salted */
-	buf[1], _ = HashToHashId(crypto.SHA1)
+	buf[1], _ = HashToHashId(c.hash())
 	salt := buf[2:10]
 	if _, err := io.ReadFull(rand, salt); err != nil {
 		return err
@@ -142,7 +164,7 @@ func Serialize(w io.Writer, key []byte, rand io.Reader, passphrase []byte) error
 		return err
 	}
 
-	Iterated(key, crypto.SHA1.New(), passphrase, salt, count)
+	Iterated(key, c.hash().New(), passphrase, salt, count)
 	return nil
 }
 

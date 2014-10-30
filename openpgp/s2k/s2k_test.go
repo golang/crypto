@@ -6,10 +6,16 @@ package s2k
 
 import (
 	"bytes"
+	"crypto"
+	_ "crypto/md5"
 	"crypto/rand"
 	"crypto/sha1"
+	_ "crypto/sha256"
+	_ "crypto/sha512"
 	"encoding/hex"
 	"testing"
+
+	_ "code.google.com/p/go.crypto/ripemd160"
 )
 
 var saltedTests = []struct {
@@ -96,10 +102,20 @@ func TestParse(t *testing.T) {
 }
 
 func TestSerialize(t *testing.T) {
+	hashes := []crypto.Hash{crypto.MD5, crypto.SHA1, crypto.RIPEMD160,
+		crypto.SHA256, crypto.SHA384, crypto.SHA512, crypto.SHA224}
+	for _, h := range hashes {
+		testSerializeConfig(t, &Config{Hash: h})
+	}
+}
+
+func testSerializeConfig(t *testing.T, c *Config) {
+	t.Logf("Running testSerializeConfig() with config: %+v", c)
+
 	buf := bytes.NewBuffer(nil)
 	key := make([]byte, 16)
 	passphrase := []byte("testing")
-	err := Serialize(buf, key, rand.Reader, passphrase)
+	err := Serialize(buf, key, rand.Reader, passphrase, c)
 	if err != nil {
 		t.Errorf("failed to serialize: %s", err)
 		return
