@@ -166,11 +166,6 @@ func bytesToKey(b []byte) (rune, []byte) {
 			return keyRight, b[3:]
 		case 'D':
 			return keyLeft, b[3:]
-		}
-	}
-
-	if len(b) >= 3 && b[0] == keyEscape && b[1] == 'O' {
-		switch b[2] {
 		case 'H':
 			return keyHome, b[3:]
 		case 'F':
