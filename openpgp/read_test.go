@@ -6,9 +6,9 @@ package openpgp
 
 import (
 	"bytes"
-	"code.google.com/p/go.crypto/openpgp/errors"
 	_ "crypto/sha512"
 	"encoding/hex"
+	"golang.org/x/crypto/openpgp/errors"
 	"io"
 	"io/ioutil"
 	"strings"

@@ -9,8 +9,8 @@ package armor
 import (
 	"bufio"
 	"bytes"
-	"code.google.com/p/go.crypto/openpgp/errors"
 	"encoding/base64"
+	"golang.org/x/crypto/openpgp/errors"
 	"io"
 )
 

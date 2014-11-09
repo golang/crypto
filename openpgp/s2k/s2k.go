@@ -12,7 +12,7 @@ import (
 	"io"
 	"strconv"
 
-	"code.google.com/p/go.crypto/openpgp/errors"
+	"golang.org/x/crypto/openpgp/errors"
 )
 
 // Config collects configuration parameters for s2k key-stretching

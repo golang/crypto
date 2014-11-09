@@ -5,10 +5,10 @@
 package packet
 
 import (
-	"code.google.com/p/go.crypto/openpgp/elgamal"
-	"code.google.com/p/go.crypto/openpgp/errors"
 	"crypto/rsa"
 	"encoding/binary"
+	"golang.org/x/crypto/openpgp/elgamal"
+	"golang.org/x/crypto/openpgp/errors"
 	"io"
 	"math/big"
 	"strconv"

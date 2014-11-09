@@ -18,9 +18,9 @@ import (
 	"net/textproto"
 	"strconv"
 
-	"code.google.com/p/go.crypto/openpgp/armor"
-	"code.google.com/p/go.crypto/openpgp/errors"
-	"code.google.com/p/go.crypto/openpgp/packet"
+	"golang.org/x/crypto/openpgp/armor"
+	"golang.org/x/crypto/openpgp/errors"
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 // A Block represents a clearsigned message. A signature on a Block can

@@ -5,10 +5,10 @@
 package packet
 
 import (
-	"code.google.com/p/go.crypto/openpgp/errors"
 	"crypto/cipher"
 	"crypto/sha1"
 	"crypto/subtle"
+	"golang.org/x/crypto/openpgp/errors"
 	"hash"
 	"io"
 	"strconv"

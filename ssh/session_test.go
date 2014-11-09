@@ -14,7 +14,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"code.google.com/p/go.crypto/ssh/terminal"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 type serverType func(Channel, <-chan *Request, *testing.T)

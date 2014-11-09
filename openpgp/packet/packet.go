@@ -8,11 +8,11 @@ package packet
 
 import (
 	"bufio"
-	"code.google.com/p/go.crypto/cast5"
-	"code.google.com/p/go.crypto/openpgp/errors"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/des"
+	"golang.org/x/crypto/cast5"
+	"golang.org/x/crypto/openpgp/errors"
 	"io"
 	"math/big"
 )

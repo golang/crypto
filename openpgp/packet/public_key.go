@@ -6,8 +6,6 @@ package packet
 
 import (
 	"bytes"
-	"code.google.com/p/go.crypto/openpgp/elgamal"
-	"code.google.com/p/go.crypto/openpgp/errors"
 	"crypto"
 	"crypto/dsa"
 	"crypto/ecdsa"
@@ -18,6 +16,8 @@ import (
 	_ "crypto/sha512"
 	"encoding/binary"
 	"fmt"
+	"golang.org/x/crypto/openpgp/elgamal"
+	"golang.org/x/crypto/openpgp/errors"
 	"hash"
 	"io"
 	"math/big"

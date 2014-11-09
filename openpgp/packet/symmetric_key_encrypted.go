@@ -10,8 +10,8 @@ import (
 	"io"
 	"strconv"
 
-	"code.google.com/p/go.crypto/openpgp/errors"
-	"code.google.com/p/go.crypto/openpgp/s2k"
+	"golang.org/x/crypto/openpgp/errors"
+	"golang.org/x/crypto/openpgp/s2k"
 )
 
 // This is the largest session key that we'll support. Since no 512-bit cipher
