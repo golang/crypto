@@ -32,6 +32,17 @@ type Config struct {
 	DefaultCompressionAlgo CompressionAlgo
 	// CompressionConfig configures the compression settings.
 	CompressionConfig *CompressionConfig
+	// S2KCount is only used for symmetric encryption. It
+	// determines the strength of the passphrase stretching when
+	// the said passphrase is hashed to produce a key. S2KCount
+	// should be between 1024 and 65011712, inclusive. If Config
+	// is nil or S2KCount is 0, the value 65536 used. Not all
+	// values in the above range can be represented. S2KCount will
+	// be rounded up to the next representable value if it cannot
+	// be encoded exactly. When set, it is strongly encrouraged to
+	// use a value that is at least 65536. See RFC 4880 Section
+	// 3.7.1.3.
+	S2KCount int
 }
 
 func (c *Config) Random() io.Reader {
