@@ -79,3 +79,10 @@ func (c *Config) Compression() CompressionAlgo {
 	}
 	return c.DefaultCompressionAlgo
 }
+
+func (c *Config) PasswordHashIterations() int {
+	if c == nil || c.S2KCount == 0 {
+		return 0
+	}
+	return c.S2KCount
+}

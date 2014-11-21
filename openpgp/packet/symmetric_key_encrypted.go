@@ -120,7 +120,7 @@ func SerializeSymmetricKeyEncrypted(w io.Writer, passphrase []byte, config *Conf
 	keyEncryptingKey := make([]byte, keySize)
 	// s2k.Serialize salts and stretches the passphrase, and writes the
 	// resulting key to keyEncryptingKey and the s2k descriptor to s2kBuf.
-	err = s2k.Serialize(s2kBuf, keyEncryptingKey, config.Random(), passphrase, &s2k.Config{Hash: config.Hash(), S2KCount: config.S2KCount})
+	err = s2k.Serialize(s2kBuf, keyEncryptingKey, config.Random(), passphrase, &s2k.Config{Hash: config.Hash(), S2KCount: config.PasswordHashIterations()})
 	if err != nil {
 		return
 	}
