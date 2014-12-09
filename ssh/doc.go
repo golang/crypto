@@ -15,4 +15,4 @@ References:
   [PROTOCOL.certkeys]: http://www.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/PROTOCOL.certkeys
   [SSH-PARAMETERS]:    http://www.iana.org/assignments/ssh-parameters/ssh-parameters.xml#ssh-parameters-1
 */
-package ssh
+package ssh // import "golang.org/x/crypto/ssh"

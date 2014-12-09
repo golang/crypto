@@ -14,7 +14,7 @@
 // Barreto-Naehrig curve as described in
 // http://cryptojedi.org/papers/dclxvi-20100714.pdf. Its output is compatible
 // with the implementation described in that paper.
-package bn256
+package bn256 // import "golang.org/x/crypto/bn256"
 
 import (
 	"crypto/rand"

@@ -8,7 +8,7 @@
 References:
   [PROTOCOL.agent]:    http://www.openbsd.org/cgi-bin/cvsweb/src/usr.bin/ssh/PROTOCOL.agent
 */
-package agent
+package agent // import "golang.org/x/crypto/ssh/agent"
 
 import (
 	"bytes"
