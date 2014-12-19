@@ -65,6 +65,11 @@ type ServerConfig struct {
 	// AuthLogCallback, if non-nil, is called to log all authentication
 	// attempts.
 	AuthLogCallback func(conn ConnMetadata, method string, err error)
+
+	// ServerVersion is the version identification string to
+	// announce in the public handshake.
+	// If empty, a reasonable default is used.
+	ServerVersion string
 }
 
 // AddHostKey adds a private key as a host key. If an existing host
@@ -163,8 +168,12 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 		return nil, errors.New("ssh: server has no host keys")
 	}
 
+	if config.ServerVersion != "" {
+		s.serverVersion = []byte(config.ServerVersion)
+	} else {
+		s.serverVersion = []byte(packageVersion)
+	}
 	var err error
-	s.serverVersion = []byte(packageVersion)
 	s.clientVersion, err = exchangeVersions(s.sshConn.conn, s.serverVersion)
 	if err != nil {
 		return nil, err
