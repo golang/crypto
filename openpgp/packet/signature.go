@@ -9,12 +9,13 @@ import (
 	"crypto/dsa"
 	"crypto/rsa"
 	"encoding/binary"
-	"golang.org/x/crypto/openpgp/errors"
-	"golang.org/x/crypto/openpgp/s2k"
 	"hash"
 	"io"
 	"strconv"
 	"time"
+
+	"golang.org/x/crypto/openpgp/errors"
+	"golang.org/x/crypto/openpgp/s2k"
 )
 
 const (
@@ -62,6 +63,10 @@ type Signature struct {
 	// See RFC 4880, section 5.2.3.23 for details.
 	RevocationReason     *uint8
 	RevocationReasonText string
+
+	// MDC is set if this signature has a feature packet that indicates
+	// support for MDC subpackets.
+	MDC bool
 
 	outSubpackets []outputSubpacket
 }
@@ -190,6 +195,7 @@ const (
 	primaryUserIdSubpacket       signatureSubpacketType = 25
 	keyFlagsSubpacket            signatureSubpacketType = 27
 	reasonForRevocationSubpacket signatureSubpacketType = 29
+	featuresSubpacket            signatureSubpacketType = 30
 )
 
 // parseSignatureSubpacket parses a single subpacket. len(subpacket) is >= 1.
@@ -343,7 +349,12 @@ func parseSignatureSubpacket(sig *Signature, subpacket []byte, isHashed bool) (r
 		sig.RevocationReason = new(uint8)
 		*sig.RevocationReason = subpacket[0]
 		sig.RevocationReasonText = string(subpacket[1:])
-
+	case featuresSubpacket:
+		// Features subpacket, section 5.2.3.24 specifies a very general
+		// mechanism for OpenPGP implementations to signal support for new
+		// features. In practice, the subpacket is used exclusively to
+		// indicate support for MDC-protected encryption.
+		sig.MDC = len(subpacket) >= 1 && subpacket[0]&1 == 1
 	default:
 		if isCritical {
 			err = errors.UnsupportedError("unknown critical signature subpacket type " + strconv.Itoa(int(packetType)))
