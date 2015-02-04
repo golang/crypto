@@ -44,13 +44,13 @@ type transport struct {
 	sessionID []byte
 }
 
+// getSessionID returns the ID of the SSH connection. The return value
+// should not be modified.
 func (t *transport) getSessionID() []byte {
 	if t.sessionID == nil {
 		panic("session ID not set yet")
 	}
-	s := make([]byte, len(t.sessionID))
-	copy(s, t.sessionID)
-	return s
+	return t.sessionID
 }
 
 // packetCipher represents a combination of SSH encryption/MAC

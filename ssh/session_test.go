@@ -626,3 +626,55 @@ func simpleEchoHandler(ch Channel, in <-chan *Request, t *testing.T) {
 		t.Errorf("handler write error: %v", err)
 	}
 }
+
+func TestSessionID(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverID := make(chan []byte, 1)
+	clientID := make(chan []byte, 1)
+
+	serverConf := &ServerConfig{
+		NoClientAuth: true,
+	}
+	serverConf.AddHostKey(testSigners["ecdsa"])
+	clientConf := &ClientConfig{
+		User: "user",
+	}
+
+	go func() {
+		conn, chans, reqs, err := NewServerConn(c1, serverConf)
+		if err != nil {
+			t.Fatalf("server handshake: %v", err)
+		}
+		serverID <- conn.SessionID()
+		go DiscardRequests(reqs)
+		for ch := range chans {
+			ch.Reject(Prohibited, "")
+		}
+	}()
+
+	go func() {
+		conn, chans, reqs, err := NewClientConn(c2, "", clientConf)
+		if err != nil {
+			t.Fatalf("client handshake: %v", err)
+		}
+		clientID <- conn.SessionID()
+		go DiscardRequests(reqs)
+		for ch := range chans {
+			ch.Reject(Prohibited, "")
+		}
+	}()
+
+	s := <-serverID
+	c := <-clientID
+	if bytes.Compare(s, c) != 0 {
+		t.Errorf("server session ID (%x) != client session ID (%x)", s, c)
+	} else if len(s) == 0 {
+		t.Errorf("client and server SessionID were empty.")
+	}
+}
