@@ -169,6 +169,12 @@ var keyPressTests = []struct {
 		line: "a",
 	},
 	{
+		in: "\014\r", // Ctrl-N
+	},
+	{
+		in: "\016\r", // Ctrl-P
+	},
+	{
 		// a, b, left, Ctrl-D should erase the b.
 		in:   "ab\x1b[D\004\r",
 		line: "a",
