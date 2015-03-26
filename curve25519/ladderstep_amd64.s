@@ -5,7 +5,7 @@
 // This code was translated into a form compatible with 6a from the public
 // domain sources in SUPERCOP: http://bench.cr.yp.to/supercop.html
 
-// +build amd64,!gccgo
+// +build amd64,!gccgo,!appengine
 
 // func ladderstep(inout *[5][5]uint64)
 TEXT ·ladderstep(SB),0,$384-8

@@ -4,7 +4,7 @@
 
 // We have a implementation in amd64 assembly so this code is only run on
 // non-amd64 platforms. The amd64 assembly does not support gccgo.
-// +build !amd64 gccgo
+// +build !amd64 gccgo appengine
 
 package curve25519
 

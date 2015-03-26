@@ -5,7 +5,7 @@
 // This code was translated into a form compatible with 6a from the public
 // domain sources in SUPERCOP: http://bench.cr.yp.to/supercop.html
 
-// +build amd64,!gccgo
+// +build amd64,!gccgo,!appengine
 
 // func mul(dest, a, b *[5]uint64)
 TEXT ·mul(SB),0,$128-24
