@@ -7,6 +7,7 @@ package ssh
 import (
 	"bytes"
 	"crypto"
+	"crypto/aes"
 	"crypto/rand"
 	"testing"
 )
@@ -20,6 +21,10 @@ func TestDefaultCiphersExist(t *testing.T) {
 }
 
 func TestPacketCiphers(t *testing.T) {
+	// Still test aes128cbc cipher althought it's commented out.
+	cipherModes[aes128cbcID] = &streamCipherMode{16, aes.BlockSize, 0, nil}
+	defer delete(cipherModes, aes128cbcID)
+
 	for cipher := range cipherModes {
 		kr := &kexResult{Hash: crypto.SHA1}
 		algs := directionAlgorithms{
