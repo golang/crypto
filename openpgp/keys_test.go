@@ -13,15 +13,16 @@ func TestKeyExpiry(t *testing.T) {
 
 	const timeFormat = "2006-01-02"
 	time1, _ := time.Parse(timeFormat, "2013-07-01")
+
 	// The expiringKeyHex key is structured as:
 	//
-	// pub  1024R/5E237D8C  created: 2013-07-01  expires: 2013-07-31  usage: SC
-	// sub  1024R/1ABB25A0  created: 2013-07-01  expires: 2013-07-08  usage: E
-	// sub  1024R/96A672F5  created: 2013-07-01  expires: 2013-07-31  usage: E
+	// pub  1024R/5E237D8C  created: 2013-07-01                      expires: 2013-07-31  usage: SC
+	// sub  1024R/1ABB25A0  created: 2013-07-01 23:11:07 +0200 CEST  expires: 2013-07-08  usage: E
+	// sub  1024R/96A672F5  created: 2013-07-01 23:11:23 +0200 CEST  expires: 2013-07-31  usage: E
 	//
-	// So this should select the first, non-expired encryption key.
+	// So this should select the newest, non-expired encryption key.
 	key, _ := entity.encryptionKey(time1)
-	if id := key.PublicKey.KeyIdShortString(); id != "1ABB25A0" {
+	if id := key.PublicKey.KeyIdShortString(); id != "96A672F5" {
 		t.Errorf("Expected key 1ABB25A0 at time %s, but got key %s", time1.Format(timeFormat), id)
 	}
 
