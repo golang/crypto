@@ -180,6 +180,23 @@ func Dial(network, addr string, config *ClientConfig) (*Client, error) {
 	return NewClient(c, chans, reqs), nil
 }
 
+// DialTimeout starts a client connection to the given SSH server. It is a
+// convenience function that connects to the given network address,
+// initiates the SSH handshake, and then sets up a Client. If the timeout exceeds an error will be returned.
+// For access to incoming channels and requests, use net.DialTimeout with NewClientConn
+// instead.
+func DialTimeout(network, addr string, timeout time.Duration, config *ClientConfig) (*Client, error) {
+	conn, err := net.DialTimeout(network, addr, timeout)
+	if err != nil {
+		return nil, err
+	}
+	c, chans, reqs, err := NewClientConn(conn, addr, config)
+	if err != nil {
+		return nil, err
+	}
+	return NewClient(c, chans, reqs), nil
+}
+
 // A ClientConfig structure is used to configure a Client. It must not be
 // modified after having been passed to an SSH function.
 type ClientConfig struct {
