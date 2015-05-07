@@ -211,7 +211,9 @@ FindKey:
 	}
 
 	md.decrypted = decrypted
-	packets.Push(decrypted)
+	if err := packets.Push(decrypted); err != nil {
+		return nil, err
+	}
 	return readSignedMessage(packets, md, keyring)
 }
 
@@ -235,7 +237,9 @@ FindLiteralData:
 		}
 		switch p := p.(type) {
 		case *packet.Compressed:
-			packets.Push(p.Body)
+			if err := packets.Push(p.Body); err != nil {
+				return nil, err
+			}
 		case *packet.OnePassSignature:
 			if !p.IsLast {
 				return nil, errors.UnsupportedError("nested signatures")
