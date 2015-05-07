@@ -5,6 +5,7 @@
 package packet
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/dsa"
 	"crypto/rsa"
@@ -67,6 +68,11 @@ type Signature struct {
 	// MDC is set if this signature has a feature packet that indicates
 	// support for MDC subpackets.
 	MDC bool
+
+	// EmbeddedSignature, if non-nil, is a signature of the parent key, by
+	// this key. This prevents an attacker from claiming another's signing
+	// subkey as their own.
+	EmbeddedSignature *Signature
 
 	outSubpackets []outputSubpacket
 }
@@ -196,6 +202,7 @@ const (
 	keyFlagsSubpacket            signatureSubpacketType = 27
 	reasonForRevocationSubpacket signatureSubpacketType = 29
 	featuresSubpacket            signatureSubpacketType = 30
+	embeddedSignatureSubpacket   signatureSubpacketType = 32
 )
 
 // parseSignatureSubpacket parses a single subpacket. len(subpacket) is >= 1.
@@ -355,6 +362,24 @@ func parseSignatureSubpacket(sig *Signature, subpacket []byte, isHashed bool) (r
 		// features. In practice, the subpacket is used exclusively to
 		// indicate support for MDC-protected encryption.
 		sig.MDC = len(subpacket) >= 1 && subpacket[0]&1 == 1
+	case embeddedSignatureSubpacket:
+		// Only usage is in signatures that cross-certify
+		// signing subkeys. section 5.2.3.26 describes the
+		// format, with its usage described in section 11.1
+		if sig.EmbeddedSignature != nil {
+			err = errors.StructuralError("Cannot have multiple embedded signatures")
+			return
+		}
+		sig.EmbeddedSignature = new(Signature)
+		// Embedded signatures are required to be v4 signatures see
+		// section 12.1. However, we only parse v4 signatures in this
+		// file anyway.
+		if err := sig.EmbeddedSignature.parse(bytes.NewBuffer(subpacket)); err != nil {
+			return nil, err
+		}
+		if sigType := sig.EmbeddedSignature.SigType; sigType != SigTypePrimaryKeyBinding {
+			return nil, errors.StructuralError("cross-signature has unexpected type " + strconv.Itoa(int(sigType)))
+		}
 	default:
 		if isCritical {
 			err = errors.UnsupportedError("unknown critical signature subpacket type " + strconv.Itoa(int(packetType)))
