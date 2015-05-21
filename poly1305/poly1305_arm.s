@@ -121,7 +121,7 @@ poly1305_blocks_armv6_mainloop:
   MOVW g, 8(R13)
   MOVW R11, 12(R13)
   MOVW R12, 0(R13)
-  MOVW R14, 4(SP)
+  MOVW R14, w+4(SP)
   MULLU R0, R5, (R11, g)
   MULALU R4, R6, (R11, g)
   MULALU R3, R7, (R11, g)
@@ -158,8 +158,8 @@ poly1305_blocks_armv6_mainloop:
   MOVW R4>>26, R12
   BIC $0xfc000000, R4, R8
   ADD R12, R6, R9
-  MOVW 44(SP), R12
-  MOVW 40(SP), R14
+  MOVW w+44(SP), R12
+  MOVW w+40(SP), R14
   MOVW R0, R6
   CMP $32, R12
   SUB $16, R12, R12
