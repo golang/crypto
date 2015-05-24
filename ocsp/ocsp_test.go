@@ -194,11 +194,11 @@ func TestOCSPResponse(t *testing.T) {
 	}
 
 	if !reflect.DeepEqual(resp.RevokedAt, template.RevokedAt) {
-		t.Errorf("resp.NextUpdate: got %d, want %d", resp.NextUpdate, template.NextUpdate)
+		t.Errorf("resp.RevokedAt: got %d, want %d", resp.RevokedAt, template.RevokedAt)
 	}
 
-	if !reflect.DeepEqual(resp.ProducedAt, producedAt) {
-		t.Errorf("resp.NextUpdate: got %d, want %d", resp.NextUpdate, template.NextUpdate)
+	if !resp.ProducedAt.Equal(producedAt) {
+		t.Errorf("resp.ProducedAt: got %d, want %d", resp.ProducedAt, producedAt)
 	}
 
 	if resp.Status != template.Status {
