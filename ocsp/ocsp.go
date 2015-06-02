@@ -437,6 +437,18 @@ func ParseRequest(bytes []byte) (*Request, error) {
 // Invalid signatures or parse failures will result in a ParseError. Error
 // responses will result in a ResponseError.
 func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
+	return ParseResponseForCert(bytes, nil, issuer)
+}
+
+// ParseResponseForCert parses an OCSP response in DER form and searches for a
+// Response relating to cert. If such a Response is found and the OCSP response
+// contains a certificate then the signature over the response is checked. If
+// issuer is not nil then it will be used to validate the signature or embedded
+// certificate.
+//
+// Invalid signatures or parse failures will result in a ParseError. Error
+// responses will result in a ResponseError.
+func ParseResponseForCert(bytes []byte, cert, issuer *x509.Certificate) (*Response, error) {
 	var resp responseASN1
 	rest, err := asn1.Unmarshal(bytes, &resp)
 	if err != nil {
@@ -464,7 +476,7 @@ func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
 		return nil, ParseError("OCSP response contains bad number of certificates")
 	}
 
-	if len(basicResp.TBSResponseData.Responses) != 1 {
+	if n := len(basicResp.TBSResponseData.Responses); n == 0 || cert == nil && n > 1 {
 		return nil, ParseError("OCSP response contains bad number of responses")
 	}
 
@@ -495,7 +507,13 @@ func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
 		}
 	}
 
-	r := basicResp.TBSResponseData.Responses[0]
+	var r singleResponse
+	for _, resp := range basicResp.TBSResponseData.Responses {
+		if cert == nil || cert.SerialNumber.Cmp(resp.CertID.SerialNumber) == 0 {
+			r = resp
+			break
+		}
+	}
 
 	for _, ext := range r.SingleExtensions {
 		if ext.Critical {
