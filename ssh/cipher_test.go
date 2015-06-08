@@ -120,7 +120,7 @@ func TestCBCOracleCounterMeasure(t *testing.T) {
 		}
 
 		if i > 0 && bytesRead != lastRead {
-			t.Errorf("corrupt byte %d: want %d, got %d bytes read", bytesRead, lastRead)
+			t.Errorf("corrupt byte %d: read %d bytes, want %d bytes read", i, bytesRead, lastRead)
 		}
 		lastRead = bytesRead
 	}
