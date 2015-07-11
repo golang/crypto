@@ -7,19 +7,17 @@
 
 // +build arm,!gccgo,!appengine
 
-#include "textflag.h"
-
 DATA poly1305_init_constants_armv6<>+0x00(SB)/4, $0x3ffffff
 DATA poly1305_init_constants_armv6<>+0x04(SB)/4, $0x3ffff03
 DATA poly1305_init_constants_armv6<>+0x08(SB)/4, $0x3ffc0ff
 DATA poly1305_init_constants_armv6<>+0x0c(SB)/4, $0x3f03fff
 DATA poly1305_init_constants_armv6<>+0x10(SB)/4, $0x00fffff
-GLOBL poly1305_init_constants_armv6<>(SB), RODATA, $20
+GLOBL poly1305_init_constants_armv6<>(SB), 8, $20
 
 // Warning: the linker may use R11 to synthesize certain instructions. Please
 // take care and verify that no synthetic instructions use it.
 
-TEXT poly1305_init_ext_armv6<>(SB),NOSPLIT,$-4
+TEXT poly1305_init_ext_armv6<>(SB),4,$-4
   MOVM.DB.W [R4-R11], (R13)
   MOVM.IA.W (R1), [R2-R5]
   MOVW $poly1305_init_constants_armv6<>(SB), R7
@@ -49,7 +47,7 @@ TEXT poly1305_init_ext_armv6<>(SB),NOSPLIT,$-4
   MOVM.IA.W (R13), [R4-R11]
   RET
 
-TEXT poly1305_blocks_armv6<>(SB),NOSPLIT,$-4
+TEXT poly1305_blocks_armv6<>(SB),4,$-4
   MOVM.DB.W [R4, R5, R6, R7, R8, R9, g, R11, R14], (R13)
   SUB $128, R13
   MOVW R0, 36(R13)
@@ -176,7 +174,7 @@ poly1305_blocks_armv6_done:
   MOVM.IA.W (R13), [R4, R5, R6, R7, R8, R9, g, R11, R14]
   RET
 
-TEXT poly1305_finish_ext_armv6<>(SB),NOSPLIT,$-4
+TEXT poly1305_finish_ext_armv6<>(SB),4,$-4
   MOVM.DB.W [R4, R5, R6, R7, R8, R9, g, R11, R14], (R13)
   SUB $16, R13, R13
   MOVW R0, R5
