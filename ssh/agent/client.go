@@ -36,7 +36,7 @@ type Agent interface {
 	// in [PROTOCOL.agent] section 2.6.2.
 	Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error)
 
-	// Insert adds a private key to the agent. If a certificate
+	// Add adds a private key to the agent. If a certificate
 	// is given, that certificate is added as public key.
 	Add(s interface{}, cert *ssh.Certificate, comment string) error
 
