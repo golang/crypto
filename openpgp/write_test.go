@@ -10,6 +10,8 @@ import (
 	"io/ioutil"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 func TestSignDetached(t *testing.T) {
@@ -53,10 +55,33 @@ func TestNewEntity(t *testing.T) {
 		return
 	}
 
+	// Check bit-length with no config.
 	e, err := NewEntity("Test User", "test", "test@example.com", nil)
 	if err != nil {
 		t.Errorf("failed to create entity: %s", err)
 		return
+	}
+	bl, err := e.PrimaryKey.BitLength()
+	if err != nil {
+		t.Errorf("failed to find bit length: %s", err)
+	}
+	if int(bl) != defaultRSAKeyBits {
+		t.Errorf("BitLength %v, expected %v", defaultRSAKeyBits)
+	}
+
+	// Check bit-length with a config.
+	cfg := &packet.Config{RSABits: 1024}
+	e, err = NewEntity("Test User", "test", "test@example.com", cfg)
+	if err != nil {
+		t.Errorf("failed to create entity: %s", err)
+		return
+	}
+	bl, err = e.PrimaryKey.BitLength()
+	if err != nil {
+		t.Errorf("failed to find bit length: %s", err)
+	}
+	if int(bl) != cfg.RSABits {
+		t.Errorf("BitLength %v, expected %v", bl, cfg.RSABits)
 	}
 
 	w := bytes.NewBuffer(nil)
