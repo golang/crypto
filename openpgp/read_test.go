@@ -369,12 +369,10 @@ func TestNoArmoredData(t *testing.T) {
 	}
 }
 
-func TestIssue11503(t *testing.T) {
-	data := "8c040402000aa430aa8228b9248b01fc899a91197130303030"
-
-	buf, err := hex.DecodeString(data)
+func testReadMessageError(t *testing.T, messageHex string) {
+	buf, err := hex.DecodeString(messageHex)
 	if err != nil {
-		t.Errorf("hex.DecodeSting(): %v", err)
+		t.Errorf("hex.DecodeString(): %v", err)
 	}
 
 	kr, err := ReadKeyRing(new(bytes.Buffer))
@@ -390,6 +388,14 @@ func TestIssue11503(t *testing.T) {
 	if err == nil {
 		t.Errorf("ReadMessage(): Unexpected nil error")
 	}
+}
+
+func TestIssue11503(t *testing.T) {
+	testReadMessageError(t, "8c040402000aa430aa8228b9248b01fc899a91197130303030")
+}
+
+func TestIssue11504(t *testing.T) {
+	testReadMessageError(t, "9303000130303030303030303030983002303030303030030000000130")
 }
 
 const testKey1KeyId = 0xA34D7E18C20C31BB
