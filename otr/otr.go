@@ -848,7 +848,6 @@ func (c *Conversation) rotateDHKeys() {
 		slot := &c.keySlots[i]
 		if slot.used && slot.myKeyId == c.myKeyId-1 {
 			slot.used = false
-			c.oldMACs = append(c.oldMACs, slot.sendMACKey...)
 			c.oldMACs = append(c.oldMACs, slot.recvMACKey...)
 		}
 	}
@@ -924,7 +923,6 @@ func (c *Conversation) processData(in []byte) (out []byte, tlvs []tlv, err error
 			slot := &c.keySlots[i]
 			if slot.used && slot.theirKeyId == theirKeyId-1 {
 				slot.used = false
-				c.oldMACs = append(c.oldMACs, slot.sendMACKey...)
 				c.oldMACs = append(c.oldMACs, slot.recvMACKey...)
 			}
 		}
@@ -1095,6 +1093,10 @@ func (c *Conversation) calcDataKeys(myKeyId, theirKeyId uint32) (slot *keySlot, 
 	h.Reset()
 	h.Write(slot.recvAESKey)
 	slot.recvMACKey = h.Sum(slot.recvMACKey[:0])
+
+	slot.theirKeyId = theirKeyId
+	slot.myKeyId = myKeyId
+	slot.used = true
 
 	zero(slot.theirLastCtr[:])
 	return
