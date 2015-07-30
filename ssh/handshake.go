@@ -253,6 +253,8 @@ func (t *handshakeTransport) sendKexInitLocked() (*kexInitMsg, []byte, error) {
 
 func (t *handshakeTransport) writePacket(p []byte) error {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	if t.writtenSinceKex > t.config.RekeyThreshold {
 		t.sendKexInitLocked()
 	}
@@ -264,17 +266,14 @@ func (t *handshakeTransport) writePacket(p []byte) error {
 	}
 	t.writtenSinceKex += uint64(len(p))
 
-	var err error
 	switch p[0] {
 	case msgKexInit:
-		err = errors.New("ssh: only handshakeTransport can send kexInit")
+		return errors.New("ssh: only handshakeTransport can send kexInit")
 	case msgNewKeys:
-		err = errors.New("ssh: only handshakeTransport can send newKeys")
+		return errors.New("ssh: only handshakeTransport can send newKeys")
 	default:
-		err = t.conn.writePacket(p)
+		return t.conn.writePacket(p)
 	}
-	t.mu.Unlock()
-	return err
 }
 
 func (t *handshakeTransport) Close() error {
