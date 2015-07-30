@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"net"
+	"runtime"
 	"testing"
 )
 
@@ -75,6 +76,9 @@ func handshakePair(clientConf *ClientConfig, addr string) (client *handshakeTran
 }
 
 func TestHandshakeBasic(t *testing.T) {
+	if runtime.GOOS == "plan9" {
+		t.Skip("see golang.org/issue/7237")
+	}
 	checker := &testChecker{}
 	trC, trS, err := handshakePair(&ClientConfig{HostKeyCallback: checker.Check}, "addr")
 	if err != nil {
