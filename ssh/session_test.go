@@ -718,3 +718,57 @@ func TestInvalidServerConfiguration(t *testing.T) {
 		t.Fatalf("NewServerConn attempted to Read() from Conn while configuration is missing authentication method")
 	}
 }
+
+func TestHostKeyAlgorithms(t *testing.T) {
+	serverConf := &ServerConfig{
+		NoClientAuth: true,
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	serverConf.AddHostKey(testSigners["ecdsa"])
+
+	connect := func(clientConf *ClientConfig, want string) {
+		var alg string
+		clientConf.HostKeyCallback = func(h string, a net.Addr, key PublicKey) error {
+			alg = key.Type()
+			return nil
+		}
+		c1, c2, err := netPipe()
+		if err != nil {
+			t.Fatalf("netPipe: %v", err)
+		}
+		defer c1.Close()
+		defer c2.Close()
+
+		go NewServerConn(c1, serverConf)
+		_, _, _, err = NewClientConn(c2, "", clientConf)
+		if err != nil {
+			t.Fatalf("NewClientConn: %v", err)
+		}
+		if alg != want {
+			t.Errorf("selected key algorithm %s, want %s", alg, want)
+		}
+	}
+
+	// By default, we get the preferred algorithm, which is ECDSA 256.
+
+	clientConf := &ClientConfig{}
+	connect(clientConf, KeyAlgoECDSA256)
+
+	// Client asks for RSA explicitly.
+	clientConf.HostKeyAlgorithms = []string{KeyAlgoRSA}
+	connect(clientConf, KeyAlgoRSA)
+
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	go NewServerConn(c1, serverConf)
+	clientConf.HostKeyAlgorithms = []string{"nonexistent-hostkey-algo"}
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err == nil {
+		t.Fatal("succeeded connecting with unknown hostkey algorithm")
+	}
+}
