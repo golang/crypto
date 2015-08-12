@@ -319,3 +319,22 @@ func TestMACs(t *testing.T) {
 		}
 	}
 }
+
+func TestKeyExchanges(t *testing.T) {
+	var config ssh.Config
+	config.SetDefaults()
+	kexOrder := config.KeyExchanges
+	for _, kex := range kexOrder {
+		server := newServer(t)
+		defer server.Shutdown()
+		conf := clientConfig()
+		// Don't fail if sshd doesnt have the kex.
+		conf.KeyExchanges = append([]string{kex}, kexOrder...)
+		conn, err := server.TryDial(conf)
+		if err == nil {
+			conn.Close()
+		} else {
+			t.Errorf("failed for kex %q", kex)
+		}
+	}
+}
