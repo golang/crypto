@@ -87,7 +87,7 @@ type responseData struct {
 type singleResponse struct {
 	CertID     certID
 	Good       asn1.Flag   `asn1:"tag:0,optional"`
-	Revoked    revokedInfo `asn1:"explicit,tag:1,optional"`
+	Revoked    revokedInfo `asn1:"tag:1,optional"`
 	Unknown    asn1.Flag   `asn1:"tag:2,optional"`
 	ThisUpdate time.Time   `asn1:"generalized"`
 	NextUpdate time.Time   `asn1:"generalized,explicit,tag:0,optional"`
