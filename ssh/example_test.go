@@ -197,8 +197,8 @@ func ExampleSession_RequestPty() {
 	// Set up terminal modes
 	modes := ssh.TerminalModes{
 		ssh.ECHO:          0,     // disable echoing
-		ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
-		ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
+		ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbps
+		ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbps
 	}
 	// Request pseudo terminal
 	if err := session.RequestPty("xterm", 80, 40, modes); err != nil {
