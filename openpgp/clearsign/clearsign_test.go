@@ -64,6 +64,16 @@ var signingTests = []struct {
 	{"a\n", "a", "a\n"},
 	{"-a\n", "-a", "-a\n"},
 	{"--a\nb", "--a\r\nb", "--a\nb\n"},
+	// leading whitespace
+	{" a\n", " a", " a\n"},
+	{"  a\n", "  a", "  a\n"},
+	// trailing whitespace (should be stripped)
+	{"a \n", "a", "a\n"},
+	{"a ", "a", "a\n"},
+	// whitespace-only lines (should be stripped)
+	{"  \n", "", "\n"},
+	{"  ", "", "\n"},
+	{"a\n  \n  \nb\n", "a\r\n\r\n\r\nb", "a\n\n\nb\n"},
 }
 
 func TestSigning(t *testing.T) {
