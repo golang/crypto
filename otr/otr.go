@@ -417,12 +417,11 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 					change = SMPSecretNeeded
 					c.smp.saved = &inTLV
 					return
-				} else if err == smpFailureError {
+				}
+				if err == smpFailureError {
 					err = nil
 					change = SMPFailed
-					return
-				}
-				if complete {
+				} else if complete {
 					change = SMPComplete
 				}
 				if reply.typ != 0 {
