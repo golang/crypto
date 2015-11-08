@@ -32,12 +32,12 @@ func ExampleNewServerConn() {
 
 	privateBytes, err := ioutil.ReadFile("id_rsa")
 	if err != nil {
-		panic("Failed to load private key")
+		log.Fatal("Failed to load private key: ", err)
 	}
 
 	private, err := ssh.ParsePrivateKey(privateBytes)
 	if err != nil {
-		panic("Failed to parse private key")
+		log.Fatal("Failed to parse private key: ", err)
 	}
 
 	config.AddHostKey(private)
@@ -46,18 +46,18 @@ func ExampleNewServerConn() {
 	// accepted.
 	listener, err := net.Listen("tcp", "0.0.0.0:2022")
 	if err != nil {
-		panic("failed to listen for connection")
+		log.Fatal("failed to listen for connection: ", err)
 	}
 	nConn, err := listener.Accept()
 	if err != nil {
-		panic("failed to accept incoming connection")
+		log.Fatal("failed to accept incoming connection: ", err)
 	}
 
 	// Before use, a handshake must be performed on the incoming
 	// net.Conn.
 	_, chans, reqs, err := ssh.NewServerConn(nConn, config)
 	if err != nil {
-		panic("failed to handshake")
+		log.Fatal("failed to handshake: ", err)
 	}
 	// The incoming Request channel must be serviced.
 	go ssh.DiscardRequests(reqs)
@@ -74,7 +74,7 @@ func ExampleNewServerConn() {
 		}
 		channel, requests, err := newChannel.Accept()
 		if err != nil {
-			panic("could not accept channel.")
+			log.Fatal("could not accept channel: ", err)
 		}
 
 		// Sessions have out-of-band requests such as "shell",
@@ -125,14 +125,14 @@ func ExampleDial() {
 	}
 	client, err := ssh.Dial("tcp", "yourserver.com:22", config)
 	if err != nil {
-		panic("Failed to dial: " + err.Error())
+		log.Fatal("Failed to dial: ", err)
 	}
 
 	// Each ClientConn can support multiple interactive sessions,
 	// represented by a Session.
 	session, err := client.NewSession()
 	if err != nil {
-		panic("Failed to create session: " + err.Error())
+		log.Fatal("Failed to create session: ", err)
 	}
 	defer session.Close()
 
@@ -141,7 +141,7 @@ func ExampleDial() {
 	var b bytes.Buffer
 	session.Stdout = &b
 	if err := session.Run("/usr/bin/whoami"); err != nil {
-		panic("Failed to run: " + err.Error())
+		log.Fatal("Failed to run: " + err.Error())
 	}
 	fmt.Println(b.String())
 }
@@ -189,14 +189,14 @@ func ExampleClient_Listen() {
 	// Dial your ssh server.
 	conn, err := ssh.Dial("tcp", "localhost:22", config)
 	if err != nil {
-		log.Fatalf("unable to connect: %s", err)
+		log.Fatal("unable to connect: ", err)
 	}
 	defer conn.Close()
 
 	// Request the remote side to open port 8080 on all interfaces.
 	l, err := conn.Listen("tcp", "0.0.0.0:8080")
 	if err != nil {
-		log.Fatalf("unable to register tcp forward: %v", err)
+		log.Fatal("unable to register tcp forward: ", err)
 	}
 	defer l.Close()
 
@@ -217,13 +217,13 @@ func ExampleSession_RequestPty() {
 	// Connect to ssh server
 	conn, err := ssh.Dial("tcp", "localhost:22", config)
 	if err != nil {
-		log.Fatalf("unable to connect: %s", err)
+		log.Fatal("unable to connect: ", err)
 	}
 	defer conn.Close()
 	// Create a session
 	session, err := conn.NewSession()
 	if err != nil {
-		log.Fatalf("unable to create session: %s", err)
+		log.Fatal("unable to create session: ", err)
 	}
 	defer session.Close()
 	// Set up terminal modes
@@ -234,10 +234,10 @@ func ExampleSession_RequestPty() {
 	}
 	// Request pseudo terminal
 	if err := session.RequestPty("xterm", 80, 40, modes); err != nil {
-		log.Fatalf("request for pseudo terminal failed: %s", err)
+		log.Fatal("request for pseudo terminal failed: ", err)
 	}
 	// Start remote shell
 	if err := session.Shell(); err != nil {
-		log.Fatalf("failed to start shell: %s", err)
+		log.Fatal("failed to start shell: ", err)
 	}
 }
