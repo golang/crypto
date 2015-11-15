@@ -277,7 +277,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 		in = in[len(msgPrefix) : len(in)-1]
 	} else if version := isQuery(in); version > 0 {
 		c.authState = authStateAwaitingDHKey
-		c.myKeyId = 0
+		c.reset()
 		toSend = c.encode(c.generateDHCommit())
 		return
 	} else {
@@ -311,7 +311,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 			if err = c.processDHCommit(msg); err != nil {
 				return
 			}
-			c.myKeyId = 0
+			c.reset()
 			toSend = c.encode(c.generateDHKey())
 			return
 		case authStateAwaitingDHKey:
@@ -330,7 +330,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 				if err = c.processDHCommit(msg); err != nil {
 					return
 				}
-				c.myKeyId = 0
+				c.reset()
 				toSend = c.encode(c.generateDHKey())
 				return
 			}
@@ -343,7 +343,7 @@ func (c *Conversation) Receive(in []byte) (out []byte, encrypted bool, change Se
 			if err = c.processDHCommit(msg); err != nil {
 				return
 			}
-			c.myKeyId = 0
+			c.reset()
 			toSend = c.encode(c.generateDHKey())
 			c.authState = authStateAwaitingRevealSig
 		default:
@@ -1036,8 +1036,7 @@ func (c *Conversation) calcDataKeys(myKeyId, theirKeyId uint32) (slot *keySlot, 
 		}
 	}
 	if slot == nil {
-		err = errors.New("otr: internal error: no key slots")
-		return
+		return nil, errors.New("otr: internal error: no more key slots")
 	}
 
 	var myPriv, myPub, theirPub *big.Int
@@ -1161,6 +1160,14 @@ func (c *Conversation) encode(msg []byte) [][]byte {
 	}
 
 	return ret
+}
+
+func (c *Conversation) reset() {
+	c.myKeyId = 0
+
+	for i := range c.keySlots {
+		c.keySlots[i].used = false
+	}
 }
 
 type PublicKey struct {
