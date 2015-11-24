@@ -372,6 +372,47 @@ func TestReadingArmoredPrivateKey(t *testing.T) {
 	}
 }
 
+func TestReadingArmoredPrivateKeyGNUS2KDummy(t *testing.T) {
+	el, err := ReadArmoredKeyRing(bytes.NewBufferString(gnuDummyS2KPrivateKey))
+	if err != nil {
+		t.Error(err)
+	}
+	if len(el) != 1 {
+		t.Errorf("got %d entities, wanted 1\n", len(el))
+	}
+	k := el[0]
+	if k.PrivateKey == nil {
+		t.Fatalf("Got nil key, but wanted a private key")
+	}
+	if err := k.PrivateKey.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase)); err != nil {
+		t.Fatalf("failed to decrypt key: %s", err)
+	}
+	if err := k.PrivateKey.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase + "X")); err != nil {
+		t.Fatalf("failed to decrypt key with the wrong key (it shouldn't matter): %s", err)
+	}
+
+	decryptions := 0
+
+	// Also decrypt all subkeys (with the same password)
+	for i, subkey := range k.Subkeys {
+		priv := subkey.PrivateKey
+		if priv == nil {
+			t.Fatalf("unexpected nil subkey @%d", i)
+		}
+		if err := priv.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase + "X")); err == nil {
+			t.Fatalf("expected subkey decryption to fail on %d with bad PW\n", i)
+		}
+		if err := priv.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase)); err != nil {
+			t.Fatalf("failed to decrypt subkey %d: %s\n", i, err)
+		} else {
+			decryptions++
+		}
+	}
+	if decryptions != 1 {
+		t.Fatalf("expected 1 decryption; got %d", decryptions)
+	}
+}
+
 func TestReadingArmoredPublicKey(t *testing.T) {
 	el, err := ReadArmoredKeyRing(bytes.NewBufferString(e2ePublicKey))
 	if err != nil {
@@ -588,3 +629,35 @@ iT57d/OhWwA=
 =hG7R
 -----END PGP MESSAGE-----
 `
+
+const gnuDummyS2KPrivateKey = `-----BEGIN PGP PRIVATE KEY BLOCK-----
+Version: GnuPG/MacGPG2 v2.0.22 (Darwin)
+Comment: GPGTools - https://gpgtools.org
+
+lQCVBFNVKE4BBADjD9Xq+1wml4VS3hxkCuyhWp003ki7yN/ZAb5cUHyIzgY7BR9v
+ydz7R2s5dkRksxqiD8qg/u/UwMGteREhA8ML8JXSZ5T/TMH8DJNB1HsoKlm2q/W4
+/S04jy5X/+M9GvRi47gZyOmLsu57rXdJimrUf9r9qtKSPViWlzrq4cAE0wARAQAB
+/gNlAkdOVQG0IFdpbGxpYW0gV29yZHN3b3J0aCA8d3dAb3guYWMudWs+iL4EEwEK
+ACgFAlNVKE4CGwMFCRLMAwAGCwkIBwMCBhUIAgkKCwQWAgMBAh4BAheAAAoJEJLY
+KARjvfT1roEEAJ140DFf7DV0d51KMmwz8iwuU7OWOOMoOObdLOHox3soScrHvGqM
+0dg7ZZUhQSIETQUDk2Fkcjpqizhs7sJinbWYcpiaEKv7PWYHLyIIH+RcYKv18hla
+EFHaOoUdRfzZsNSwNznnlCSCJOwkVMa1eJGJrEElzoktqPeDsforPFKhnQH+BFNV
+KE4BBACwsTltWOQUEjjKDXW28u7skuIT2jtGFc/bbzXcfg2bzTpoJlMNOBMdRDPD
+TVccJhAYj8kX9WJDSj+gluMvt319lLrAXjaroZHvHFqJQDxlqyR3mCkITjL09UF/
+wVy3sF7wek8KlJthYSiBZT496o1MOsj5k+E8Y/vOHQbvg9uK0wARAQAB/gMDAmEI
+mZFRPn111gNki6npnVhXyDhv7FWJw/aLHkEISwmK4fDKOnx+Ueef64K5kZdUmnBC
+r9HEAUZA8mKuhWnpDTCLYZwaucqMjD0KyVJiApyGl9QHU41LDyfobDWn/LabKb6t
+8uz6qkGzg87fYz8XLDgLvolImbTbeqQa9wuBRK9XfRLVgWv7qemNeDCSdLFEDA6W
+ENR+YjDJTZzZDlaH0yLMvudJO4lKnsS+5lhX69qeBJpfp+eMsPh/K8dCOi6mYuSP
+SF2JI7hVpk9PurDO1ne20mLuqZvmuDHcddWM88FjXotytDtuHScaX94+vVLXQAKz
+mROs4Z7GkNs2om03kWCqsGmAV1B0+bbmcxTH14/vwAFrYSJwcvHsaDhshcCoxJa8
+pKxttlHlUYQ6YQZflIMnxvbZAIryDDK9kwut3GGStfoJXoi5jA8uh+WG+avn+iNI
+k8lR0SSgo6n5/vyWS6l/ZBbF1JwX6oQ4ep7piKUEGAEKAA8FAlNVKE4CGwwFCRLM
+AwAACgkQktgoBGO99PUaKAQAiK1zQQQIOVkqBa/E9Jx5UpCVF/fi0XsTfU2Y0Slg
+FV7j9Bqe0obycJ2LFRNDndVReJQQj5vpwZ/B5dAoUqaMXmAD3DD+7ZY756u+g0rU
+21Z4Nf+we9PfyA5+lxw+6PXNpYcxvU9wXf+t5vvTLrdnVAdR0hSxKWdOCgIS1VlQ
+uxs=
+=NolW
+-----END PGP PRIVATE KEY BLOCK-----`
+
+const gnuDummyS2KPrivateKeyPassphrase = "lucy"
