@@ -8,10 +8,12 @@ package s2k // import "github.com/keybase/go-crypto/openpgp/s2k"
 
 import (
 	"crypto"
+	"fmt"
+	"github.com/keybase/go-crypto/openpgp/errors"
 	"hash"
 	"io"
+	"runtime/debug"
 	"strconv"
-	"github.com/keybase/go-crypto/openpgp/errors"
 )
 
 // Config collects configuration parameters for s2k key-stretching
@@ -162,6 +164,8 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 
 	hash, ok := HashIdToHash(buf[1])
 	if !ok {
+		debug.PrintStack()
+		fmt.Printf("%v\n", buf)
 		return nil, errors.UnsupportedError("hash for S2K function: " + strconv.Itoa(int(buf[1])))
 	}
 	if !hash.Available() {
