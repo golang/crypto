@@ -4,15 +4,16 @@
 
 // Package s2k implements the various OpenPGP string-to-key transforms as
 // specified in RFC 4800 section 3.7.1.
-package s2k // import "golang.org/x/crypto/openpgp/s2k"
+package s2k // import "github.com/keybase/go-crypto/openpgp/s2k"
 
 import (
 	"crypto"
+	"fmt"
+	"github.com/keybase/go-crypto/openpgp/errors"
 	"hash"
 	"io"
+	"runtime/debug"
 	"strconv"
-
-	"golang.org/x/crypto/openpgp/errors"
 )
 
 // Config collects configuration parameters for s2k key-stretching
@@ -163,6 +164,8 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 
 	hash, ok := HashIdToHash(buf[1])
 	if !ok {
+		debug.PrintStack()
+		fmt.Printf("%v\n", buf)
 		return nil, errors.UnsupportedError("hash for S2K function: " + strconv.Itoa(int(buf[1])))
 	}
 	if !hash.Available() {
@@ -195,6 +198,29 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 			Iterated(out, h, in, buf[:8], count)
 		}
 		return f, nil
+
+	// GNU Extensions
+	case 101:
+
+		// A three-byte string identifier
+		_, err = io.ReadFull(r, buf[:3])
+		if err != nil {
+			return
+		}
+		gnuExt := string(buf[:3])
+
+		if gnuExt != "GNU" {
+			return nil, errors.UnsupportedError("Malformed GNU extension: " + gnuExt)
+		}
+		_, err = io.ReadFull(r, buf[:1])
+		if err != nil {
+			return
+		}
+		gnuExtType := int(buf[0])
+		if gnuExtType != 1 {
+			return nil, errors.UnsupportedError("unknown S2K GNU protection mode: " + strconv.Itoa(int(gnuExtType)))
+		}
+		return nil, nil
 	}
 
 	return nil, errors.UnsupportedError("S2K function")

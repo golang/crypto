@@ -1,0 +1,635 @@
+diff --git a/openpgp/keys.go b/openpgp/keys.go
+index 3dcb46c..7b10fc9 100644
+--- a/openpgp/keys.go
++++ b/openpgp/keys.go
+@@ -539,9 +539,11 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
+ 		if err != nil {
+ 			return
+ 		}
+-		err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
+-		if err != nil {
+-			return
++		if e.PrivateKey.PrivateKey != nil {
++			err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
++			if err != nil {
++				return
++			}
+ 		}
+ 		err = ident.SelfSignature.Serialize(w)
+ 		if err != nil {
+@@ -553,9 +555,11 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
+ 		if err != nil {
+ 			return
+ 		}
+-		err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
+-		if err != nil {
+-			return
++		if e.PrivateKey.PrivateKey != nil {
++			err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
++			if err != nil {
++				return
++			}
+ 		}
+ 		err = subkey.Sig.Serialize(w)
+ 		if err != nil {
+diff --git a/openpgp/packet/private_key.go b/openpgp/packet/private_key.go
+index 286b337..7b431b0 100644
+--- a/openpgp/packet/private_key.go
++++ b/openpgp/packet/private_key.go
+@@ -78,6 +78,12 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
+ 		if s2kType == 254 {
+ 			pk.sha1Checksum = true
+ 		}
++		// S2K == nil implies that we got a "GNU Dummy" S2K. For instance,
++		// because our master secret key is on a USB key in a vault somewhere.
++		// In that case, there is no further data to consume here.
++		if pk.s2k == nil {
++			return
++		}
+ 	default:
+ 		return errors.UnsupportedError("deprecated s2k function in private key")
+ 	}
+@@ -121,20 +127,32 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
+ 	if err != nil {
+ 		return
+ 	}
+-	buf.WriteByte(0 /* no encryption */)
+ 
+ 	privateKeyBuf := bytes.NewBuffer(nil)
+ 
+-	switch priv := pk.PrivateKey.(type) {
+-	case *rsa.PrivateKey:
+-		err = serializeRSAPrivateKey(privateKeyBuf, priv)
+-	case *dsa.PrivateKey:
+-		err = serializeDSAPrivateKey(privateKeyBuf, priv)
+-	default:
+-		err = errors.InvalidArgumentError("unknown private key type")
+-	}
+-	if err != nil {
+-		return
++	if pk.PrivateKey == nil {
++		_, err = buf.Write([]byte{
++			254, // SHA-1 Convention
++			9,   // Encryption scheme (AES256)
++			101, // GNU Extensions
++			2,   // Hash value (SHA1)
++			'G', 'N', 'U', // "GNU" as a string
++			1, // Extension type 1001 (minus 1000)
++		})
++	} else {
++		buf.WriteByte(0 /* no encryption */)
++
++		switch priv := pk.PrivateKey.(type) {
++		case *rsa.PrivateKey:
++			err = serializeRSAPrivateKey(privateKeyBuf, priv)
++		case *dsa.PrivateKey:
++			err = serializeDSAPrivateKey(privateKeyBuf, priv)
++		default:
++			err = errors.InvalidArgumentError("unknown private key type")
++		}
++		if err != nil {
++			return
++		}
+ 	}
+ 
+ 	ptype := packetTypePrivateKey
+@@ -156,11 +174,13 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
+ 		return
+ 	}
+ 
+-	checksum := mod64kHash(privateKeyBytes)
+-	var checksumBytes [2]byte
+-	checksumBytes[0] = byte(checksum >> 8)
+-	checksumBytes[1] = byte(checksum)
+-	_, err = w.Write(checksumBytes[:])
++	if len(privateKeyBytes) > 0 {
++		checksum := mod64kHash(privateKeyBytes)
++		var checksumBytes [2]byte
++		checksumBytes[0] = byte(checksum >> 8)
++		checksumBytes[1] = byte(checksum)
++		_, err = w.Write(checksumBytes[:])
++	}
+ 
+ 	return
+ }
+@@ -190,6 +210,10 @@ func (pk *PrivateKey) Decrypt(passphrase []byte) error {
+ 	if !pk.Encrypted {
+ 		return nil
+ 	}
++	// For GNU Dummy S2K, there's no key here, so don't do anything.
++	if pk.s2k == nil {
++		return nil
++	}
+ 
+ 	key := make([]byte, pk.cipher.KeySize())
+ 	pk.s2k(key, passphrase)
+diff --git a/openpgp/packet/symmetric_key_encrypted.go b/openpgp/packet/symmetric_key_encrypted.go
+index 04311e2..3d319cf 100644
+--- a/openpgp/packet/symmetric_key_encrypted.go
++++ b/openpgp/packet/symmetric_key_encrypted.go
+@@ -48,6 +48,9 @@ func (ske *SymmetricKeyEncrypted) parse(r io.Reader) error {
+ 	if err != nil {
+ 		return err
+ 	}
++	if ske.s2k == nil {
++		return errors.UnsupportedError("can't use dummy S2K for symmetric key encryption")
++	}
+ 
+ 	encryptedKey := make([]byte, maxSessionKeySizeInBytes)
+ 	// The session key may follow. We just have to try and read to find
+diff --git a/openpgp/patch.sh b/openpgp/patch.sh
+index a479ef1..23cacc8 100644
+--- a/openpgp/patch.sh
++++ b/openpgp/patch.sh
+@@ -1,6 +1,7 @@
+ #!/bin/sh
+ 
+ patch < sig-v3.patch
++patch < s2k-gnu-dummy.patch
+ find . -type f -name '*.go' -exec sed -i'' -e 's/golang.org\/x\/crypto\/openpgp/github.com\/keybase\/go-crypto\/openpgp/' {} \;
+ find . -type f -name '*.go-e' -exec rm {} \;
+ go test ./...
+diff --git a/openpgp/read_test.go b/openpgp/read_test.go
+index fb7f600..ba417db 100644
+--- a/openpgp/read_test.go
++++ b/openpgp/read_test.go
+@@ -7,6 +7,7 @@ package openpgp
+ import (
+ 	"bytes"
+ 	_ "crypto/sha512"
++	"fmt"
+ 	"encoding/hex"
+ 	"io"
+ 	"io/ioutil"
+@@ -372,6 +373,96 @@ func TestReadingArmoredPrivateKey(t *testing.T) {
+ 	}
+ }
+ 
++func rawToArmored(raw []byte, priv bool) (ret string, err error) {
++
++	var writer io.WriteCloser
++	var out bytes.Buffer
++	var which string
++
++	if priv {
++		which = "PRIVATE"
++	} else {
++		which = "PUBLIC"
++	}
++	hdr := fmt.Sprintf("PGP %s KEY BLOCK", which)
++
++	writer, err = armor.Encode(&out, hdr, nil)
++
++	if err != nil {
++		return
++	}
++	if _, err = writer.Write(raw); err != nil {
++		return
++	}
++	writer.Close()
++	ret = out.String()
++	return
++}
++
++func TestReadingArmoredPrivateKeyGNUS2KDummy(t *testing.T) {
++
++	test := func(armoredKey string, protected bool) *Entity {
++		el, err := ReadArmoredKeyRing(bytes.NewBufferString(armoredKey))
++		if err != nil {
++			t.Error(err)
++		}
++		if len(el) != 1 {
++			t.Fatalf("got %d entities, wanted 1\n", len(el))
++		}
++		k := el[0]
++		if k.PrivateKey == nil {
++			t.Fatalf("Got nil key, but wanted a private key")
++		}
++		if err := k.PrivateKey.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase)); err != nil {
++			t.Fatalf("failed to decrypt key: %s", err)
++		}
++		if err := k.PrivateKey.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase + "X")); err != nil {
++			t.Fatalf("failed to decrypt key with the wrong key (it shouldn't matter): %s", err)
++		}
++
++		decryptions := 0
++
++		// Also decrypt all subkeys (with the same password)
++		for i, subkey := range k.Subkeys {
++			priv := subkey.PrivateKey
++			if priv == nil {
++				t.Fatalf("unexpected nil subkey @%d", i)
++			}
++			err := priv.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase + "X"))
++
++			if protected && err == nil {
++				t.Fatalf("expected subkey decryption to fail on %d with bad PW\n", i)
++			} else if !protected && err != nil {
++				t.Fatalf("Without passphrase-protection, decryption shouldn't fail")
++			}
++			if err := priv.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase)); err != nil {
++				t.Fatalf("failed to decrypt subkey %d: %s\n", i, err)
++			} else {
++				decryptions++
++			}
++		}
++		if decryptions != 1 {
++			t.Fatalf("expected 1 decryption; got %d", decryptions)
++		}
++		return k
++	}
++
++	key := test(gnuDummyS2KPrivateKey, true)
++
++	var buf bytes.Buffer
++	err := key.SerializePrivate(&buf, nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++
++	armored, err := rawToArmored(buf.Bytes(), true)
++	if err != nil {
++		t.Fatal(err)
++	}
++
++	test(armored, false)
++}
++
+ func TestReadingArmoredPublicKey(t *testing.T) {
+ 	el, err := ReadArmoredKeyRing(bytes.NewBufferString(e2ePublicKey))
+ 	if err != nil {
+@@ -588,3 +679,35 @@ iT57d/OhWwA=
+ =hG7R
+ -----END PGP MESSAGE-----
+ `
++
++const gnuDummyS2KPrivateKey = `-----BEGIN PGP PRIVATE KEY BLOCK-----
++Version: GnuPG/MacGPG2 v2.0.22 (Darwin)
++Comment: GPGTools - https://gpgtools.org
++
++lQCVBFNVKE4BBADjD9Xq+1wml4VS3hxkCuyhWp003ki7yN/ZAb5cUHyIzgY7BR9v
++ydz7R2s5dkRksxqiD8qg/u/UwMGteREhA8ML8JXSZ5T/TMH8DJNB1HsoKlm2q/W4
++/S04jy5X/+M9GvRi47gZyOmLsu57rXdJimrUf9r9qtKSPViWlzrq4cAE0wARAQAB
++/gNlAkdOVQG0IFdpbGxpYW0gV29yZHN3b3J0aCA8d3dAb3guYWMudWs+iL4EEwEK
++ACgFAlNVKE4CGwMFCRLMAwAGCwkIBwMCBhUIAgkKCwQWAgMBAh4BAheAAAoJEJLY
++KARjvfT1roEEAJ140DFf7DV0d51KMmwz8iwuU7OWOOMoOObdLOHox3soScrHvGqM
++0dg7ZZUhQSIETQUDk2Fkcjpqizhs7sJinbWYcpiaEKv7PWYHLyIIH+RcYKv18hla
++EFHaOoUdRfzZsNSwNznnlCSCJOwkVMa1eJGJrEElzoktqPeDsforPFKhnQH+BFNV
++KE4BBACwsTltWOQUEjjKDXW28u7skuIT2jtGFc/bbzXcfg2bzTpoJlMNOBMdRDPD
++TVccJhAYj8kX9WJDSj+gluMvt319lLrAXjaroZHvHFqJQDxlqyR3mCkITjL09UF/
++wVy3sF7wek8KlJthYSiBZT496o1MOsj5k+E8Y/vOHQbvg9uK0wARAQAB/gMDAmEI
++mZFRPn111gNki6npnVhXyDhv7FWJw/aLHkEISwmK4fDKOnx+Ueef64K5kZdUmnBC
++r9HEAUZA8mKuhWnpDTCLYZwaucqMjD0KyVJiApyGl9QHU41LDyfobDWn/LabKb6t
++8uz6qkGzg87fYz8XLDgLvolImbTbeqQa9wuBRK9XfRLVgWv7qemNeDCSdLFEDA6W
++ENR+YjDJTZzZDlaH0yLMvudJO4lKnsS+5lhX69qeBJpfp+eMsPh/K8dCOi6mYuSP
++SF2JI7hVpk9PurDO1ne20mLuqZvmuDHcddWM88FjXotytDtuHScaX94+vVLXQAKz
++mROs4Z7GkNs2om03kWCqsGmAV1B0+bbmcxTH14/vwAFrYSJwcvHsaDhshcCoxJa8
++pKxttlHlUYQ6YQZflIMnxvbZAIryDDK9kwut3GGStfoJXoi5jA8uh+WG+avn+iNI
++k8lR0SSgo6n5/vyWS6l/ZBbF1JwX6oQ4ep7piKUEGAEKAA8FAlNVKE4CGwwFCRLM
++AwAACgkQktgoBGO99PUaKAQAiK1zQQQIOVkqBa/E9Jx5UpCVF/fi0XsTfU2Y0Slg
++FV7j9Bqe0obycJ2LFRNDndVReJQQj5vpwZ/B5dAoUqaMXmAD3DD+7ZY756u+g0rU
++21Z4Nf+we9PfyA5+lxw+6PXNpYcxvU9wXf+t5vvTLrdnVAdR0hSxKWdOCgIS1VlQ
++uxs=
++=NolW
++-----END PGP PRIVATE KEY BLOCK-----`
++
++const gnuDummyS2KPrivateKeyPassphrase = "lucy"
+diff --git a/openpgp/s2k-gnu-dummy.patch b/openpgp/s2k-gnu-dummy.patch
+new file mode 100644
+index 0000000..16786d4
+--- /dev/null
++++ b/openpgp/s2k-gnu-dummy.patch
+@@ -0,0 +1,278 @@
++diff --git a/openpgp/keys.go b/openpgp/keys.go
++index 3dcb46c..7b10fc9 100644
++--- a/openpgp/keys.go
+++++ b/openpgp/keys.go
++@@ -539,9 +539,11 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
++ 		if err != nil {
++ 			return
++ 		}
++-		err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
++-		if err != nil {
++-			return
+++		if e.PrivateKey.PrivateKey != nil {
+++			err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
+++			if err != nil {
+++				return
+++			}
++ 		}
++ 		err = ident.SelfSignature.Serialize(w)
++ 		if err != nil {
++@@ -553,9 +555,11 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
++ 		if err != nil {
++ 			return
++ 		}
++-		err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
++-		if err != nil {
++-			return
+++		if e.PrivateKey.PrivateKey != nil {
+++			err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
+++			if err != nil {
+++				return
+++			}
++ 		}
++ 		err = subkey.Sig.Serialize(w)
++ 		if err != nil {
++diff --git a/openpgp/packet/private_key.go b/openpgp/packet/private_key.go
++index 286b337..7b431b0 100644
++--- a/openpgp/packet/private_key.go
+++++ b/openpgp/packet/private_key.go
++@@ -78,6 +78,12 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
++ 		if s2kType == 254 {
++ 			pk.sha1Checksum = true
++ 		}
+++		// S2K == nil implies that we got a "GNU Dummy" S2K. For instance,
+++		// because our master secret key is on a USB key in a vault somewhere.
+++		// In that case, there is no further data to consume here.
+++		if pk.s2k == nil {
+++			return
+++		}
++ 	default:
++ 		return errors.UnsupportedError("deprecated s2k function in private key")
++ 	}
++@@ -121,20 +127,32 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
++ 	if err != nil {
++ 		return
++ 	}
++-	buf.WriteByte(0 /* no encryption */)
++ 
++ 	privateKeyBuf := bytes.NewBuffer(nil)
++ 
++-	switch priv := pk.PrivateKey.(type) {
++-	case *rsa.PrivateKey:
++-		err = serializeRSAPrivateKey(privateKeyBuf, priv)
++-	case *dsa.PrivateKey:
++-		err = serializeDSAPrivateKey(privateKeyBuf, priv)
++-	default:
++-		err = errors.InvalidArgumentError("unknown private key type")
++-	}
++-	if err != nil {
++-		return
+++	if pk.PrivateKey == nil {
+++		_, err = buf.Write([]byte{
+++			254, // SHA-1 Convention
+++			9,   // Encryption scheme (AES256)
+++			101, // GNU Extensions
+++			2,   // Hash value (SHA1)
+++			'G', 'N', 'U', // "GNU" as a string
+++			1, // Extension type 1001 (minus 1000)
+++		})
+++	} else {
+++		buf.WriteByte(0 /* no encryption */)
+++
+++		switch priv := pk.PrivateKey.(type) {
+++		case *rsa.PrivateKey:
+++			err = serializeRSAPrivateKey(privateKeyBuf, priv)
+++		case *dsa.PrivateKey:
+++			err = serializeDSAPrivateKey(privateKeyBuf, priv)
+++		default:
+++			err = errors.InvalidArgumentError("unknown private key type")
+++		}
+++		if err != nil {
+++			return
+++		}
++ 	}
++ 
++ 	ptype := packetTypePrivateKey
++@@ -156,11 +174,13 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
++ 		return
++ 	}
++ 
++-	checksum := mod64kHash(privateKeyBytes)
++-	var checksumBytes [2]byte
++-	checksumBytes[0] = byte(checksum >> 8)
++-	checksumBytes[1] = byte(checksum)
++-	_, err = w.Write(checksumBytes[:])
+++	if len(privateKeyBytes) > 0 {
+++		checksum := mod64kHash(privateKeyBytes)
+++		var checksumBytes [2]byte
+++		checksumBytes[0] = byte(checksum >> 8)
+++		checksumBytes[1] = byte(checksum)
+++		_, err = w.Write(checksumBytes[:])
+++	}
++ 
++ 	return
++ }
++@@ -190,6 +210,10 @@ func (pk *PrivateKey) Decrypt(passphrase []byte) error {
++ 	if !pk.Encrypted {
++ 		return nil
++ 	}
+++	// For GNU Dummy S2K, there's no key here, so don't do anything.
+++	if pk.s2k == nil {
+++		return nil
+++	}
++ 
++ 	key := make([]byte, pk.cipher.KeySize())
++ 	pk.s2k(key, passphrase)
++diff --git a/openpgp/packet/symmetric_key_encrypted.go b/openpgp/packet/symmetric_key_encrypted.go
++index 04311e2..3d319cf 100644
++--- a/openpgp/packet/symmetric_key_encrypted.go
+++++ b/openpgp/packet/symmetric_key_encrypted.go
++@@ -48,6 +48,9 @@ func (ske *SymmetricKeyEncrypted) parse(r io.Reader) error {
++ 	if err != nil {
++ 		return err
++ 	}
+++	if ske.s2k == nil {
+++		return errors.UnsupportedError("can't use dummy S2K for symmetric key encryption")
+++	}
++ 
++ 	encryptedKey := make([]byte, maxSessionKeySizeInBytes)
++ 	// The session key may follow. We just have to try and read to find
++diff --git a/openpgp/patch.sh b/openpgp/patch.sh
++index a479ef1..23cacc8 100644
++--- a/openpgp/patch.sh
+++++ b/openpgp/patch.sh
++@@ -1,6 +1,7 @@
++ #!/bin/sh
++ 
++ patch < sig-v3.patch
+++patch < s2k-gnu-dummy.patch
++ find . -type f -name '*.go' -exec sed -i'' -e 's/golang.org\/x\/crypto\/openpgp/github.com\/keybase\/go-crypto\/openpgp/' {} \;
++ find . -type f -name '*.go-e' -exec rm {} \;
++ go test ./...
++diff --git a/openpgp/read_test.go b/openpgp/read_test.go
++index fb7f600..ba417db 100644
++--- a/openpgp/read_test.go
+++++ b/openpgp/read_test.go
++@@ -7,6 +7,7 @@ package openpgp
++ import (
++ 	"bytes"
++ 	_ "crypto/sha512"
+++	"fmt"
++ 	"encoding/hex"
++ 	"io"
++ 	"io/ioutil"
++@@ -372,6 +373,96 @@ func TestReadingArmoredPrivateKey(t *testing.T) {
++ 	}
++ }
++ 
+++func rawToArmored(raw []byte, priv bool) (ret string, err error) {
+++
+++	var writer io.WriteCloser
+++	var out bytes.Buffer
+++	var which string
+++
+++	if priv {
+++		which = "PRIVATE"
+++	} else {
+++		which = "PUBLIC"
+++	}
+++	hdr := fmt.Sprintf("PGP %s KEY BLOCK", which)
+++
+++	writer, err = armor.Encode(&out, hdr, nil)
+++
+++	if err != nil {
+++		return
+++	}
+++	if _, err = writer.Write(raw); err != nil {
+++		return
+++	}
+++	writer.Close()
+++	ret = out.String()
+++	return
+++}
+++
+++func TestReadingArmoredPrivateKeyGNUS2KDummy(t *testing.T) {
+++
+++	test := func(armoredKey string, protected bool) *Entity {
+++		el, err := ReadArmoredKeyRing(bytes.NewBufferString(armoredKey))
+++		if err != nil {
+++			t.Error(err)
+++		}
+++		if len(el) != 1 {
+++			t.Fatalf("got %d entities, wanted 1\n", len(el))
+++		}
+++		k := el[0]
+++		if k.PrivateKey == nil {
+++			t.Fatalf("Got nil key, but wanted a private key")
+++		}
+++		if err := k.PrivateKey.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase)); err != nil {
+++			t.Fatalf("failed to decrypt key: %s", err)
+++		}
+++		if err := k.PrivateKey.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase + "X")); err != nil {
+++			t.Fatalf("failed to decrypt key with the wrong key (it shouldn't matter): %s", err)
+++		}
+++
+++		decryptions := 0
+++
+++		// Also decrypt all subkeys (with the same password)
+++		for i, subkey := range k.Subkeys {
+++			priv := subkey.PrivateKey
+++			if priv == nil {
+++				t.Fatalf("unexpected nil subkey @%d", i)
+++			}
+++			err := priv.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase + "X"))
+++
+++			if protected && err == nil {
+++				t.Fatalf("expected subkey decryption to fail on %d with bad PW\n", i)
+++			} else if !protected && err != nil {
+++				t.Fatalf("Without passphrase-protection, decryption shouldn't fail")
+++			}
+++			if err := priv.Decrypt([]byte(gnuDummyS2KPrivateKeyPassphrase)); err != nil {
+++				t.Fatalf("failed to decrypt subkey %d: %s\n", i, err)
+++			} else {
+++				decryptions++
+++			}
+++		}
+++		if decryptions != 1 {
+++			t.Fatalf("expected 1 decryption; got %d", decryptions)
+++		}
+++		return k
+++	}
+++
+++	key := test(gnuDummyS2KPrivateKey, true)
+++
+++	var buf bytes.Buffer
+++	err := key.SerializePrivate(&buf, nil)
+++	if err != nil {
+++		t.Fatal(err)
+++	}
+++
+++	armored, err := rawToArmored(buf.Bytes(), true)
+++	if err != nil {
+++		t.Fatal(err)
+++	}
+++
+++	test(armored, false)
+++}
+++
++ func TestReadingArmoredPublicKey(t *testing.T) {
++ 	el, err := ReadArmoredKeyRing(bytes.NewBufferString(e2ePublicKey))
++ 	if err != nil {
++@@ -588,3 +679,35 @@ iT57d/OhWwA=
++ =hG7R
++ -----END PGP MESSAGE-----
++ `
+++
+++const gnuDummyS2KPrivateKey = `-----BEGIN PGP PRIVATE KEY BLOCK-----
+++Version: GnuPG/MacGPG2 v2.0.22 (Darwin)
+++Comment: GPGTools - https://gpgtools.org
+++
+++lQCVBFNVKE4BBADjD9Xq+1wml4VS3hxkCuyhWp003ki7yN/ZAb5cUHyIzgY7BR9v
+++ydz7R2s5dkRksxqiD8qg/u/UwMGteREhA8ML8JXSZ5T/TMH8DJNB1HsoKlm2q/W4
+++/S04jy5X/+M9GvRi47gZyOmLsu57rXdJimrUf9r9qtKSPViWlzrq4cAE0wARAQAB
+++/gNlAkdOVQG0IFdpbGxpYW0gV29yZHN3b3J0aCA8d3dAb3guYWMudWs+iL4EEwEK
+++ACgFAlNVKE4CGwMFCRLMAwAGCwkIBwMCBhUIAgkKCwQWAgMBAh4BAheAAAoJEJLY
+++KARjvfT1roEEAJ140DFf7DV0d51KMmwz8iwuU7OWOOMoOObdLOHox3soScrHvGqM
+++0dg7ZZUhQSIETQUDk2Fkcjpqizhs7sJinbWYcpiaEKv7PWYHLyIIH+RcYKv18hla
+++EFHaOoUdRfzZsNSwNznnlCSCJOwkVMa1eJGJrEElzoktqPeDsforPFKhnQH+BFNV
+++KE4BBACwsTltWOQUEjjK
+\ No newline at end of file
+diff --git a/openpgp/s2k/s2k.go b/openpgp/s2k/s2k.go
+index 7d7e252..e189dd8 100644
+--- a/openpgp/s2k/s2k.go
++++ b/openpgp/s2k/s2k.go
+@@ -11,8 +11,9 @@ import (
+ 	"hash"
+ 	"io"
+ 	"strconv"
+-
+ 	"github.com/keybase/go-crypto/openpgp/errors"
++	"runtime/debug"
++	"fmt"
+ )
+ 
+ // Config collects configuration parameters for s2k key-stretching
+@@ -163,6 +164,8 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
+ 
+ 	hash, ok := HashIdToHash(buf[1])
+ 	if !ok {
++		debug.PrintStack()
++		fmt.Printf("%v\n", buf)
+ 		return nil, errors.UnsupportedError("hash for S2K function: " + strconv.Itoa(int(buf[1])))
+ 	}
+ 	if !hash.Available() {
+@@ -195,6 +198,29 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
+ 			Iterated(out, h, in, buf[:8], count)
+ 		}
+ 		return f, nil
++
++	// GNU Extensions
++	case 101:
++
++		// A three-byte string identifier
++		_, err = io.ReadFull(r, buf[:3])
++		if err != nil {
++			return
++		}
++		gnuExt := string(buf[:3])
++
++		if gnuExt != "GNU" {
++			return nil, errors.UnsupportedError("Malformed GNU extension: " + gnuExt)
++		}
++		_, err = io.ReadFull(r, buf[:1])
++		if err != nil {
++			return
++		}
++		gnuExtType := int(buf[0])
++		if gnuExtType != 1 {
++			return nil, errors.UnsupportedError("unknown S2K GNU protection mode: " + strconv.Itoa(int(gnuExtType)))
++		}
++		return nil, nil
+ 	}
+ 
+ 	return nil, errors.UnsupportedError("S2K function")

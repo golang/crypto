@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package openpgp implements high level operations on OpenPGP messages.
-package openpgp // import "golang.org/x/crypto/openpgp"
+package openpgp // import "github.com/keybase/go-crypto/openpgp"
 
 import (
 	"crypto"
@@ -12,9 +12,9 @@ import (
 	"io"
 	"strconv"
 
-	"golang.org/x/crypto/openpgp/armor"
-	"golang.org/x/crypto/openpgp/errors"
-	"golang.org/x/crypto/openpgp/packet"
+	"github.com/keybase/go-crypto/openpgp/armor"
+	"github.com/keybase/go-crypto/openpgp/errors"
+	"github.com/keybase/go-crypto/openpgp/packet"
 )
 
 // SignatureType is the armor type for a PGP signature.
@@ -56,8 +56,9 @@ type MessageDetails struct {
 	// been consumed. Once EOF has been seen, the following fields are
 	// valid. (An authentication code failure is reported as a
 	// SignatureError error when reading from UnverifiedBody.)
-	SignatureError error             // nil if the signature is good.
-	Signature      *packet.Signature // the signature packet itself.
+	SignatureError error               // nil if the signature is good.
+	Signature      *packet.Signature   // the signature packet itself, if v4 (default)
+	SignatureV3    *packet.SignatureV3 // the signature packet if it is a v2 or v3 signature
 
 	decrypted io.ReadCloser
 }
@@ -334,12 +335,14 @@ func (scr *signatureCheckReader) Read(buf []byte) (n int, err error) {
 		}
 
 		var ok bool
-		if scr.md.Signature, ok = p.(*packet.Signature); !ok {
+		if scr.md.Signature, ok = p.(*packet.Signature); ok {
+			scr.md.SignatureError = scr.md.SignedBy.PublicKey.VerifySignature(scr.h, scr.md.Signature)
+		} else if scr.md.SignatureV3, ok = p.(*packet.SignatureV3); ok {
+			scr.md.SignatureError = scr.md.SignedBy.PublicKey.VerifySignatureV3(scr.h, scr.md.SignatureV3)
+		} else {
 			scr.md.SignatureError = errors.StructuralError("LiteralData not followed by Signature")
 			return
 		}
-
-		scr.md.SignatureError = scr.md.SignedBy.PublicKey.VerifySignature(scr.h, scr.md.Signature)
 
 		// The SymmetricallyEncrypted packet, if any, might have an
 		// unsigned hash of its own. In order to check this we need to

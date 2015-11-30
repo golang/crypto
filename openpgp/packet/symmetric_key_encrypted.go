@@ -10,8 +10,8 @@ import (
 	"io"
 	"strconv"
 
-	"golang.org/x/crypto/openpgp/errors"
-	"golang.org/x/crypto/openpgp/s2k"
+	"github.com/keybase/go-crypto/openpgp/errors"
+	"github.com/keybase/go-crypto/openpgp/s2k"
 )
 
 // This is the largest session key that we'll support. Since no 512-bit cipher
@@ -47,6 +47,9 @@ func (ske *SymmetricKeyEncrypted) parse(r io.Reader) error {
 	ske.s2k, err = s2k.Parse(r)
 	if err != nil {
 		return err
+	}
+	if ske.s2k == nil {
+		return errors.UnsupportedError("can't use dummy S2K for symmetric key encryption")
 	}
 
 	encryptedKey := make([]byte, maxSessionKeySizeInBytes)

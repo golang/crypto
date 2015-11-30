@@ -10,9 +10,9 @@ import (
 	"crypto/dsa"
 	"crypto/rsa"
 	"crypto/sha1"
-	"golang.org/x/crypto/openpgp/elgamal"
-	"golang.org/x/crypto/openpgp/errors"
-	"golang.org/x/crypto/openpgp/s2k"
+	"github.com/keybase/go-crypto/openpgp/elgamal"
+	"github.com/keybase/go-crypto/openpgp/errors"
+	"github.com/keybase/go-crypto/openpgp/s2k"
 	"io"
 	"io/ioutil"
 	"math/big"
@@ -78,6 +78,13 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 		if s2kType == 254 {
 			pk.sha1Checksum = true
 		}
+		// S2K == nil implies that we got a "GNU Dummy" S2K. For instance,
+		// because our master secret key is on a USB key in a vault somewhere.
+		// In that case, there is no further data to consume here.
+		if pk.s2k == nil {
+			pk.Encrypted = false
+			return
+		}
 	default:
 		return errors.UnsupportedError("deprecated s2k function in private key")
 	}
@@ -121,20 +128,32 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 	if err != nil {
 		return
 	}
-	buf.WriteByte(0 /* no encryption */)
 
 	privateKeyBuf := bytes.NewBuffer(nil)
 
-	switch priv := pk.PrivateKey.(type) {
-	case *rsa.PrivateKey:
-		err = serializeRSAPrivateKey(privateKeyBuf, priv)
-	case *dsa.PrivateKey:
-		err = serializeDSAPrivateKey(privateKeyBuf, priv)
-	default:
-		err = errors.InvalidArgumentError("unknown private key type")
-	}
-	if err != nil {
-		return
+	if pk.PrivateKey == nil {
+		_, err = buf.Write([]byte{
+			254,           // SHA-1 Convention
+			9,             // Encryption scheme (AES256)
+			101,           // GNU Extensions
+			2,             // Hash value (SHA1)
+			'G', 'N', 'U', // "GNU" as a string
+			1, // Extension type 1001 (minus 1000)
+		})
+	} else {
+		buf.WriteByte(0 /* no encryption */)
+
+		switch priv := pk.PrivateKey.(type) {
+		case *rsa.PrivateKey:
+			err = serializeRSAPrivateKey(privateKeyBuf, priv)
+		case *dsa.PrivateKey:
+			err = serializeDSAPrivateKey(privateKeyBuf, priv)
+		default:
+			err = errors.InvalidArgumentError("unknown private key type")
+		}
+		if err != nil {
+			return
+		}
 	}
 
 	ptype := packetTypePrivateKey
@@ -156,11 +175,13 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 		return
 	}
 
-	checksum := mod64kHash(privateKeyBytes)
-	var checksumBytes [2]byte
-	checksumBytes[0] = byte(checksum >> 8)
-	checksumBytes[1] = byte(checksum)
-	_, err = w.Write(checksumBytes[:])
+	if len(privateKeyBytes) > 0 {
+		checksum := mod64kHash(privateKeyBytes)
+		var checksumBytes [2]byte
+		checksumBytes[0] = byte(checksum >> 8)
+		checksumBytes[1] = byte(checksum)
+		_, err = w.Write(checksumBytes[:])
+	}
 
 	return
 }
@@ -188,6 +209,10 @@ func serializeDSAPrivateKey(w io.Writer, priv *dsa.PrivateKey) error {
 // Decrypt decrypts an encrypted private key using a passphrase.
 func (pk *PrivateKey) Decrypt(passphrase []byte) error {
 	if !pk.Encrypted {
+		return nil
+	}
+	// For GNU Dummy S2K, there's no key here, so don't do anything.
+	if pk.s2k == nil {
 		return nil
 	}
 

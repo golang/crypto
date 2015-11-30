@@ -8,12 +8,14 @@ import (
 	"bytes"
 	_ "crypto/sha512"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"strings"
 	"testing"
 
-	"golang.org/x/crypto/openpgp/errors"
+	"github.com/keybase/go-crypto/openpgp/armor"
+	"github.com/keybase/go-crypto/openpgp/errors"
 )
 
 func readerFromHex(s string) io.Reader {
@@ -371,6 +373,130 @@ func TestReadingArmoredPrivateKey(t *testing.T) {
 	}
 }
 
+func rawToArmored(raw []byte, priv bool) (ret string, err error) {
+
+	var writer io.WriteCloser
+	var out bytes.Buffer
+	var which string
+
+	if priv {
+		which = "PRIVATE"
+	} else {
+		which = "PUBLIC"
+	}
+	hdr := fmt.Sprintf("PGP %s KEY BLOCK", which)
+
+	writer, err = armor.Encode(&out, hdr, nil)
+
+	if err != nil {
+		return
+	}
+	if _, err = writer.Write(raw); err != nil {
+		return
+	}
+	writer.Close()
+	ret = out.String()
+	return
+}
+
+func trySigning(e *Entity) (string, error) {
+	txt := bytes.NewBufferString("Thou still unravish'd bride of quietness, Thou foster-child of silence and slow time,")
+	var out bytes.Buffer
+	err := ArmoredDetachSign(&out, e, txt, nil)
+	return out.String(), err
+}
+
+func TestSigningSubkey(t *testing.T) {
+	k := openPrivateKey(t, signingSubkey, signingSubkeyPassphrase, true, 2)
+	_, err := trySigning(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func openPrivateKey(t *testing.T, armoredKey string, passphrase string, protected bool, nSubkeys int) *Entity {
+	el, err := ReadArmoredKeyRing(bytes.NewBufferString(armoredKey))
+	if err != nil {
+		t.Error(err)
+	}
+	if len(el) != 1 {
+		t.Fatalf("got %d entities, wanted 1\n", len(el))
+	}
+	k := el[0]
+	if k.PrivateKey == nil {
+		t.Fatalf("Got nil key, but wanted a private key")
+	}
+	if err := k.PrivateKey.Decrypt([]byte(passphrase)); err != nil {
+		t.Fatalf("failed to decrypt key: %s", err)
+	}
+	if err := k.PrivateKey.Decrypt([]byte(passphrase + "X")); err != nil {
+		t.Fatalf("failed to decrypt key with the wrong key (it shouldn't matter): %s", err)
+	}
+
+	decryptions := 0
+
+	// Also decrypt all subkeys (with the same password)
+	for i, subkey := range k.Subkeys {
+		priv := subkey.PrivateKey
+		if priv == nil {
+			t.Fatalf("unexpected nil subkey @%d", i)
+		}
+		err := priv.Decrypt([]byte(passphrase + "X"))
+
+		if protected && err == nil {
+			t.Fatalf("expected subkey decryption to fail on %d with bad PW\n", i)
+		} else if !protected && err != nil {
+			t.Fatalf("Without passphrase-protection, decryption shouldn't fail")
+		}
+		if err := priv.Decrypt([]byte(passphrase)); err != nil {
+			t.Fatalf("failed to decrypt subkey %d: %s\n", i, err)
+		} else {
+			decryptions++
+		}
+	}
+	if decryptions != nSubkeys {
+		t.Fatalf("expected %d decryptions; got %d", nSubkeys, decryptions)
+	}
+	return k
+}
+
+func testGnuS2KDummy(t *testing.T, keyString string, passphrase string, nSubkeys int) *Entity {
+
+	key := openPrivateKey(t, keyString, passphrase, true, nSubkeys)
+
+	var buf bytes.Buffer
+	err := key.SerializePrivate(&buf, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	armored, err := rawToArmored(buf.Bytes(), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return openPrivateKey(t, armored, passphrase, false, nSubkeys)
+}
+
+func TestGnuS2KDummyEncryptionSubkey(t *testing.T) {
+	key := testGnuS2KDummy(t, gnuDummyS2KPrivateKey, gnuDummyS2KPrivateKeyPassphrase, 1)
+	_, err := trySigning(key)
+	if err == nil {
+		t.Fatal("Expected a signing failure, since we don't have a signing key")
+	}
+}
+
+func TestGNUS2KDummySigningSubkey(t *testing.T) {
+	key := testGnuS2KDummy(t, gnuDummyS2KPrivateKeyWithSigningSubkey, gnuDummyS2KPrivateKeyWithSigningSubkeyPassphrase, 2)
+	out, err := trySigning(key)
+	if err != nil {
+		t.Fatal("Got a signing failure: %s\n", err)
+	} else {
+		fmt.Printf("good shit!\n")
+		fmt.Printf("%s\n", out)
+	}
+}
+
 func TestReadingArmoredPublicKey(t *testing.T) {
 	el, err := ReadArmoredKeyRing(bytes.NewBufferString(e2ePublicKey))
 	if err != nil {
@@ -415,6 +541,50 @@ func TestIssue11503(t *testing.T) {
 
 func TestIssue11504(t *testing.T) {
 	testReadMessageError(t, "9303000130303030303030303030983002303030303030030000000130")
+}
+
+// TestSignatureV3Message tests the verification of V3 signature, generated
+// with a modern V4-style key.  Some people have their clients set to generate
+// V3 signatures, so it's useful to be able to verify them.
+func TestSignatureV3Message(t *testing.T) {
+	sig, err := armor.Decode(strings.NewReader(signedMessageV3))
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	key, err := ReadArmoredKeyRing(strings.NewReader(keyV4forVerifyingSignedMessageV3))
+	if err != nil {
+		t.Error(err)
+		return
+	}
+	md, err := ReadMessage(sig.Body, key, nil, nil)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	_, err = ioutil.ReadAll(md.UnverifiedBody)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	// We'll see a sig error here after reading in the UnverifiedBody above,
+	// if there was one to see.
+	if err = md.SignatureError; err != nil {
+		t.Error(err)
+		return
+	}
+
+	if md.SignatureV3 == nil {
+		t.Errorf("No available signature after checking signature")
+		return
+	}
+	if md.Signature != nil {
+		t.Errorf("Did not expect a signature V4 back")
+		return
+	}
+	return
 }
 
 const testKey1KeyId = 0xA34D7E18C20C31BB
@@ -510,3 +680,244 @@ const unknownHashFunctionHex = `8a00000040040001990006050253863c24000a09103b4fe6
 const missingHashFunctionHex = `8a00000040040001030006050253863c24000a09103b4fe6acc0b21f32ffff0101010101010101010101010101010101010101010101010101010101010101010101010101`
 
 const campbellQuine = `a0b001000300fcffa0b001000d00f2ff000300fcffa0b001000d00f2ff8270a01c00000500faff8270a01c00000500faff000500faff001400ebff8270a01c00000500faff000500faff001400ebff428821c400001400ebff428821c400001400ebff428821c400001400ebff428821c400001400ebff428821c400000000ffff000000ffff000b00f4ff428821c400000000ffff000000ffff000b00f4ff0233214c40000100feff000233214c40000100feff0000`
+
+const keyV4forVerifyingSignedMessageV3 = `-----BEGIN PGP PUBLIC KEY BLOCK-----
+Comment: GPGTools - https://gpgtools.org
+
+mI0EVfxoFQEEAMBIqmbDfYygcvP6Phr1wr1XI41IF7Qixqybs/foBF8qqblD9gIY
+BKpXjnBOtbkcVOJ0nljd3/sQIfH4E0vQwK5/4YRQSI59eKOqd6Fx+fWQOLG+uu6z
+tewpeCj9LLHvibx/Sc7VWRnrznia6ftrXxJ/wHMezSab3tnGC0YPVdGNABEBAAG0
+JEdvY3J5cHRvIFRlc3QgS2V5IDx0aGVtYXhAZ21haWwuY29tPoi5BBMBCgAjBQJV
+/GgVAhsDBwsJCAcDAgEGFQgCCQoLBBYCAwECHgECF4AACgkQeXnQmhdGW9PFVAP+
+K7TU0qX5ArvIONIxh/WAweyOk884c5cE8f+3NOPOOCRGyVy0FId5A7MmD5GOQh4H
+JseOZVEVCqlmngEvtHZb3U1VYtVGE5WZ+6rQhGsMcWP5qaT4soYwMBlSYxgYwQcx
+YhN9qOr292f9j2Y//TTIJmZT4Oa+lMxhWdqTfX+qMgG4jQRV/GgVAQQArhFSiij1
+b+hT3dnapbEU+23Z1yTu1DfF6zsxQ4XQWEV3eR8v+8mEDDNcz8oyyF56k6UQ3rXi
+UMTIwRDg4V6SbZmaFbZYCOwp/EmXJ3rfhm7z7yzXj2OFN22luuqbyVhuL7LRdB0M
+pxgmjXb4tTvfgKd26x34S+QqUJ7W6uprY4sAEQEAAYifBBgBCgAJBQJV/GgVAhsM
+AAoJEHl50JoXRlvT7y8D/02ckx4OMkKBZo7viyrBw0MLG92i+DC2bs35PooHR6zz
+786mitjOp5z2QWNLBvxC70S0qVfCIz8jKupO1J6rq6Z8CcbLF3qjm6h1omUBf8Nd
+EfXKD2/2HV6zMKVknnKzIEzauh+eCKS2CeJUSSSryap/QLVAjRnckaES/OsEWhNB
+=RZia
+-----END PGP PUBLIC KEY BLOCK-----
+`
+
+const signedMessageV3 = `-----BEGIN PGP MESSAGE-----
+Comment: GPGTools - https://gpgtools.org
+
+owGbwMvMwMVYWXlhlrhb9GXG03JJDKF/MtxDMjKLFYAoUaEktbhEITe1uDgxPVWP
+q5NhKjMrWAVcC9evD8z/bF/uWNjqtk/X3y5/38XGRQHm/57rrDRYuGnTw597Xqka
+uM3137/hH3Os+Jf2dc0fXOITKwJvXJvecPVs0ta+Vg7ZO1MLn8w58Xx+6L58mbka
+DGHyU9yTueZE8D+QF/Tz28Y78dqtF56R1VPn9Xw4uJqrWYdd7b3vIZ1V6R4Nh05d
+iT57d/OhWwA=
+=hG7R
+-----END PGP MESSAGE-----
+`
+
+const gnuDummyS2KPrivateKey = `-----BEGIN PGP PRIVATE KEY BLOCK-----
+Version: GnuPG/MacGPG2 v2.0.22 (Darwin)
+Comment: GPGTools - https://gpgtools.org
+
+lQCVBFNVKE4BBADjD9Xq+1wml4VS3hxkCuyhWp003ki7yN/ZAb5cUHyIzgY7BR9v
+ydz7R2s5dkRksxqiD8qg/u/UwMGteREhA8ML8JXSZ5T/TMH8DJNB1HsoKlm2q/W4
+/S04jy5X/+M9GvRi47gZyOmLsu57rXdJimrUf9r9qtKSPViWlzrq4cAE0wARAQAB
+/gNlAkdOVQG0IFdpbGxpYW0gV29yZHN3b3J0aCA8d3dAb3guYWMudWs+iL4EEwEK
+ACgFAlNVKE4CGwMFCRLMAwAGCwkIBwMCBhUIAgkKCwQWAgMBAh4BAheAAAoJEJLY
+KARjvfT1roEEAJ140DFf7DV0d51KMmwz8iwuU7OWOOMoOObdLOHox3soScrHvGqM
+0dg7ZZUhQSIETQUDk2Fkcjpqizhs7sJinbWYcpiaEKv7PWYHLyIIH+RcYKv18hla
+EFHaOoUdRfzZsNSwNznnlCSCJOwkVMa1eJGJrEElzoktqPeDsforPFKhnQH+BFNV
+KE4BBACwsTltWOQUEjjKDXW28u7skuIT2jtGFc/bbzXcfg2bzTpoJlMNOBMdRDPD
+TVccJhAYj8kX9WJDSj+gluMvt319lLrAXjaroZHvHFqJQDxlqyR3mCkITjL09UF/
+wVy3sF7wek8KlJthYSiBZT496o1MOsj5k+E8Y/vOHQbvg9uK0wARAQAB/gMDAmEI
+mZFRPn111gNki6npnVhXyDhv7FWJw/aLHkEISwmK4fDKOnx+Ueef64K5kZdUmnBC
+r9HEAUZA8mKuhWnpDTCLYZwaucqMjD0KyVJiApyGl9QHU41LDyfobDWn/LabKb6t
+8uz6qkGzg87fYz8XLDgLvolImbTbeqQa9wuBRK9XfRLVgWv7qemNeDCSdLFEDA6W
+ENR+YjDJTZzZDlaH0yLMvudJO4lKnsS+5lhX69qeBJpfp+eMsPh/K8dCOi6mYuSP
+SF2JI7hVpk9PurDO1ne20mLuqZvmuDHcddWM88FjXotytDtuHScaX94+vVLXQAKz
+mROs4Z7GkNs2om03kWCqsGmAV1B0+bbmcxTH14/vwAFrYSJwcvHsaDhshcCoxJa8
+pKxttlHlUYQ6YQZflIMnxvbZAIryDDK9kwut3GGStfoJXoi5jA8uh+WG+avn+iNI
+k8lR0SSgo6n5/vyWS6l/ZBbF1JwX6oQ4ep7piKUEGAEKAA8FAlNVKE4CGwwFCRLM
+AwAACgkQktgoBGO99PUaKAQAiK1zQQQIOVkqBa/E9Jx5UpCVF/fi0XsTfU2Y0Slg
+FV7j9Bqe0obycJ2LFRNDndVReJQQj5vpwZ/B5dAoUqaMXmAD3DD+7ZY756u+g0rU
+21Z4Nf+we9PfyA5+lxw+6PXNpYcxvU9wXf+t5vvTLrdnVAdR0hSxKWdOCgIS1VlQ
+uxs=
+=NolW
+-----END PGP PRIVATE KEY BLOCK-----`
+
+const gnuDummyS2KPrivateKeyPassphrase = "lucy"
+
+const gnuDummyS2KPrivateKeyWithSigningSubkey = `-----BEGIN PGP PRIVATE KEY BLOCK-----
+Comment: GPGTools - https://gpgtools.org
+
+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
+CQJMlh5V7RMenq01TpLPvc8=
+=tI6t
+-----END PGP PRIVATE KEY BLOCK-----
+
+`
+const gnuDummyS2KPrivateKeyWithSigningSubkeyPassphrase = "urn"
+
+const signingSubkey = `-----BEGIN PGP PRIVATE KEY BLOCK-----
+Version: GnuPG v1
+
+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
+=3zTL
+-----END PGP PRIVATE KEY BLOCK-----
+`
+
+const signingSubkeyPassphrase = "abcd"
