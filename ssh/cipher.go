@@ -117,7 +117,9 @@ var cipherModes = map[string]*streamCipherMode{
 
 	// insecure cipher, see http://www.isg.rhul.ac.uk/~kp/SandPfinal.pdf
 	// uncomment below to enable it.
-	// aes128cbcID: {16, aes.BlockSize, 0, nil},
+	//
+	// NOTE(evan): This was only re-enabled because it's the only SSH algorithm supported by Wells.
+	aes128cbcID: {16, aes.BlockSize, 0, nil},
 }
 
 // prefixLen is the length of the packet prefix that contains the packet length
