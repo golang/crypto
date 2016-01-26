@@ -252,6 +252,19 @@ func TestOCSPResponse(t *testing.T) {
 	}
 }
 
+func TestErrorResponse(t *testing.T) {
+	responseBytes, _ := hex.DecodeString(errorResponseHex)
+	_, err := ParseResponse(responseBytes, nil)
+
+	respErr, ok := err.(ResponseError)
+	if !ok {
+		t.Fatalf("expected ResponseError from ParseResponse but got %#v", err)
+	}
+	if respErr.Status != Malformed {
+		t.Fatalf("expected Malformed status from ParseResponse but got %d", respErr.Status)
+	}
+}
+
 // This OCSP response was taken from Thawte's public OCSP responder.
 // To recreate:
 //   $ openssl s_client -tls1 -showcerts -servername www.google.com -connect www.google.com:443
@@ -567,3 +580,5 @@ const responderCertHex = "308202e2308201caa003020102020101300d06092a864886f70d01
 	"9e2005d5939bfc031589ca143e6e8ab83f40ee08cc20a6b4a95a318352c28d18528dcaf9" +
 	"66705de17afa19d6e8ae91ddf33179d16ebb6ac2c69cae8373d408ebf8c55308be6c04d9" +
 	"3a25439a94299a65a709756c7a3e568be049d5c38839"
+
+const errorResponseHex = "30030a0101"
