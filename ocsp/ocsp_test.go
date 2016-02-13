@@ -159,6 +159,19 @@ func TestOCSPRequest(t *testing.T) {
 	if got := decodedRequest.SerialNumber; got.Cmp(cert.SerialNumber) != 0 {
 		t.Errorf("request.SerialNumber: got %x, want %x", got, cert.SerialNumber)
 	}
+
+	marshaledRequest, err := decodedRequest.Marshal()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if bytes.Compare(expectedBytes, marshaledRequest) != 0 {
+		t.Errorf(
+			"Marshaled request doesn't match expected: wanted %x, got %x",
+			expectedBytes,
+			marshaledRequest,
+		)
+	}
 }
 
 func TestOCSPResponse(t *testing.T) {

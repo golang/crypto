@@ -266,6 +266,15 @@ func getHashAlgorithmFromOID(target asn1.ObjectIdentifier) crypto.Hash {
 	return crypto.Hash(0)
 }
 
+func getOIDFromHashAlgorithm(target crypto.Hash) asn1.ObjectIdentifier {
+	for hash, oid := range hashOIDs {
+		if hash == target {
+			return oid
+		}
+	}
+	return nil
+}
+
 // This is the exposed reflection of the internal OCSP structures.
 
 // The status values that can be expressed in OCSP.  See RFC 6960.
@@ -303,6 +312,32 @@ type Request struct {
 	IssuerNameHash []byte
 	IssuerKeyHash  []byte
 	SerialNumber   *big.Int
+}
+
+// Marshal marshals the OCSP request to ASN.1 DER encoded form.
+func (req *Request) Marshal() ([]byte, error) {
+	hashAlg := getOIDFromHashAlgorithm(req.HashAlgorithm)
+	if hashAlg == nil {
+		return nil, errors.New("Unknown hash algorithm")
+	}
+	return asn1.Marshal(ocspRequest{
+		tbsRequest{
+			Version: 0,
+			RequestList: []request{
+				{
+					Cert: certID{
+						pkix.AlgorithmIdentifier{
+							Algorithm:  hashAlg,
+							Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+						},
+						req.IssuerNameHash,
+						req.IssuerKeyHash,
+						req.SerialNumber,
+					},
+				},
+			},
+		},
+	})
 }
 
 // Response represents an OCSP response containing a single SingleResponse. See
@@ -512,8 +547,7 @@ func CreateRequest(cert, issuer *x509.Certificate, opts *RequestOptions) ([]byte
 	// OCSP seems to be the only place where these raw hash identifiers are
 	// used. I took the following from
 	// http://msdn.microsoft.com/en-us/library/ff635603.aspx
-	var hashOID asn1.ObjectIdentifier
-	hashOID, ok := hashOIDs[hashFunc]
+	_, ok := hashOIDs[hashFunc]
 	if !ok {
 		return nil, x509.ErrUnsupportedAlgorithm
 	}
@@ -538,24 +572,13 @@ func CreateRequest(cert, issuer *x509.Certificate, opts *RequestOptions) ([]byte
 	h.Write(issuer.RawSubject)
 	issuerNameHash := h.Sum(nil)
 
-	return asn1.Marshal(ocspRequest{
-		tbsRequest{
-			Version: 0,
-			RequestList: []request{
-				{
-					Cert: certID{
-						pkix.AlgorithmIdentifier{
-							Algorithm:  hashOID,
-							Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
-						},
-						issuerNameHash,
-						issuerKeyHash,
-						cert.SerialNumber,
-					},
-				},
-			},
-		},
-	})
+	req := &Request{
+		HashAlgorithm:  hashFunc,
+		IssuerNameHash: issuerNameHash,
+		IssuerKeyHash:  issuerKeyHash,
+		SerialNumber:   cert.SerialNumber,
+	}
+	return req.Marshal()
 }
 
 // CreateResponse returns a DER-encoded OCSP response with the specified contents.
