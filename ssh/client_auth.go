@@ -282,6 +282,12 @@ func confirmKeyAck(key PublicKey, c packetConn) (bool, error) {
 			return true, nil
 		case msgUserAuthFailure:
 			return false, nil
+		case msgDisconnect:
+			msg, err := decode(packet)
+			if err != nil {
+				return false, err
+			}
+			return false, fmt.Errorf("%v",msg)
 		default:
 			return false, unexpectedMessageError(msgUserAuthSuccess, packet[0])
 		}
@@ -322,7 +328,11 @@ func handleAuthResponse(c packetConn) (bool, []string, error) {
 		case msgUserAuthSuccess:
 			return true, nil, nil
 		case msgDisconnect:
-			return false, nil, io.EOF
+			msg, err := decode(packet)
+			if err != nil {
+				return false, nil, err
+			}
+			return false, nil, fmt.Errorf("%v",msg)
 		default:
 			return false, nil, unexpectedMessageError(msgUserAuthSuccess, packet[0])
 		}
@@ -386,6 +396,12 @@ func (cb KeyboardInteractiveChallenge) auth(session []byte, user string, c packe
 			return false, msg.Methods, nil
 		case msgUserAuthSuccess:
 			return true, nil, nil
+		case msgDisconnect:
+			msg, err := decode(packet)
+			if err != nil {
+				return false, nil, err
+			}
+			return false, nil, fmt.Errorf("%v",msg)
 		default:
 			return false, nil, unexpectedMessageError(msgUserAuthInfoRequest, packet[0])
 		}
