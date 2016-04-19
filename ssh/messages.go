@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"reflect"
 	"strconv"
+	"strings"
 )
 
 // These are SSH message type numbers. They are scattered around several
@@ -266,17 +267,19 @@ type userAuthPubKeyOkMsg struct {
 	PubKey []byte
 }
 
-// typeTag returns the type byte for the given type. The type should
-// be struct.
-func typeTag(structType reflect.Type) byte {
-	var tag byte
-	var tagStr string
-	tagStr = structType.Field(0).Tag.Get("sshtype")
-	i, err := strconv.Atoi(tagStr)
-	if err == nil {
-		tag = byte(i)
+// typeTags returns the possible type bytes for the given reflect.Type, which
+// should be a struct. The possible values are separated by a '|' character.
+func typeTags(structType reflect.Type) (tags []byte) {
+	tagStr := structType.Field(0).Tag.Get("sshtype")
+
+	for _, tag := range strings.Split(tagStr, "|") {
+		i, err := strconv.Atoi(tag)
+		if err == nil {
+			tags = append(tags, byte(i))
+		}
 	}
-	return tag
+
+	return tags
 }
 
 func fieldError(t reflect.Type, field int, problem string) error {
@@ -290,19 +293,34 @@ var errShortRead = errors.New("ssh: short read")
 
 // Unmarshal parses data in SSH wire format into a structure. The out
 // argument should be a pointer to struct. If the first member of the
-// struct has the "sshtype" tag set to a number in decimal, the packet
-// must start that number.  In case of error, Unmarshal returns a
-// ParseError or UnexpectedMessageError.
+// struct has the "sshtype" tag set to a '|'-separated set of numbers
+// in decimal, the packet must start with one of those numbers. In
+// case of error, Unmarshal returns a ParseError or
+// UnexpectedMessageError.
 func Unmarshal(data []byte, out interface{}) error {
 	v := reflect.ValueOf(out).Elem()
 	structType := v.Type()
-	expectedType := typeTag(structType)
+	expectedTypes := typeTags(structType)
+
+	var expectedType byte
+	if len(expectedTypes) > 0 {
+		expectedType = expectedTypes[0]
+	}
+
 	if len(data) == 0 {
 		return parseError(expectedType)
 	}
-	if expectedType > 0 {
-		if data[0] != expectedType {
-			return unexpectedMessageError(expectedType, data[0])
+
+	if len(expectedTypes) > 0 {
+		goodType := false
+		for _, e := range expectedTypes {
+			if e > 0 && data[0] == e {
+				goodType = true
+				break
+			}
+		}
+		if !goodType {
+			return fmt.Errorf("ssh: unexpected message type %d (expected one of %v)", data[0], expectedTypes)
 		}
 		data = data[1:]
 	}
@@ -386,7 +404,7 @@ func Unmarshal(data []byte, out interface{}) error {
 				return fieldError(structType, i, "pointer to unsupported type")
 			}
 		default:
-			return fieldError(structType, i, "unsupported type")
+			return fieldError(structType, i, fmt.Sprintf("unsupported type: %v", t))
 		}
 	}
 
@@ -409,9 +427,9 @@ func Marshal(msg interface{}) []byte {
 
 func marshalStruct(out []byte, msg interface{}) []byte {
 	v := reflect.Indirect(reflect.ValueOf(msg))
-	msgType := typeTag(v.Type())
-	if msgType > 0 {
-		out = append(out, msgType)
+	msgTypes := typeTags(v.Type())
+	if len(msgTypes) > 0 {
+		out = append(out, msgTypes[0])
 	}
 
 	for i, n := 0, v.NumField(); i < n; i++ {

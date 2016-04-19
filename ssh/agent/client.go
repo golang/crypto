@@ -184,10 +184,13 @@ func (k *Key) Marshal() []byte {
 	return k.Blob
 }
 
-// Verify satisfies the ssh.PublicKey interface, but is not
-// implemented for agent keys.
+// Verify satisfies the ssh.PublicKey interface.
 func (k *Key) Verify(data []byte, sig *ssh.Signature) error {
-	return errors.New("agent: agent key does not know how to verify")
+	pubKey, err := ssh.ParsePublicKey(k.Blob)
+	if err != nil {
+		return fmt.Errorf("agent: bad public key")
+	}
+	return pubKey.Verify(data, sig)
 }
 
 type wireKey struct {
@@ -389,7 +392,7 @@ func unmarshal(packet []byte) (interface{}, error) {
 }
 
 type rsaKeyMsg struct {
-	Type        string `sshtype:"17"`
+	Type        string `sshtype:"17|25"`
 	N           *big.Int
 	E           *big.Int
 	D           *big.Int
@@ -401,7 +404,7 @@ type rsaKeyMsg struct {
 }
 
 type dsaKeyMsg struct {
-	Type        string `sshtype:"17"`
+	Type        string `sshtype:"17|25"`
 	P           *big.Int
 	Q           *big.Int
 	G           *big.Int
@@ -412,7 +415,7 @@ type dsaKeyMsg struct {
 }
 
 type ecdsaKeyMsg struct {
-	Type        string `sshtype:"17"`
+	Type        string `sshtype:"17|25"`
 	Curve       string
 	KeyBytes    []byte
 	D           *big.Int
@@ -481,7 +484,7 @@ func (c *client) insertKey(s interface{}, comment string, constraints []byte) er
 }
 
 type rsaCertMsg struct {
-	Type        string `sshtype:"17"`
+	Type        string `sshtype:"17|25"`
 	CertBytes   []byte
 	D           *big.Int
 	Iqmp        *big.Int // IQMP = Inverse Q Mod P
@@ -492,7 +495,7 @@ type rsaCertMsg struct {
 }
 
 type dsaCertMsg struct {
-	Type        string `sshtype:"17"`
+	Type        string `sshtype:"17|25"`
 	CertBytes   []byte
 	X           *big.Int
 	Comments    string
@@ -500,7 +503,7 @@ type dsaCertMsg struct {
 }
 
 type ecdsaCertMsg struct {
-	Type        string `sshtype:"17"`
+	Type        string `sshtype:"17|25"`
 	CertBytes   []byte
 	D           *big.Int
 	Comments    string
