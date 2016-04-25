@@ -192,12 +192,6 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 		return nil, err
 	}
 
-	if packet, err := s.transport.readPacket(); err != nil {
-		return nil, err
-	} else if packet[0] != msgNewKeys {
-		return nil, unexpectedMessageError(msgNewKeys, packet[0])
-	}
-
 	// We just did the key change, so the session ID is established.
 	s.sessionID = s.transport.getSessionID()
 

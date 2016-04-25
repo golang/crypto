@@ -173,6 +173,17 @@ func (t *handshakeTransport) readOnePacket() ([]byte, error) {
 	}
 
 	t.mu.Lock()
+
+	// By default, a key exchange is hidden from higher layers by
+	// translating it into msgIgnore.
+	successPacket := []byte{msgIgnore}
+	if t.sessionID == nil {
+		// sendKexInit() for the first kex waits for
+		// msgNewKeys so the authentication process is
+		// guaranteed to happen over an encrypted transport.
+		successPacket = []byte{msgNewKeys}
+	}
+
 	err = t.enterKeyExchangeLocked(p)
 	if err != nil {
 		// drop connection
@@ -196,7 +207,7 @@ func (t *handshakeTransport) readOnePacket() ([]byte, error) {
 	}
 
 	t.readSinceKex = 0
-	return []byte{msgNewKeys}, nil
+	return successPacket, nil
 }
 
 // keyChangeCategory describes whether a key exchange is the first on a
@@ -213,20 +224,37 @@ const (
 // blocked until the change is done, and a failed key change will
 // close the underlying transport. This function is safe for
 // concurrent use by multiple goroutines.
-func (t *handshakeTransport) sendKexInit(isFirst keyChangeCategory) (*kexInitMsg, []byte, error) {
+func (t *handshakeTransport) sendKexInit(isFirst keyChangeCategory) error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.sendKexInitLocked(isFirst)
+	// If this is the initial key change, but we already have a sessionID,
+	// then do nothing because the key exchange has already completed
+	// asynchronously.
+	if isFirst && t.sessionID != nil {
+		t.mu.Unlock()
+		return nil
+	}
+
+	_, _, err := t.sendKexInitLocked(isFirst)
+	t.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	if isFirst {
+		if packet, err := t.readPacket(); err != nil {
+			return err
+		} else if packet[0] != msgNewKeys {
+			return unexpectedMessageError(msgNewKeys, packet[0])
+		}
+	}
+	return nil
 }
 
 func (t *handshakeTransport) requestInitialKeyChange() error {
-	_, _, err := t.sendKexInit(firstKeyExchange)
-	return err
+	return t.sendKexInit(firstKeyExchange)
 }
 
 func (t *handshakeTransport) requestKeyChange() error {
-	_, _, err := t.sendKexInit(subsequentKeyExchange)
-	return err
+	return t.sendKexInit(subsequentKeyExchange)
 }
 
 // sendKexInitLocked sends a key change message. t.mu must be locked
@@ -238,13 +266,6 @@ func (t *handshakeTransport) sendKexInitLocked(isFirst keyChangeCategory) (*kexI
 	// second kexInit.
 	if t.sentInitMsg != nil {
 		return t.sentInitMsg, t.sentInitPacket, nil
-	}
-
-	// If this is the initial key change, but we already have a sessionID,
-	// then do nothing because the key exchange has already completed
-	// asynchronously.
-	if isFirst && t.sessionID != nil {
-		return nil, nil, nil
 	}
 
 	msg := &kexInitMsg{
