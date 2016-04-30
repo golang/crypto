@@ -338,3 +338,28 @@ func TestKeyExchanges(t *testing.T) {
 		}
 	}
 }
+
+func TestClientAuthAlgorithms(t *testing.T) {
+	for _, key := range []string{
+		"rsa",
+		"dsa",
+		"ecdsa",
+		"ed25519",
+	} {
+		server := newServer(t)
+		conf := clientConfig()
+		conf.SetDefaults()
+		conf.Auth = []ssh.AuthMethod{
+			ssh.PublicKeys(testSigners[key]),
+		}
+
+		conn, err := server.TryDial(conf)
+		if err == nil {
+			conn.Close()
+		} else {
+			t.Errorf("failed for key %q", key)
+		}
+
+		server.Shutdown()
+	}
+}

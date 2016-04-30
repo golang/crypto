@@ -188,7 +188,7 @@ func (k *Key) Marshal() []byte {
 func (k *Key) Verify(data []byte, sig *ssh.Signature) error {
 	pubKey, err := ssh.ParsePublicKey(k.Blob)
 	if err != nil {
-		return fmt.Errorf("agent: bad public key")
+		return fmt.Errorf("agent: bad public key: %v", err)
 	}
 	return pubKey.Verify(data, sig)
 }
