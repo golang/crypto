@@ -280,9 +280,9 @@ func TestCiphers(t *testing.T) {
 	var config ssh.Config
 	config.SetDefaults()
 	cipherOrder := config.Ciphers
-	// This cipher will not be tested when commented out in cipher.go it will
+	// These ciphers will not be tested when commented out in cipher.go it will
 	// fallback to the next available as per line 292.
-	cipherOrder = append(cipherOrder, "aes128-cbc")
+	cipherOrder = append(cipherOrder, "aes128-cbc", "3des-cbc")
 
 	for _, ciph := range cipherOrder {
 		server := newServer(t)
