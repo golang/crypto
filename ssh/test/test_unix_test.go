@@ -46,6 +46,7 @@ TrustedUserCAKeys {{.Dir}}/id_ecdsa.pub
 IgnoreRhosts yes
 RhostsRSAAuthentication no
 HostbasedAuthentication no
+PubkeyAcceptedKeyTypes=*
 `
 
 var configTmpl = template.Must(template.New("").Parse(sshd_config))
