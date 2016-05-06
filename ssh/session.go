@@ -150,7 +150,6 @@ func (s *Session) SetChannel(ch Channel) {
 	s.ch = ch
 }
 
-
 // SendRequest sends an out-of-band channel request on the SSH channel
 // underlying the session.
 func (s *Session) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
