@@ -25,6 +25,7 @@ import (
 	"math/big"
 	"sync"
 
+	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -423,6 +424,14 @@ type ecdsaKeyMsg struct {
 	Constraints []byte `ssh:"rest"`
 }
 
+type ed25519KeyMsg struct {
+	Type        string `sshtype:"17|25"`
+	Pub         []byte
+	Priv        []byte
+	Comments    string
+	Constraints []byte `ssh:"rest"`
+}
+
 // Insert adds a private key to the agent.
 func (c *client) insertKey(s interface{}, comment string, constraints []byte) error {
 	var req []byte
@@ -461,6 +470,14 @@ func (c *client) insertKey(s interface{}, comment string, constraints []byte) er
 			Curve:       nistID,
 			KeyBytes:    elliptic.Marshal(k.Curve, k.X, k.Y),
 			D:           k.D,
+			Comments:    comment,
+			Constraints: constraints,
+		})
+	case *ed25519.PrivateKey:
+		req = ssh.Marshal(ed25519KeyMsg{
+			Type:        ssh.KeyAlgoED25519,
+			Pub:         []byte(*k)[32:],
+			Priv:        []byte(*k),
 			Comments:    comment,
 			Constraints: constraints,
 		})
@@ -506,6 +523,15 @@ type ecdsaCertMsg struct {
 	Type        string `sshtype:"17|25"`
 	CertBytes   []byte
 	D           *big.Int
+	Comments    string
+	Constraints []byte `ssh:"rest"`
+}
+
+type ed25519CertMsg struct {
+	Type        string `sshtype:"17|25"`
+	CertBytes   []byte
+	Pub         []byte
+	Priv        []byte
 	Comments    string
 	Constraints []byte `ssh:"rest"`
 }
@@ -564,6 +590,14 @@ func (c *client) insertCert(s interface{}, cert *ssh.Certificate, comment string
 			Type:      cert.Type(),
 			CertBytes: cert.Marshal(),
 			D:         k.D,
+			Comments:  comment,
+		})
+	case ed25519.PrivateKey:
+		req = ssh.Marshal(ed25519CertMsg{
+			Type:      cert.Type(),
+			CertBytes: cert.Marshal(),
+			Pub:       []byte(k)[32:],
+			Priv:      []byte(k),
 			Comments:  comment,
 		})
 	default:

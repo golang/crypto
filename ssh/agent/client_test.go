@@ -139,7 +139,7 @@ func testAgentInterface(t *testing.T, agent Agent, key interface{}, cert *ssh.Ce
 }
 
 func TestAgent(t *testing.T) {
-	for _, keyType := range []string{"rsa", "dsa", "ecdsa"} {
+	for _, keyType := range []string{"rsa", "dsa", "ecdsa", "ed25519"} {
 		testAgent(t, testPrivateKeys[keyType], nil, 0)
 	}
 }
