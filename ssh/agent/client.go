@@ -536,7 +536,7 @@ type ed25519CertMsg struct {
 	Constraints []byte `ssh:"rest"`
 }
 
-// Insert adds a private key to the agent. If a certificate is given,
+// Add adds a private key to the agent. If a certificate is given,
 // that certificate is added instead as public key.
 func (c *client) Add(key AddedKey) error {
 	var constraints []byte
