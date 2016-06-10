@@ -117,10 +117,18 @@ func TestRegister(t *testing.T) {
 	}))
 	defer ts.Close()
 
+	prompt := func(url string) bool {
+		const terms = "https://ca.tld/acme/terms"
+		if url != terms {
+			t.Errorf("prompt url = %q; want %q", url, terms)
+		}
+		return false
+	}
+
 	c := Client{Key: testKey, dir: &Directory{RegURL: ts.URL}}
 	a := &Account{Contact: contacts}
 	var err error
-	if a, err = c.Register(a); err != nil {
+	if a, err = c.Register(a, prompt); err != nil {
 		t.Fatal(err)
 	}
 	if a.URI != "https://ca.tld/acme/reg/1" {
