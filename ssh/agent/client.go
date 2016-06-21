@@ -594,12 +594,12 @@ func (c *client) insertCert(s interface{}, cert *ssh.Certificate, comment string
 			Comments:    comment,
 			Constraints: constraints,
 		})
-	case ed25519.PrivateKey:
+	case *ed25519.PrivateKey:
 		req = ssh.Marshal(ed25519CertMsg{
 			Type:        cert.Type(),
 			CertBytes:   cert.Marshal(),
-			Pub:         []byte(k)[32:],
-			Priv:        []byte(k),
+			Pub:         []byte(*k)[32:],
+			Priv:        []byte(*k),
 			Comments:    comment,
 			Constraints: constraints,
 		})
