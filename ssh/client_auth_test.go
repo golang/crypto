@@ -391,3 +391,49 @@ func TestPermissionsPassing(t *testing.T) {
 func TestNoPermissionsPassing(t *testing.T) {
 	testPermissionsPassing(false, t)
 }
+
+func TestRetryableAuth(t *testing.T) {
+	n := 0
+	passwords := []string{"WRONG1", "WRONG2"}
+
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			RetryableAuthMethod(PasswordCallback(func() (string, error) {
+				p := passwords[n]
+				n++
+				return p, nil
+			}), 2),
+			PublicKeys(testSigners["rsa"]),
+		},
+	}
+
+	if err := tryAuth(t, config); err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+	if n != 2 {
+		t.Fatalf("Did not try all passwords")
+	}
+}
+
+func ExampleRetryableAuthMethod(t *testing.T) {
+	user := "testuser"
+	NumberOfPrompts := 3
+
+	// Normally this would be a callback that prompts the user to answer the
+	// provided questions
+	Cb := func(user, instruction string, questions []string, echos []bool) (answers []string, err error) {
+		return []string{"answer1", "answer2"}, nil
+	}
+
+	config := &ClientConfig{
+		User: user,
+		Auth: []AuthMethod{
+			RetryableAuthMethod(KeyboardInteractiveChallenge(Cb), NumberOfPrompts),
+		},
+	}
+
+	if err := tryAuth(t, config); err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+}
