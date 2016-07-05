@@ -9,6 +9,7 @@ package ssh
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -400,8 +401,7 @@ func (s *Session) wait(reqs <-chan *Request) error {
 	for msg := range reqs {
 		switch msg.Type {
 		case "exit-status":
-			d := msg.Payload
-			wm.status = int(d[0])<<24 | int(d[1])<<16 | int(d[2])<<8 | int(d[3])
+			wm.status = int(binary.BigEndian.Uint32(msg.Payload))
 		case "exit-signal":
 			var sigval struct {
 				Signal     string
