@@ -296,7 +296,7 @@ func TestClientLoginCert(t *testing.T) {
 	t.Log("sign with wrong key")
 	cert.SignCert(rand.Reader, testSigners["dsa"])
 	if err := tryAuth(t, clientConfig); err == nil {
-		t.Errorf("cert login passed with non-authoritive key")
+		t.Errorf("cert login passed with non-authoritative key")
 	}
 
 	t.Log("host cert")
