@@ -114,7 +114,7 @@ type basicResponse struct {
 
 type responseData struct {
 	Raw              asn1.RawContent
-	Version          int           `asn1:"optional,default:1,explicit,tag:0"`
+	Version          int           `asn1:"optional,default:0,explicit,tag:0"`
 	RawResponderName asn1.RawValue `asn1:"optional,explicit,tag:1"`
 	KeyHash          []byte        `asn1:"optional,explicit,tag:2"`
 	ProducedAt       time.Time     `asn1:"generalized"`
