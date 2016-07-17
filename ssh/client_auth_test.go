@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 )
@@ -243,6 +244,9 @@ func TestClientUnsupportedCipher(t *testing.T) {
 }
 
 func TestClientUnsupportedKex(t *testing.T) {
+	if os.Getenv("GO_BUILDER_NAME") != "" {
+		t.Skip("skipping known-flaky test on the Go build dashboard; see golang.org/issue/15198")
+	}
 	config := &ClientConfig{
 		User: "testuser",
 		Auth: []AuthMethod{
