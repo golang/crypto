@@ -270,6 +270,50 @@ func TestTerminalSetSize(t *testing.T) {
 	}
 }
 
+func TestReadPasswordLineEnd(t *testing.T) {
+	var tests = []struct {
+		input string
+		want  string
+	}{
+		{"\n", ""},
+		{"\r\n", ""},
+		{"test\r\n", "test"},
+		{"testtesttesttes\n", "testtesttesttes"},
+		{"testtesttesttes\r\n", "testtesttesttes"},
+		{"testtesttesttesttest\n", "testtesttesttesttest"},
+		{"testtesttesttesttest\r\n", "testtesttesttesttest"},
+	}
+	for _, test := range tests {
+		buf := new(bytes.Buffer)
+		if _, err := buf.WriteString(test.input); err != nil {
+			t.Fatal(err)
+		}
+
+		have, err := readPasswordLine(buf)
+		if err != nil {
+			t.Errorf("readPasswordLine(%q) failed: %v", test.input, err)
+			continue
+		}
+		if string(have) != test.want {
+			t.Errorf("readPasswordLine(%q) returns %q, but %q is expected", test.input, string(have), test.want)
+			continue
+		}
+
+		if _, err = buf.WriteString(test.input); err != nil {
+			t.Fatal(err)
+		}
+		have, err = readPasswordLine(buf)
+		if err != nil {
+			t.Errorf("readPasswordLine(%q) failed: %v", test.input, err)
+			continue
+		}
+		if string(have) != test.want {
+			t.Errorf("readPasswordLine(%q) returns %q, but %q is expected", test.input, string(have), test.want)
+			continue
+		}
+	}
+}
+
 func TestMakeRawState(t *testing.T) {
 	fd := int(os.Stdout.Fd())
 	if !IsTerminal(fd) {
