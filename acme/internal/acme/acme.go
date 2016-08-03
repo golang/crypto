@@ -11,12 +11,19 @@ package acme
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"strconv"
 	"strings"
@@ -351,6 +358,45 @@ func (c *Client) HTTP01Handler(token string) http.Handler {
 	})
 }
 
+// TLSSNI01ChallengeCert creates a certificate for TLS-SNI-01 challenge response.
+// Servers can present the certificate to validate the challenge and prove control
+// over a domain name.
+//
+// The implementation is incomplete in that the returned value is a single certificate,
+// computed only for Z0 of the key authorization. ACME CAs are expected to update
+// their implementations to use the newer version, TLS-SNI-02.
+// For more details on TLS-SNI-01 see https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-7.3.
+//
+// The token argument is a Challenge.Token value.
+// The returned certificate is valid for the next 24 hours.
+func (c *Client) TLSSNI01ChallengeCert(token string) (tls.Certificate, error) {
+	ka := keyAuth(&c.Key.PublicKey, token)
+	b := sha256.Sum256([]byte(ka))
+	h := hex.EncodeToString(b[:])
+	name := fmt.Sprintf("%s.%s.acme.invalid", h[:32], h[32:])
+	return tlsChallengeCert(name)
+}
+
+// TLSSNI02ChallengeCert creates a certificate for TLS-SNI-02 challenge response.
+// Servers can present the certificate to validate the challenge and prove control
+// over a domain name. For more details on TLS-SNI-02 see
+// https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-7.3.
+//
+// The token argument is a Challenge.Token value.
+// The returned certificate is valid for the next 24 hours.
+func (c *Client) TLSSNI02ChallengeCert(token string) (tls.Certificate, error) {
+	b := sha256.Sum256([]byte(token))
+	h := hex.EncodeToString(b[:])
+	sanA := fmt.Sprintf("%s.%s.token.acme.invalid", h[:32], h[32:])
+
+	ka := keyAuth(&c.Key.PublicKey, token)
+	b = sha256.Sum256([]byte(ka))
+	h = hex.EncodeToString(b[:])
+	sanB := fmt.Sprintf("%s.%s.ka.acme.invalid", h[:32], h[32:])
+
+	return tlsChallengeCert(sanA, sanB)
+}
+
 func (c *Client) httpClient() *http.Client {
 	if c.HTTPClient != nil {
 		return c.HTTPClient
@@ -529,6 +575,36 @@ func retryAfter(v string) (time.Duration, error) {
 // keyAuth generates a key authorization string for a given token.
 func keyAuth(pub *rsa.PublicKey, token string) string {
 	return fmt.Sprintf("%s.%s", token, JWKThumbprint(pub))
+}
+
+// tlsChallengeCert creates a temporary certificate for TLS-SNI challenges
+// with the given SANs.
+func tlsChallengeCert(san ...string) (tls.Certificate, error) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	t := x509.Certificate{
+		SerialNumber:          big.NewInt(1),
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().Add(24 * time.Hour),
+		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageKeyEncipherment,
+		DNSNames:              san,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, &t, &t, &key.PublicKey, key)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	cert := encodePEM("CERTIFICATE", der)
+	keyp := encodePEM("RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(key))
+	return tls.X509KeyPair(cert, keyp)
+}
+
+// encodePEM returns b encoded as PEM with block of type typ.
+func encodePEM(typ string, b []byte) []byte {
+	pb := &pem.Block{Type: typ, Bytes: b}
+	return pem.EncodeToMemory(pb)
 }
 
 // timeNow is useful for testing for fixed current time.
