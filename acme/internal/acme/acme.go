@@ -11,6 +11,7 @@ package acme
 
 import (
 	"bytes"
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -52,7 +53,8 @@ type Client struct {
 	HTTPClient *http.Client
 
 	// Key is the account key used to register with a CA and sign requests.
-	Key *rsa.PrivateKey
+	// Key.Public() must return a *rsa.PublicKey or *ecdsa.PublicKey.
+	Key crypto.Signer
 
 	// DirectoryURL points to the CA directory endpoint.
 	// If empty, LetsEncryptURL is used.
@@ -318,6 +320,11 @@ func (c *Client) GetChallenge(url string) (*Challenge, error) {
 //
 // The server will then perform the validation asynchronously.
 func (c *Client) Accept(chal *Challenge) (*Challenge, error) {
+	auth, err := keyAuth(c.Key.Public(), chal.Token)
+	if err != nil {
+		return nil, err
+	}
+
 	req := struct {
 		Resource string `json:"resource"`
 		Type     string `json:"type"`
@@ -325,7 +332,7 @@ func (c *Client) Accept(chal *Challenge) (*Challenge, error) {
 	}{
 		Resource: "challenge",
 		Type:     chal.Type,
-		Auth:     keyAuth(&c.Key.PublicKey, chal.Token),
+		Auth:     auth,
 	}
 	res, err := c.postJWS(chal.URI, req)
 	if err != nil {
@@ -354,7 +361,12 @@ func (c *Client) HTTP01Handler(token string) http.Handler {
 			return
 		}
 		w.Header().Set("content-type", "text/plain")
-		w.Write([]byte(keyAuth(&c.Key.PublicKey, token)))
+		auth, err := keyAuth(c.Key.Public(), token)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Write([]byte(auth))
 	})
 }
 
@@ -370,7 +382,10 @@ func (c *Client) HTTP01Handler(token string) http.Handler {
 // The token argument is a Challenge.Token value.
 // The returned certificate is valid for the next 24 hours.
 func (c *Client) TLSSNI01ChallengeCert(token string) (tls.Certificate, error) {
-	ka := keyAuth(&c.Key.PublicKey, token)
+	ka, err := keyAuth(c.Key.Public(), token)
+	if err != nil {
+		return tls.Certificate{}, nil
+	}
 	b := sha256.Sum256([]byte(ka))
 	h := hex.EncodeToString(b[:])
 	name := fmt.Sprintf("%s.%s.acme.invalid", h[:32], h[32:])
@@ -389,7 +404,10 @@ func (c *Client) TLSSNI02ChallengeCert(token string) (tls.Certificate, error) {
 	h := hex.EncodeToString(b[:])
 	sanA := fmt.Sprintf("%s.%s.token.acme.invalid", h[:32], h[32:])
 
-	ka := keyAuth(&c.Key.PublicKey, token)
+	ka, err := keyAuth(c.Key.Public(), token)
+	if err != nil {
+		return tls.Certificate{}, nil
+	}
 	b = sha256.Sum256([]byte(ka))
 	h = hex.EncodeToString(b[:])
 	sanB := fmt.Sprintf("%s.%s.ka.acme.invalid", h[:32], h[32:])
@@ -573,8 +591,12 @@ func retryAfter(v string) (time.Duration, error) {
 }
 
 // keyAuth generates a key authorization string for a given token.
-func keyAuth(pub *rsa.PublicKey, token string) string {
-	return fmt.Sprintf("%s.%s", token, JWKThumbprint(pub))
+func keyAuth(pub crypto.PublicKey, token string) (string, error) {
+	th, err := JWKThumbprint(pub)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s.%s", token, th), nil
 }
 
 // tlsChallengeCert creates a temporary certificate for TLS-SNI challenges
