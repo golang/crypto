@@ -615,12 +615,10 @@ func tlsChallengeCert(san ...string) (tls.Certificate, error) {
 		DNSNames:              san,
 	}
 	der, err := x509.CreateCertificate(rand.Reader, &t, &t, &key.PublicKey, key)
-	if err != nil {
-		return tls.Certificate{}, err
-	}
-	cert := encodePEM("CERTIFICATE", der)
-	keyp := encodePEM("RSA PRIVATE KEY", x509.MarshalPKCS1PrivateKey(key))
-	return tls.X509KeyPair(cert, keyp)
+	return tls.Certificate{
+		Certificate: [][]byte{der},
+		PrivateKey:  key,
+	}, nil
 }
 
 // encodePEM returns b encoded as PEM with block of type typ.
