@@ -5,6 +5,7 @@
 package acme
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -635,15 +636,22 @@ func TestNewCert(t *testing.T) {
 }
 
 func TestFetchCert(t *testing.T) {
-	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte{1})
+	var count byte
+	var ts *httptest.Server
+	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count++
+		if count < 3 {
+			up := fmt.Sprintf("<%s>;rel=up", ts.URL)
+			w.Header().Set("link", up)
+		}
+		w.Write([]byte{count})
 	}))
 	defer ts.Close()
-	res, err := (&Client{}).FetchCert(context.Background(), ts.URL, false)
+	res, err := (&Client{}).FetchCert(context.Background(), ts.URL, true)
 	if err != nil {
 		t.Fatalf("FetchCert: %v", err)
 	}
-	cert := [][]byte{{1}}
+	cert := [][]byte{{1}, {2}, {3}}
 	if !reflect.DeepEqual(res, cert) {
 		t.Errorf("res = %v; want %v", res, cert)
 	}
@@ -691,6 +699,52 @@ func TestFetchCertCancel(t *testing.T) {
 	}
 }
 
+func TestFetchCertDepth(t *testing.T) {
+	var count byte
+	var ts *httptest.Server
+	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count++
+		if count > maxChainLen+1 {
+			t.Errorf("count = %d; want at most %d", count, maxChainLen+1)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+		w.Header().Set("link", fmt.Sprintf("<%s>;rel=up", ts.URL))
+		w.Write([]byte{count})
+	}))
+	defer ts.Close()
+	_, err := (&Client{}).FetchCert(context.Background(), ts.URL, true)
+	if err == nil {
+		t.Errorf("err is nil")
+	}
+}
+
+func TestFetchCertBreadth(t *testing.T) {
+	var ts *httptest.Server
+	ts = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for i := 0; i < maxChainLen+1; i++ {
+			w.Header().Add("link", fmt.Sprintf("<%s>;rel=up", ts.URL))
+		}
+		w.Write([]byte{1})
+	}))
+	defer ts.Close()
+	_, err := (&Client{}).FetchCert(context.Background(), ts.URL, true)
+	if err == nil {
+		t.Errorf("err is nil")
+	}
+}
+
+func TestFetchCertSize(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b := bytes.Repeat([]byte{1}, maxCertSize+1)
+		w.Write(b)
+	}))
+	defer ts.Close()
+	_, err := (&Client{}).FetchCert(context.Background(), ts.URL, false)
+	if err == nil {
+		t.Errorf("err is nil")
+	}
+}
+
 func TestFetchNonce(t *testing.T) {
 	tests := []struct {
 		code  int
@@ -729,16 +783,20 @@ func TestLinkHeader(t *testing.T) {
 		`<https://example.com/acme/new-authz>;rel="next"`,
 		`<https://example.com/acme/recover-reg>; rel=recover`,
 		`<https://example.com/acme/terms>; foo=bar; rel="terms-of-service"`,
+		`<dup>;rel="next"`,
 	}}
-	tests := []struct{ in, out string }{
-		{"next", "https://example.com/acme/new-authz"},
-		{"recover", "https://example.com/acme/recover-reg"},
-		{"terms-of-service", "https://example.com/acme/terms"},
-		{"empty", ""},
+	tests := []struct {
+		rel string
+		out []string
+	}{
+		{"next", []string{"https://example.com/acme/new-authz", "dup"}},
+		{"recover", []string{"https://example.com/acme/recover-reg"}},
+		{"terms-of-service", []string{"https://example.com/acme/terms"}},
+		{"empty", nil},
 	}
 	for i, test := range tests {
-		if v := linkHeader(h, test.in); v != test.out {
-			t.Errorf("%d: parseLinkHeader(%q): %q; want %q", i, test.in, v, test.out)
+		if v := linkHeader(h, test.rel); !reflect.DeepEqual(v, test.out) {
+			t.Errorf("%d: linkHeader(%q): %v; want %v", i, test.rel, v, test.out)
 		}
 	}
 }

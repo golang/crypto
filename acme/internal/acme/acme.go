@@ -23,6 +23,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/big"
 	"net/http"
@@ -32,10 +33,16 @@ import (
 	"time"
 
 	"golang.org/x/net/context"
+	"golang.org/x/net/context/ctxhttp"
 )
 
 // LetsEncryptURL is the Directory endpoint of Let's Encrypt CA.
 const LetsEncryptURL = "https://acme-v01.api.letsencrypt.org/directory"
+
+const (
+	maxChainLen = 5       // max depth and breadth of a certificate chain
+	maxCertSize = 1 << 20 // max size of a certificate, in bytes
+)
 
 // Client is an ACME client.
 // The only required field is Key. An example of creating a client with a new key
@@ -117,13 +124,17 @@ func (c *Client) Discover() (Directory, error) {
 	return *c.dir, nil
 }
 
-// CreateCert requests a new certificate.
+// CreateCert requests a new certificate using the Certificate Signing Request csr encoded in DER format.
+// The exp argument indicates the desired certificate validity duration. CA may issue a certificate
+// with a different duration.
+// If the bundle argument is true, the returned value will also contain the CA (issuer) certificate chain.
+//
 // In the case where CA server does not provide the issued certificate in the response,
 // CreateCert will poll certURL using c.FetchCert, which will result in additional round-trips.
 // In such scenario the caller can cancel the polling with ctx.
 //
-// If the bundle is true, the returned value will also contain CA (the issuer) certificate.
-// The csr is a DER encoded certificate signing request.
+// CreateCert returns an error if the CA's response or chain was unreasonably large.
+// Callers are encouraged to parse the returned value to ensure the certificate is valid and has the expected features.
 func (c *Client) CreateCert(ctx context.Context, csr []byte, exp time.Duration, bundle bool) (der [][]byte, certURL string, err error) {
 	if _, err := c.Discover(); err != nil {
 		return nil, "", err
@@ -159,8 +170,8 @@ func (c *Client) CreateCert(ctx context.Context, csr []byte, exp time.Duration, 
 		cert, err := c.FetchCert(ctx, curl, bundle)
 		return cert, curl, err
 	}
-	// slurp issued cert and ca, if requested
-	cert, err := responseCert(c.httpClient(), res, bundle)
+	// slurp issued cert and CA chain, if requested
+	cert, err := responseCert(ctx, c.httpClient(), res, bundle)
 	return cert, curl, err
 }
 
@@ -168,16 +179,20 @@ func (c *Client) CreateCert(ctx context.Context, csr []byte, exp time.Duration, 
 // It retries the request until the certificate is successfully retrieved,
 // context is cancelled by the caller or an error response is received.
 //
-// The returned value will also contain CA (the issuer) certificate if bundle is true.
+// The returned value will also contain the CA (issuer) certificate if the bundle argument is true.
+//
+// FetchCert returns an error if the CA's response or chain was unreasonably large.
+// Callers are encouraged to parse the returned value to ensure the certificate is valid
+// and has expected features.
 func (c *Client) FetchCert(ctx context.Context, url string, bundle bool) ([][]byte, error) {
 	for {
-		res, err := c.httpClient().Get(url)
+		res, err := ctxhttp.Get(ctx, c.httpClient(), url)
 		if err != nil {
 			return nil, err
 		}
 		defer res.Body.Close()
 		if res.StatusCode == http.StatusOK {
-			return responseCert(c.httpClient(), res, bundle)
+			return responseCert(ctx, c.httpClient(), res, bundle)
 		}
 		if res.StatusCode > 299 {
 			return nil, responseError(res)
@@ -502,45 +517,56 @@ func (c *Client) doReg(url string, typ string, acct *Account) (*Account, error) 
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
 		return nil, fmt.Errorf("acme: invalid response: %v", err)
 	}
+	var tos string
+	if v := linkHeader(res.Header, "terms-of-service"); len(v) > 0 {
+		tos = v[0]
+	}
+	var authz string
+	if v := linkHeader(res.Header, "next"); len(v) > 0 {
+		authz = v[0]
+	}
 	return &Account{
 		URI:            res.Header.Get("Location"),
 		Contact:        v.Contact,
 		AgreedTerms:    v.Agreement,
-		CurrentTerms:   linkHeader(res.Header, "terms-of-service"),
-		Authz:          linkHeader(res.Header, "next"),
+		CurrentTerms:   tos,
+		Authz:          authz,
 		Authorizations: v.Authorizations,
 		Certificates:   v.Certificates,
 	}, nil
 }
 
-func responseCert(client *http.Client, res *http.Response, bundle bool) ([][]byte, error) {
-	b, err := ioutil.ReadAll(res.Body)
+func responseCert(ctx context.Context, client *http.Client, res *http.Response, bundle bool) ([][]byte, error) {
+	b, err := ioutil.ReadAll(io.LimitReader(res.Body, maxCertSize+1))
 	if err != nil {
 		return nil, fmt.Errorf("acme: response stream: %v", err)
+	}
+	if len(b) > maxCertSize {
+		return nil, errors.New("acme: certificate is too big")
 	}
 	cert := [][]byte{b}
 	if !bundle {
 		return cert, nil
 	}
 
-	// append ca cert
+	// Append CA chain cert(s).
+	// At least one is required according to the spec:
+	// https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-6.3.1
 	up := linkHeader(res.Header, "up")
-	if up == "" {
+	if len(up) == 0 {
 		return nil, errors.New("acme: rel=up link not found")
 	}
-	res, err = client.Get(up)
-	if err != nil {
-		return nil, err
+	if len(up) > maxChainLen {
+		return nil, errors.New("acme: rel=up link is too large")
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		return nil, responseError(res)
+	for _, url := range up {
+		cc, err := chainCert(ctx, client, url, 0)
+		if err != nil {
+			return nil, err
+		}
+		cert = append(cert, cc...)
 	}
-	b, err = ioutil.ReadAll(res.Body)
-	if err != nil {
-		return nil, err
-	}
-	return append(cert, b), nil
+	return cert, nil
 }
 
 // responseError creates an error of Error type from resp.
@@ -572,6 +598,48 @@ func responseError(resp *http.Response) error {
 	}
 }
 
+// chainCert fetches CA certificate chain recursively by following "up" links.
+// Each recursive call increments the depth by 1, resulting in an error
+// if the recursion level reaches maxChainLen.
+//
+// First chainCert call starts with depth of 0.
+func chainCert(ctx context.Context, client *http.Client, url string, depth int) ([][]byte, error) {
+	if depth >= maxChainLen {
+		return nil, errors.New("acme: certificate chain is too deep")
+	}
+
+	res, err := ctxhttp.Get(ctx, client, url)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return nil, responseError(res)
+	}
+	b, err := ioutil.ReadAll(io.LimitReader(res.Body, maxCertSize+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxCertSize {
+		return nil, errors.New("acme: certificate is too big")
+	}
+	chain := [][]byte{b}
+
+	uplink := linkHeader(res.Header, "up")
+	if len(uplink) > maxChainLen {
+		return nil, errors.New("acme: certificate chain is too large")
+	}
+	for _, up := range uplink {
+		cc, err := chainCert(ctx, client, up, depth+1)
+		if err != nil {
+			return nil, err
+		}
+		chain = append(chain, cc...)
+	}
+
+	return chain, nil
+}
+
 func fetchNonce(client *http.Client, url string) (string, error) {
 	resp, err := client.Head(url)
 	if err != nil {
@@ -585,7 +653,11 @@ func fetchNonce(client *http.Client, url string) (string, error) {
 	return enc, nil
 }
 
-func linkHeader(h http.Header, rel string) string {
+// linkHeader returns URI-Reference values of all Link headers
+// with relation-type rel.
+// See https://tools.ietf.org/html/rfc5988#section-5 for details.
+func linkHeader(h http.Header, rel string) []string {
+	var links []string
 	for _, v := range h["Link"] {
 		parts := strings.Split(v, ";")
 		for _, p := range parts {
@@ -594,11 +666,11 @@ func linkHeader(h http.Header, rel string) string {
 				continue
 			}
 			if v := strings.Trim(p[4:], `"`); v == rel {
-				return strings.Trim(parts[0], "<>")
+				links = append(links, strings.Trim(parts[0], "<>"))
 			}
 		}
 	}
-	return ""
+	return links
 }
 
 func retryAfter(v string) (time.Duration, error) {
