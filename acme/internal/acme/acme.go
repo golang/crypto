@@ -380,16 +380,22 @@ func (c *Client) HTTP01Handler(token string) http.Handler {
 // For more details on TLS-SNI-01 see https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-7.3.
 //
 // The token argument is a Challenge.Token value.
-// The returned certificate is valid for the next 24 hours.
-func (c *Client) TLSSNI01ChallengeCert(token string) (tls.Certificate, error) {
+//
+// The returned certificate is valid for the next 24 hours and must be presented only when
+// the server name of the client hello matches exactly the returned name value.
+func (c *Client) TLSSNI01ChallengeCert(token string) (cert tls.Certificate, name string, err error) {
 	ka, err := keyAuth(c.Key.Public(), token)
 	if err != nil {
-		return tls.Certificate{}, nil
+		return tls.Certificate{}, "", err
 	}
 	b := sha256.Sum256([]byte(ka))
 	h := hex.EncodeToString(b[:])
-	name := fmt.Sprintf("%s.%s.acme.invalid", h[:32], h[32:])
-	return tlsChallengeCert(name)
+	name = fmt.Sprintf("%s.%s.acme.invalid", h[:32], h[32:])
+	cert, err = tlsChallengeCert(name)
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	return cert, name, nil
 }
 
 // TLSSNI02ChallengeCert creates a certificate for TLS-SNI-02 challenge response.
@@ -398,21 +404,27 @@ func (c *Client) TLSSNI01ChallengeCert(token string) (tls.Certificate, error) {
 // https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-7.3.
 //
 // The token argument is a Challenge.Token value.
-// The returned certificate is valid for the next 24 hours.
-func (c *Client) TLSSNI02ChallengeCert(token string) (tls.Certificate, error) {
+//
+// The returned certificate is valid for the next 24 hours and must be presented only when
+// the server name in the client hello matches exactly the returned name value.
+func (c *Client) TLSSNI02ChallengeCert(token string) (cert tls.Certificate, name string, err error) {
 	b := sha256.Sum256([]byte(token))
 	h := hex.EncodeToString(b[:])
 	sanA := fmt.Sprintf("%s.%s.token.acme.invalid", h[:32], h[32:])
 
 	ka, err := keyAuth(c.Key.Public(), token)
 	if err != nil {
-		return tls.Certificate{}, nil
+		return tls.Certificate{}, "", err
 	}
 	b = sha256.Sum256([]byte(ka))
 	h = hex.EncodeToString(b[:])
 	sanB := fmt.Sprintf("%s.%s.ka.acme.invalid", h[:32], h[32:])
 
-	return tlsChallengeCert(sanA, sanB)
+	cert, err = tlsChallengeCert(sanA, sanB)
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	return cert, sanA, nil
 }
 
 func (c *Client) httpClient() *http.Client {

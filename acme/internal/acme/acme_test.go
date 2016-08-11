@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -775,7 +776,7 @@ func TestTLSSNI01ChallengeCert(t *testing.T) {
 	)
 
 	client := &Client{Key: testKey}
-	tlscert, err := client.TLSSNI01ChallengeCert(token)
+	tlscert, name, err := client.TLSSNI01ChallengeCert(token)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -788,7 +789,10 @@ func TestTLSSNI01ChallengeCert(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(cert.DNSNames) != 1 || cert.DNSNames[0] != san {
-		t.Errorf("cert.DNSNames = %v; want %q", cert.DNSNames, san)
+		t.Fatalf("cert.DNSNames = %v; want %q", cert.DNSNames, san)
+	}
+	if cert.DNSNames[0] != name {
+		t.Errorf("cert.DNSNames[0] != name: %q vs %q", cert.DNSNames[0], name)
 	}
 }
 func TestTLSSNI02ChallengeCert(t *testing.T) {
@@ -801,7 +805,7 @@ func TestTLSSNI02ChallengeCert(t *testing.T) {
 	)
 
 	client := &Client{Key: testKey}
-	tlscert, err := client.TLSSNI02ChallengeCert(token)
+	tlscert, name, err := client.TLSSNI02ChallengeCert(token)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -815,6 +819,11 @@ func TestTLSSNI02ChallengeCert(t *testing.T) {
 	}
 	names := []string{sanA, sanB}
 	if !reflect.DeepEqual(cert.DNSNames, names) {
-		t.Errorf("cert.DNSNames = %v;\nwant %v", cert.DNSNames, names)
+		t.Fatalf("cert.DNSNames = %v;\nwant %v", cert.DNSNames, names)
+	}
+	sort.Strings(cert.DNSNames)
+	i := sort.SearchStrings(cert.DNSNames, name)
+	if i >= len(cert.DNSNames) || cert.DNSNames[i] != name {
+		t.Errorf("%v doesn't have %q", cert.DNSNames, name)
 	}
 }
