@@ -205,6 +205,9 @@ func TestUpdateReg(t *testing.T) {
 	if a.CurrentTerms != terms {
 		t.Errorf("a.CurrentTerms = %q; want %q", a.CurrentTerms, terms)
 	}
+	if a.URI != ts.URL {
+		t.Errorf("a.URI = %q; want %q", a.URI, ts.URL)
+	}
 }
 
 func TestGetReg(t *testing.T) {
@@ -265,6 +268,9 @@ func TestGetReg(t *testing.T) {
 	}
 	if a.CurrentTerms != newTerms {
 		t.Errorf("a.CurrentTerms = %q; want %q", a.CurrentTerms, newTerms)
+	}
+	if a.URI != ts.URL {
+		t.Errorf("a.URI = %q; want %q", a.URI, ts.URL)
 	}
 }
 

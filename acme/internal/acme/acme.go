@@ -229,14 +229,24 @@ func (c *Client) Register(a *Account, prompt func(tos string) bool) (*Account, e
 // GetReg retrieves an existing registration.
 // The url argument is an Account URI.
 func (c *Client) GetReg(url string) (*Account, error) {
-	a := &Account{URI: url}
-	return c.doReg(url, "reg", a)
+	a, err := c.doReg(url, "reg", nil)
+	if err != nil {
+		return nil, err
+	}
+	a.URI = url
+	return a, nil
 }
 
 // UpdateReg updates an existing registration.
 // It returns an updated account copy. The provided account is not modified.
 func (c *Client) UpdateReg(a *Account) (*Account, error) {
-	return c.doReg(a.URI, "reg", a)
+	uri := a.URI
+	a, err := c.doReg(uri, "reg", a)
+	if err != nil {
+		return nil, err
+	}
+	a.URI = uri
+	return a, nil
 }
 
 // Authorize performs the initial step in an authorization flow.
