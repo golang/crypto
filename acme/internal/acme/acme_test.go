@@ -801,6 +801,7 @@ func TestTLSSNI01ChallengeCert(t *testing.T) {
 		t.Errorf("cert.DNSNames[0] != name: %q vs %q", cert.DNSNames[0], name)
 	}
 }
+
 func TestTLSSNI02ChallengeCert(t *testing.T) {
 	const (
 		token = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ-PCt92wr-oA"
