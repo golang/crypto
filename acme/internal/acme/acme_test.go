@@ -892,3 +892,23 @@ func TestTLSSNI02ChallengeCert(t *testing.T) {
 		t.Errorf("%v doesn't have %q", cert.DNSNames, name)
 	}
 }
+
+func TestHTTP01Challenge(t *testing.T) {
+	const (
+		token = "xxx"
+		// thumbprint is precomputed for testKey in jws_test.go
+		value   = token + "." + testKeyThumbprint
+		urlpath = "/.well-known/acme-challenge/" + token
+	)
+	client := &Client{Key: testKey}
+	val, err := client.HTTP01ChallengeResponse(token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if val != value {
+		t.Errorf("val = %q; want %q", val, value)
+	}
+	if path := client.HTTP01ChallengePath(token); path != urlpath {
+		t.Errorf("path = %q; want %q", path, urlpath)
+	}
+}
