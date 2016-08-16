@@ -48,7 +48,8 @@ var authzTmpl = template.Must(template.New("authz").Parse(`{
 }`))
 
 func dummyCert(san ...string) ([]byte, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	// use smaller key to run faster on 386
+	key, err := rsa.GenerateKey(rand.Reader, 512)
 	if err != nil {
 		return nil, err
 	}
@@ -128,7 +129,16 @@ func TestGetCertificate(t *testing.T) {
 		}
 	}))
 	defer ca.Close()
-	man.Client = &acme.Client{DirectoryURL: ca.URL}
+
+	// use smaller key to run faster on 386
+	key, kerr := rsa.GenerateKey(rand.Reader, 512)
+	if kerr != nil {
+		t.Fatal(kerr)
+	}
+	man.Client = &acme.Client{
+		Key:          key,
+		DirectoryURL: ca.URL,
+	}
 
 	// simulate tls.Config.GetCertificate
 	var (
@@ -142,7 +152,7 @@ func TestGetCertificate(t *testing.T) {
 		close(done)
 	}()
 	select {
-	case <-time.After(10 * time.Second):
+	case <-time.After(15 * time.Second):
 		t.Fatal("man.GetCertificate took too long to return")
 	case <-done:
 	}
