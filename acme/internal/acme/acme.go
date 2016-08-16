@@ -210,6 +210,40 @@ func (c *Client) FetchCert(ctx context.Context, url string, bundle bool) ([][]by
 	}
 }
 
+// RevokeCert revokes a previously issued certificate cert, provided in DER format.
+//
+// The key argument, used to sign the request, must be authorized
+// to revoke the certificate. It's up to the CA to decide which keys are authorized.
+// For instance, the key pair of the certificate may be authorized.
+// If the key is nil, c.Key is used instead.
+func (c *Client) RevokeCert(ctx context.Context, key crypto.Signer, cert []byte, reason CRLReasonCode) error {
+	if _, err := c.Discover(ctx); err != nil {
+		return err
+	}
+
+	body := &struct {
+		Resource string `json:"resource"`
+		Cert     string `json:"certificate"`
+		Reason   int    `json:"reason"`
+	}{
+		Resource: "revoke-cert",
+		Cert:     base64.RawURLEncoding.EncodeToString(cert),
+		Reason:   int(reason),
+	}
+	if key == nil {
+		key = c.Key
+	}
+	res, err := postJWS(ctx, c.HTTPClient, key, c.dir.RevokeURL, body)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return responseError(res)
+	}
+	return nil
+}
+
 // AcceptTOS always returns true to indicate the acceptance of a CA's Terms of Service
 // during account registration. See Register method of Client for more details.
 func AcceptTOS(tosURL string) bool { return true }

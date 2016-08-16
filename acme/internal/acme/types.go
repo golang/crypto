@@ -16,6 +16,23 @@ const (
 	StatusRevoked    = "revoked"
 )
 
+// CRLReasonCode identifies the reason for a certificate revocation.
+type CRLReasonCode int
+
+// CRL reason codes as defined in RFC 5280.
+const (
+	CRLReasonUnspecified          CRLReasonCode = 0
+	CRLReasonKeyCompromise        CRLReasonCode = 1
+	CRLReasonCACompromise         CRLReasonCode = 2
+	CRLReasonAffiliationChanged   CRLReasonCode = 3
+	CRLReasonSuperseded           CRLReasonCode = 4
+	CRLReasonCessationOfOperation CRLReasonCode = 5
+	CRLReasonCertificateHold      CRLReasonCode = 6
+	CRLReasonRemoveFromCRL        CRLReasonCode = 8
+	CRLReasonPrivilegeWithdrawn   CRLReasonCode = 9
+	CRLReasonAACompromise         CRLReasonCode = 10
+)
+
 // ErrUnsupportedKey is returned when an unsupported key type is encountered.
 var ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
 
