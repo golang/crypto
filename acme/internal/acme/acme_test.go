@@ -61,7 +61,7 @@ func TestDiscover(t *testing.T) {
 	}))
 	defer ts.Close()
 	c := Client{DirectoryURL: ts.URL}
-	dir, err := c.Discover()
+	dir, err := c.Discover(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestRegister(t *testing.T) {
 	c := Client{Key: testKey, dir: &Directory{RegURL: ts.URL}}
 	a := &Account{Contact: contacts}
 	var err error
-	if a, err = c.Register(a, prompt); err != nil {
+	if a, err = c.Register(context.Background(), a, prompt); err != nil {
 		t.Fatal(err)
 	}
 	if a.URI != "https://ca.tld/acme/reg/1" {
@@ -194,7 +194,7 @@ func TestUpdateReg(t *testing.T) {
 	c := Client{Key: testKey}
 	a := &Account{URI: ts.URL, Contact: contacts, AgreedTerms: terms}
 	var err error
-	if a, err = c.UpdateReg(a); err != nil {
+	if a, err = c.UpdateReg(context.Background(), a); err != nil {
 		t.Fatal(err)
 	}
 	if a.Authz != "https://ca.tld/acme/new-authz" {
@@ -257,7 +257,7 @@ func TestGetReg(t *testing.T) {
 	defer ts.Close()
 
 	c := Client{Key: testKey}
-	a, err := c.GetReg(ts.URL)
+	a, err := c.GetReg(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -329,7 +329,7 @@ func TestAuthorize(t *testing.T) {
 	defer ts.Close()
 
 	cl := Client{Key: testKey, dir: &Directory{AuthzURL: ts.URL}}
-	auth, err := cl.Authorize("example.com")
+	auth, err := cl.Authorize(context.Background(), "example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +408,7 @@ func TestPollAuthz(t *testing.T) {
 	defer ts.Close()
 
 	cl := Client{Key: testKey}
-	auth, err := cl.GetAuthz(ts.URL)
+	auth, err := cl.GetAuthz(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -471,7 +471,7 @@ func TestPollChallenge(t *testing.T) {
 	defer ts.Close()
 
 	cl := Client{Key: testKey}
-	chall, err := cl.GetChallenge(ts.URL)
+	chall, err := cl.GetChallenge(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -532,7 +532,7 @@ func TestAcceptChallenge(t *testing.T) {
 	defer ts.Close()
 
 	cl := Client{Key: testKey}
-	c, err := cl.Accept(&Challenge{
+	c, err := cl.Accept(context.Background(), &Challenge{
 		URI:   ts.URL,
 		Token: "token1",
 		Type:  "http-01",
@@ -765,7 +765,7 @@ func TestFetchNonce(t *testing.T) {
 	defer ts.Close()
 	for ; i < len(tests); i++ {
 		test := tests[i]
-		n, err := fetchNonce(http.DefaultClient, ts.URL)
+		n, err := fetchNonce(context.Background(), http.DefaultClient, ts.URL)
 		if n != test.nonce {
 			t.Errorf("%d: n=%q; want %q", i, n, test.nonce)
 		}
