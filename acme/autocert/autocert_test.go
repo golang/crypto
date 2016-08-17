@@ -17,7 +17,6 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -274,15 +273,26 @@ func TestCache(t *testing.T) {
 	}
 }
 
-func TestDNSNames(t *testing.T) {
-	man := Manager{
-		DNSNames: []string{"example.com"},
-		// prevent network round-trips, just in case
-		Client: &acme.Client{DirectoryURL: "dummy"},
+func TestHostWhitelist(t *testing.T) {
+	policy := HostWhitelist("example.com", "example.org", "*.example.net")
+	tt := []struct {
+		host  string
+		allow bool
+	}{
+		{"example.com", true},
+		{"example.org", true},
+		{"one.example.com", false},
+		{"two.example.org", false},
+		{"three.example.net", false},
+		{"dummy", false},
 	}
-	hello := &tls.ClientHelloInfo{ServerName: "example.org"}
-	_, err := man.GetCertificate(hello)
-	if err == nil || !strings.Contains(err.Error(), "not allowed") {
-		t.Errorf("err = %v; want 'not allowed'", err)
+	for i, test := range tt {
+		err := policy(nil, test.host)
+		if err != nil && test.allow {
+			t.Errorf("%d: policy(%q): %v; want nil", i, test.host, err)
+		}
+		if err == nil && !test.allow {
+			t.Errorf("%d: policy(%q): nil; want an error", i, test.host)
+		}
 	}
 }

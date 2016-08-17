@@ -35,13 +35,43 @@ import (
 // during account registration.
 func AcceptTOS(tosURL string) bool { return true }
 
+// HostPolicy specifies which host names the Manager is allowed to respond to.
+// It returns a non-nil error if the host should be rejected.
+// The returned error is accessible via tls.Conn.Handshake and its callers.
+// See Manager's HostPolicy field and GetCertificate method docs for more details.
+type HostPolicy func(ctx context.Context, host string) error
+
+// HostWhitelist returns a policy where only the specified host names are allowed.
+// Only exact matches are currently supported. Subdomains, regexp or wildcard
+// will not match.
+func HostWhitelist(hosts ...string) HostPolicy {
+	whitelist := make(map[string]bool, len(hosts))
+	for _, h := range hosts {
+		whitelist[h] = true
+	}
+	return func(_ context.Context, host string) error {
+		if !whitelist[host] {
+			return errors.New("acme/autocert: host not configured")
+		}
+		return nil
+	}
+}
+
+// defaultHostPolicy is used when Manager.HostPolicy is not set.
+func defaultHostPolicy(context.Context, string) error {
+	return nil
+}
+
 // Manager is a stateful certificate manager built on top of acme.Client.
 // It obtains and refreshes certificates automatically,
 // as well as providing them to a TLS server via tls.Config.
 //
 // A simple usage example:
 //
-//	m := autocert.Manager{Prompt: autocert.AcceptTOS}
+//	m := autocert.Manager{
+//		Prompt: autocert.AcceptTOS,
+//		HostPolicy: autocert.HostWhitelist("example.org"),
+//	}
 //	s := &http.Server{
 //		Addr: ":https",
 //		TLSConfig: &tls.Config{GetCertificate: m.GetCertificate},
@@ -66,11 +96,19 @@ type Manager struct {
 	// parts combined in a single Cache.Put call, private key first.
 	Cache Cache
 
-	// DNSNames restricts Manager to work with only the specified domain names.
-	// If the field is nil or empty, any domain name is allowed.
-	// The elements of DNSNames must be sorted in lexical order.
-	// Only exact matches are supported, no regexp or wildcard.
-	DNSNames []string
+	// HostPolicy controls which domains the Manager will attempt
+	// to retrieve new certificates for. It does not affect cached certs.
+	//
+	// If non-nil, HostPolicy is called before requesting a new cert.
+	// If nil, all hosts are currently allowed. This is not recommended,
+	// as it opens a potential attack where clients connect to a server
+	// by IP address and pretend to be asking for an incorrect host name.
+	// Manager will attempt to obtain a certificate for that host, incorrectly,
+	// eventually reaching the CA's rate limit for certificate requests
+	// and making it impossible to obtain actual certificates.
+	//
+	// See GetCertificate for more details.
+	HostPolicy HostPolicy
 
 	// Client is used to perform low-level operations, such as account registration
 	// and requesting new certificates.
@@ -103,18 +141,10 @@ type Manager struct {
 // It provides a TLS certificate for hello.ServerName host, including answering
 // *.acme.invalid (TLS-SNI) challenges. All other fields of hello are ignored.
 //
-// A simple usage can be shown as follows:
-//
-//	s := &http.Server{
-//		Addr: ":https",
-//		TLSConfig: &tls.Config{
-//			GetCertificate: m.GetCertificate,
-//		},
-//	}
-//	s.ListenAndServeTLS("", "")
-//
-// If m.DNSNames is not empty and none of its elements match hello.ServerName exactly,
-// GetCertificate returns an error.
+// If m.HostPolicy is non-nil, GetCertificate calls the policy before requesting
+// a new cert. A non-nil error returned from m.HostPolicy halts TLS negotiation.
+// The error is propagated back to the caller of GetCertificate and is user-visible.
+// This does not affect cached certs. See HostPolicy field description for more details.
 func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	name := hello.ServerName
 	if name == "" {
@@ -135,14 +165,6 @@ func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, 
 		return nil, fmt.Errorf("acme/autocert: no token cert for %q", name)
 	}
 
-	// check against allowed set of host names
-	if len(m.DNSNames) > 0 {
-		i := sort.SearchStrings(m.DNSNames, name)
-		if i >= len(m.DNSNames) || m.DNSNames[i] != name {
-			return nil, fmt.Errorf("acme/autocert: %q is not allowed", name)
-		}
-	}
-
 	// regular domain
 	cert, err := m.cert(name)
 	if err == nil {
@@ -154,6 +176,9 @@ func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, 
 
 	// first-time
 	ctx := context.Background() // TODO: use a deadline?
+	if err := m.hostPolicy()(ctx, name); err != nil {
+		return nil, err
+	}
 	cert, err = m.createCert(ctx, name)
 	if err != nil {
 		return nil, err
@@ -524,6 +549,13 @@ func (m *Manager) acmeClient(ctx context.Context) (*acme.Client, error) {
 		err = nil
 	}
 	return m.client, err
+}
+
+func (m *Manager) hostPolicy() HostPolicy {
+	if m.HostPolicy != nil {
+		return m.HostPolicy
+	}
+	return defaultHostPolicy
 }
 
 // certState is ready when its mutex is unlocked for reading.
