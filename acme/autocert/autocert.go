@@ -404,6 +404,11 @@ func (m *Manager) verify(ctx context.Context, domain string) error {
 	if err != nil {
 		return err
 	}
+	// maybe don't need to at all
+	if authz.Status == acme.StatusValid {
+		return nil
+	}
+
 	// pick a challenge: prefer tls-sni-02 over tls-sni-01
 	// TODO: consider authz.Combinations
 	var chal *acme.Challenge

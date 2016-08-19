@@ -302,6 +302,10 @@ func (c *Client) UpdateReg(ctx context.Context, a *Account) (*Account, error) {
 // Authorize performs the initial step in an authorization flow.
 // The caller will then need to choose from and perform a set of returned
 // challenges using c.Accept in order to successfully complete authorization.
+//
+// If an authorization has been previously granted, the CA may return
+// a valid authorization (Authorization.Status is StatusValid). If so, the caller
+// need not fulfill any challenge and can proceed to requesting a certificate.
 func (c *Client) Authorize(ctx context.Context, domain string) (*Authorization, error) {
 	if _, err := c.Discover(ctx); err != nil {
 		return nil, err
@@ -331,7 +335,7 @@ func (c *Client) Authorize(ctx context.Context, domain string) (*Authorization, 
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
 		return nil, fmt.Errorf("acme: invalid response: %v", err)
 	}
-	if v.Status != StatusPending {
+	if v.Status != StatusPending && v.Status != StatusValid {
 		return nil, fmt.Errorf("acme: unexpected status: %s", v.Status)
 	}
 	return v.authorization(res.Header.Get("Location")), nil
