@@ -385,7 +385,7 @@ func TestAuthorizeValid(t *testing.T) {
 	}
 }
 
-func TestPollAuthz(t *testing.T) {
+func TestGetAuthorization(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			t.Errorf("r.Method = %q; want GET", r.Method)
@@ -414,7 +414,7 @@ func TestPollAuthz(t *testing.T) {
 	defer ts.Close()
 
 	cl := Client{Key: testKeyEC}
-	auth, err := cl.GetAuthz(context.Background(), ts.URL)
+	auth, err := cl.GetAuthorization(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,6 +458,95 @@ func TestPollAuthz(t *testing.T) {
 	combs := [][]int{{0}, {1}}
 	if !reflect.DeepEqual(auth.Combinations, combs) {
 		t.Errorf("auth.Combinations: %+v\nwant: %+v\n", auth.Combinations, combs)
+	}
+}
+
+func TestWaitAuthorization(t *testing.T) {
+	var count int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		count++
+		w.Header().Set("retry-after", "0")
+		if count > 1 {
+			fmt.Fprintf(w, `{"status":"valid"}`)
+			return
+		}
+		fmt.Fprintf(w, `{"status":"pending"}`)
+	}))
+	defer ts.Close()
+
+	type res struct {
+		authz *Authorization
+		err   error
+	}
+	done := make(chan res)
+	defer close(done)
+	go func() {
+		var client Client
+		a, err := client.WaitAuthorization(context.Background(), ts.URL)
+		done <- res{a, err}
+	}()
+
+	select {
+	case <-time.After(5 * time.Second):
+		t.Fatal("WaitAuthz took too long to return")
+	case res := <-done:
+		if res.err != nil {
+			t.Fatalf("res.err =  %v", res.err)
+		}
+		if res.authz == nil {
+			t.Fatal("res.authz is nil")
+		}
+	}
+}
+
+func TestWaitAuthorizationInvalid(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprintf(w, `{"status":"invalid"}`)
+	}))
+	defer ts.Close()
+
+	res := make(chan error)
+	defer close(res)
+	go func() {
+		var client Client
+		_, err := client.WaitAuthorization(context.Background(), ts.URL)
+		res <- err
+	}()
+
+	select {
+	case <-time.After(3 * time.Second):
+		t.Fatal("WaitAuthz took too long to return")
+	case err := <-res:
+		if err == nil {
+			t.Error("err is nil")
+		}
+	}
+}
+
+func TestWaitAuthorizationCancel(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("retry-after", "60")
+		fmt.Fprintf(w, `{"status":"pending"}`)
+	}))
+	defer ts.Close()
+
+	res := make(chan error)
+	defer close(res)
+	go func() {
+		var client Client
+		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		defer cancel()
+		_, err := client.WaitAuthorization(ctx, ts.URL)
+		res <- err
+	}()
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("WaitAuthz took too long to return")
+	case err := <-res:
+		if err == nil {
+			t.Error("err is nil")
+		}
 	}
 }
 
@@ -952,5 +1041,30 @@ func TestHTTP01Challenge(t *testing.T) {
 	}
 	if path := client.HTTP01ChallengePath(token); path != urlpath {
 		t.Errorf("path = %q; want %q", path, urlpath)
+	}
+}
+
+func TestBackoff(t *testing.T) {
+	tt := []struct{ min, max time.Duration }{
+		{time.Second, 2 * time.Second},
+		{2 * time.Second, 3 * time.Second},
+		{4 * time.Second, 5 * time.Second},
+		{8 * time.Second, 9 * time.Second},
+	}
+	for i, test := range tt {
+		d := backoff(i, time.Minute)
+		if d < test.min || test.max < d {
+			t.Errorf("%d: d = %v; want between %v and %v", i, d, test.min, test.max)
+		}
+	}
+
+	min, max := time.Second, 2*time.Second
+	if d := backoff(-1, time.Minute); d < min || max < d {
+		t.Errorf("d = %v; want between %v and %v", d, min, max)
+	}
+
+	bound := 10 * time.Second
+	if d := backoff(100, bound); d != bound {
+		t.Errorf("d = %v; want %v", d, bound)
 	}
 }

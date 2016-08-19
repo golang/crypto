@@ -453,29 +453,8 @@ func (m *Manager) verify(ctx context.Context, domain string) error {
 		return err
 	}
 	// wait for the CA to validate
-	for {
-		a, err := client.GetAuthz(ctx, authz.URI)
-		if err == nil {
-			if a.Status == acme.StatusValid {
-				break
-			}
-			if a.Status == acme.StatusInvalid {
-				return fmt.Errorf("acme/autocert: validation for domain %q failed", domain)
-			}
-		}
-		// still pending
-		d := time.Second
-		if ae, ok := err.(*acme.Error); ok {
-			d = retryAfter(ae.Header.Get("retry-after"))
-		}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(d):
-			// retry
-		}
-	}
-	return nil
+	_, err = client.WaitAuthorization(ctx, authz.URI)
+	return err
 }
 
 // certState returns existing state or creates a new one locked for read/write.

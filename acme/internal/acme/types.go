@@ -33,8 +33,14 @@ const (
 	CRLReasonAACompromise         CRLReasonCode = 10
 )
 
-// ErrUnsupportedKey is returned when an unsupported key type is encountered.
-var ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
+var (
+	// ErrAuthorizationFailed indicates that an authorization for an identifier
+	// did not succeed.
+	ErrAuthorizationFailed = errors.New("acme: identifier authorization failed")
+
+	// ErrUnsupportedKey is returned when an unsupported key type is encountered.
+	ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
+)
 
 // Error is an ACME error, defined in Problem Details for HTTP APIs doc
 // http://tools.ietf.org/html/draft-ietf-appsawg-http-problem.
