@@ -49,7 +49,26 @@ EQeIP6dZtv8IMgtGIb91QX9pXvP0aznzQKwYIA8nZgoENCPfiMTPiEDT9e/0lObO
 // This thumbprint is for the testKey defined above.
 const testKeyThumbprint = "6nicxzh6WETQlrvdchkz-U3e3DOQZ4heJKU63rfqMqQ"
 
-var testKey *rsa.PrivateKey
+const (
+	// openssl ecparam -name secp256k1 -genkey -noout
+	testKeyECPEM = `
+-----BEGIN EC PRIVATE KEY-----
+MHcCAQEEIK07hGLr0RwyUdYJ8wbIiBS55CjnkMD23DWr+ccnypWLoAoGCCqGSM49
+AwEHoUQDQgAE5lhEug5xK4xBDZ2nAbaxLtaLiv85bxJ7ePd1dkO23HThqIrvawF5
+QAaS/RNouybCiRhRjI3EaxLkQwgrCw0gqQ==
+-----END EC PRIVATE KEY-----
+`
+	// 1. opnessl ec -in key.pem -noout -text
+	// 2. remove first byte, 04 (the header); the rest is X and Y
+	// 3. covert each with: echo <val> | xxd -r -p | base64 | tr -d '=' | tr '/+' '_-'
+	testKeyECPubX = "5lhEug5xK4xBDZ2nAbaxLtaLiv85bxJ7ePd1dkO23HQ"
+	testKeyECPubY = "4aiK72sBeUAGkv0TaLsmwokYUYyNxGsS5EMIKwsNIKk"
+)
+
+var (
+	testKey   *rsa.PrivateKey
+	testKeyEC *ecdsa.PrivateKey
+)
 
 func init() {
 	d, _ := pem.Decode([]byte(testKeyPEM))
@@ -58,6 +77,14 @@ func init() {
 	}
 	var err error
 	testKey, err = x509.ParsePKCS1PrivateKey(d.Bytes)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	if d, _ = pem.Decode([]byte(testKeyECPEM)); d == nil {
+		panic("no block found in testKeyECPEM")
+	}
+	testKeyEC, err = x509.ParseECPrivateKey(d.Bytes)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -107,6 +134,54 @@ func TestJWSEncodeJSON(t *testing.T) {
 	}
 	if jws.Signature != signature {
 		t.Errorf("signature:\n%s\nwant:\n%s", jws.Signature, signature)
+	}
+}
+
+func TestJWSEncodeJSONEC(t *testing.T) {
+	claims := struct{ Msg string }{"Hello JWS"}
+
+	b, err := jwsEncodeJSON(claims, testKeyEC, "nonce")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var jws struct{ Protected, Payload, Signature string }
+	if err := json.Unmarshal(b, &jws); err != nil {
+		t.Fatal(err)
+	}
+
+	if b, err = base64.RawURLEncoding.DecodeString(jws.Protected); err != nil {
+		t.Fatalf("jws.Protected: %v", err)
+	}
+	var head struct {
+		Alg   string
+		Nonce string
+		JWK   struct {
+			Crv string
+			Kty string
+			X   string
+			Y   string
+		} `json:"jwk"`
+	}
+	if err := json.Unmarshal(b, &head); err != nil {
+		t.Fatalf("jws.Protected: %v", err)
+	}
+	if head.Alg != "ES256" {
+		t.Errorf("head.Alg = %q; want ES256", head.Alg)
+	}
+	if head.Nonce != "nonce" {
+		t.Errorf("head.Nonce = %q; want nonce", head.Nonce)
+	}
+	if head.JWK.Crv != "P-256" {
+		t.Errorf("head.JWK.Crv = %q; want P-256", head.JWK.Crv)
+	}
+	if head.JWK.Kty != "EC" {
+		t.Errorf("head.JWK.Kty = %q; want EC", head.JWK.Kty)
+	}
+	if head.JWK.X != testKeyECPubX {
+		t.Errorf("head.JWK.X = %q; want %q", head.JWK.X, testKeyECPubX)
+	}
+	if head.JWK.Y != testKeyECPubY {
+		t.Errorf("head.JWK.Y = %q; want %q", head.JWK.Y, testKeyECPubY)
 	}
 }
 

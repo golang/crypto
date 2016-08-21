@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	_ "crypto/sha512" // need for EC keys
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -24,19 +25,24 @@ func jwsEncodeJSON(claimset interface{}, key crypto.Signer, nonce string) ([]byt
 	if err != nil {
 		return nil, err
 	}
-	phead := fmt.Sprintf(`{"alg":"RS256","jwk":%s,"nonce":%q}`, jwk, nonce)
+	alg, sha := jwsHasher(key)
+	if alg == "" || !sha.Available() {
+		return nil, ErrUnsupportedKey
+	}
+	phead := fmt.Sprintf(`{"alg":%q,"jwk":%s,"nonce":%q}`, alg, jwk, nonce)
 	phead = base64.RawURLEncoding.EncodeToString([]byte(phead))
 	cs, err := json.Marshal(claimset)
 	if err != nil {
 		return nil, err
 	}
 	payload := base64.RawURLEncoding.EncodeToString(cs)
-	h := sha256.New()
-	h.Write([]byte(phead + "." + payload))
-	sig, err := key.Sign(rand.Reader, h.Sum(nil), crypto.SHA256)
+	hash := sha.New()
+	hash.Write([]byte(phead + "." + payload))
+	sig, err := jwsSign(key, sha, hash.Sum(nil))
 	if err != nil {
 		return nil, err
 	}
+
 	enc := struct {
 		Protected string `json:"protected"`
 		Payload   string `json:"payload"`
@@ -88,6 +94,51 @@ func jwkEncode(pub crypto.PublicKey) (string, error) {
 		), nil
 	}
 	return "", ErrUnsupportedKey
+}
+
+// jwsSign signs the digest using the given key.
+// It returns ErrUnsupportedKey if the key type is unknown.
+// The hash is used only for RSA keys.
+func jwsSign(key crypto.Signer, hash crypto.Hash, digest []byte) ([]byte, error) {
+	switch key := key.(type) {
+	case *rsa.PrivateKey:
+		return key.Sign(rand.Reader, digest, hash)
+	case *ecdsa.PrivateKey:
+		r, s, err := ecdsa.Sign(rand.Reader, key, digest)
+		if err != nil {
+			return nil, err
+		}
+		rb, sb := r.Bytes(), s.Bytes()
+		size := key.Params().BitSize / 8
+		if size%8 > 0 {
+			size++
+		}
+		sig := make([]byte, size*2)
+		copy(sig[size-len(rb):], rb)
+		copy(sig[size*2-len(sb):], sb)
+		return sig, nil
+	}
+	return nil, ErrUnsupportedKey
+}
+
+// jwsHasher indicates suitable JWS algorithm name and a hash function
+// to use for signing a digest with the provided key.
+// It returns ("", 0) if the key is not supported.
+func jwsHasher(key crypto.Signer) (string, crypto.Hash) {
+	switch key := key.(type) {
+	case *rsa.PrivateKey:
+		return "RS256", crypto.SHA256
+	case *ecdsa.PrivateKey:
+		switch key.Params().Name {
+		case "P-256":
+			return "ES256", crypto.SHA256
+		case "P-384":
+			return "ES384", crypto.SHA384
+		case "P-512":
+			return "ES512", crypto.SHA512
+		}
+	}
+	return "", 0
 }
 
 // JWKThumbprint creates a JWK thumbprint out of pub
