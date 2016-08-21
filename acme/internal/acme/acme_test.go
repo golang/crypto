@@ -112,10 +112,7 @@ func TestRegister(t *testing.T) {
 		w.Header().Add("Link", `<https://ca.tld/acme/terms>;rel="terms-of-service"`)
 		w.WriteHeader(http.StatusCreated)
 		b, _ := json.Marshal(contacts)
-		fmt.Fprintf(w, `{
-			"key":%q,
-			"contact":%s
-		}`, testKeyThumbprint, b)
+		fmt.Fprintf(w, `{"contact": %s}`, b)
 	}))
 	defer ts.Close()
 
@@ -127,7 +124,7 @@ func TestRegister(t *testing.T) {
 		return false
 	}
 
-	c := Client{Key: testKey, dir: &Directory{RegURL: ts.URL}}
+	c := Client{Key: testKeyEC, dir: &Directory{RegURL: ts.URL}}
 	a := &Account{Contact: contacts}
 	var err error
 	if a, err = c.Register(context.Background(), a, prompt); err != nil {
@@ -183,15 +180,11 @@ func TestUpdateReg(t *testing.T) {
 		w.Header().Add("Link", fmt.Sprintf(`<%s>;rel="terms-of-service"`, terms))
 		w.WriteHeader(http.StatusOK)
 		b, _ := json.Marshal(contacts)
-		fmt.Fprintf(w, `{
-			"key":%q,
-			"contact":%s,
-			"agreement":%q
-		}`, testKeyThumbprint, b, terms)
+		fmt.Fprintf(w, `{"contact":%s, "agreement":%q}`, b, terms)
 	}))
 	defer ts.Close()
 
-	c := Client{Key: testKey}
+	c := Client{Key: testKeyEC}
 	a := &Account{URI: ts.URL, Contact: contacts, AgreedTerms: terms}
 	var err error
 	if a, err = c.UpdateReg(context.Background(), a); err != nil {
@@ -248,15 +241,11 @@ func TestGetReg(t *testing.T) {
 		w.Header().Add("Link", fmt.Sprintf(`<%s>;rel="terms-of-service"`, newTerms))
 		w.WriteHeader(http.StatusOK)
 		b, _ := json.Marshal(contacts)
-		fmt.Fprintf(w, `{
-			"key":%q,
-			"contact":%s,
-			"agreement":%q
-		}`, testKeyThumbprint, b, terms)
+		fmt.Fprintf(w, `{"contact":%s, "agreement":%q}`, b, terms)
 	}))
 	defer ts.Close()
 
-	c := Client{Key: testKey}
+	c := Client{Key: testKeyEC}
 	a, err := c.GetReg(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -328,7 +317,7 @@ func TestAuthorize(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cl := Client{Key: testKey, dir: &Directory{AuthzURL: ts.URL}}
+	cl := Client{Key: testKeyEC, dir: &Directory{AuthzURL: ts.URL}}
 	auth, err := cl.Authorize(context.Background(), "example.com")
 	if err != nil {
 		t.Fatal(err)
@@ -407,7 +396,7 @@ func TestPollAuthz(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cl := Client{Key: testKey}
+	cl := Client{Key: testKeyEC}
 	auth, err := cl.GetAuthz(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -470,7 +459,7 @@ func TestPollChallenge(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cl := Client{Key: testKey}
+	cl := Client{Key: testKeyEC}
 	chall, err := cl.GetChallenge(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -514,7 +503,7 @@ func TestAcceptChallenge(t *testing.T) {
 		if j.Type != "http-01" {
 			t.Errorf(`type = %q; want "http-01"`, j.Type)
 		}
-		keyAuth := "token1." + testKeyThumbprint
+		keyAuth := "token1." + testKeyECThumbprint
 		if j.Auth != keyAuth {
 			t.Errorf(`keyAuthorization = %q; want %q`, j.Auth, keyAuth)
 		}
@@ -531,7 +520,7 @@ func TestAcceptChallenge(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cl := Client{Key: testKey}
+	cl := Client{Key: testKeyEC}
 	c, err := cl.Accept(context.Background(), &Challenge{
 		URI:   ts.URL,
 		Token: "token1",
@@ -599,7 +588,7 @@ func TestNewCert(t *testing.T) {
 			BasicConstraintsValid: true,
 		}
 
-		sampleCert, err := x509.CreateCertificate(rand.Reader, &template, &template, &testKey.PublicKey, testKey)
+		sampleCert, err := x509.CreateCertificate(rand.Reader, &template, &template, &testKeyEC.PublicKey, testKeyEC)
 		if err != nil {
 			t.Fatalf("Error creating certificate: %v", err)
 		}
@@ -617,12 +606,12 @@ func TestNewCert(t *testing.T) {
 			Organization: []string{"goacme"},
 		},
 	}
-	csrb, err := x509.CreateCertificateRequest(rand.Reader, &csr, testKey)
+	csrb, err := x509.CreateCertificateRequest(rand.Reader, &csr, testKeyEC)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	c := Client{Key: testKey, dir: &Directory{CertURL: ts.URL}}
+	c := Client{Key: testKeyEC, dir: &Directory{CertURL: ts.URL}}
 	cert, certURL, err := c.CreateCert(context.Background(), csrb, notAfter.Sub(notBefore), false)
 	if err != nil {
 		t.Fatal(err)
@@ -772,7 +761,7 @@ func TestRevokeCert(t *testing.T) {
 	}))
 	defer ts.Close()
 	client := &Client{
-		Key: testKey,
+		Key: testKeyEC,
 		dir: &Directory{RevokeURL: ts.URL},
 	}
 	ctx := context.Background()
@@ -871,11 +860,11 @@ func TestErrorResponse(t *testing.T) {
 func TestTLSSNI01ChallengeCert(t *testing.T) {
 	const (
 		token = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ-PCt92wr-oA"
-		// echo -n <token.testKeyThumbprint> | shasum -a 256
-		san = "b6ddc3df57802969e2e0b88eb548d4be.febc5bd6cf3690eb526081b5d10deda4.acme.invalid"
+		// echo -n <token.testKeyECThumbprint> | shasum -a 256
+		san = "dbbd5eefe7b4d06eb9d1d9f5acb4c7cd.a27d320e4b30332f0b6cb441734ad7b0.acme.invalid"
 	)
 
-	client := &Client{Key: testKey}
+	client := &Client{Key: testKeyEC}
 	tlscert, name, err := client.TLSSNI01ChallengeCert(token)
 	if err != nil {
 		t.Fatal(err)
@@ -901,11 +890,11 @@ func TestTLSSNI02ChallengeCert(t *testing.T) {
 		token = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ-PCt92wr-oA"
 		// echo -n evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ-PCt92wr-oA | shasum -a 256
 		sanA = "7ea0aaa69214e71e02cebb18bb867736.09b730209baabf60e43d4999979ff139.token.acme.invalid"
-		// echo -n <token.testKeyThumbprint> | shasum -a 256
-		sanB = "b6ddc3df57802969e2e0b88eb548d4be.febc5bd6cf3690eb526081b5d10deda4.ka.acme.invalid"
+		// echo -n <token.testKeyECThumbprint> | shasum -a 256
+		sanB = "dbbd5eefe7b4d06eb9d1d9f5acb4c7cd.a27d320e4b30332f0b6cb441734ad7b0.ka.acme.invalid"
 	)
 
-	client := &Client{Key: testKey}
+	client := &Client{Key: testKeyEC}
 	tlscert, name, err := client.TLSSNI02ChallengeCert(token)
 	if err != nil {
 		t.Fatal(err)
@@ -932,11 +921,11 @@ func TestTLSSNI02ChallengeCert(t *testing.T) {
 func TestHTTP01Challenge(t *testing.T) {
 	const (
 		token = "xxx"
-		// thumbprint is precomputed for testKey in jws_test.go
-		value   = token + "." + testKeyThumbprint
+		// thumbprint is precomputed for testKeyEC in jws_test.go
+		value   = token + "." + testKeyECThumbprint
 		urlpath = "/.well-known/acme-challenge/" + token
 	)
-	client := &Client{Key: testKey}
+	client := &Client{Key: testKeyEC}
 	val, err := client.HTTP01ChallengeResponse(token)
 	if err != nil {
 		t.Fatal(err)

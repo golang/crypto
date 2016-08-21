@@ -6,8 +6,9 @@ package autocert
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -47,8 +48,8 @@ var authzTmpl = template.Must(template.New("authz").Parse(`{
 }`))
 
 func dummyCert(san ...string) ([]byte, error) {
-	// use smaller key to run faster on 386
-	key, err := rsa.GenerateKey(rand.Reader, 512)
+	// use EC key to run faster on 386
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
 	}
@@ -129,8 +130,8 @@ func TestGetCertificate(t *testing.T) {
 	}))
 	defer ca.Close()
 
-	// use smaller key to run faster on 386
-	key, kerr := rsa.GenerateKey(rand.Reader, 512)
+	// use EC key to run faster on 386
+	key, kerr := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if kerr != nil {
 		t.Fatal(kerr)
 	}
@@ -151,7 +152,7 @@ func TestGetCertificate(t *testing.T) {
 		close(done)
 	}()
 	select {
-	case <-time.After(15 * time.Second):
+	case <-time.After(time.Minute):
 		t.Fatal("man.GetCertificate took too long to return")
 	case <-done:
 	}
@@ -211,7 +212,7 @@ func (m memCache) Delete(ctx context.Context, key string) error {
 }
 
 func TestCache(t *testing.T) {
-	privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	privKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +243,10 @@ func TestCache(t *testing.T) {
 		t.Fatal("res is nil")
 	}
 
-	priv := x509.MarshalPKCS1PrivateKey(privKey)
+	priv, err := x509.MarshalECPrivateKey(privKey)
+	if err != nil {
+		t.Fatalf("MarshalECPrivateKey: %v", err)
+	}
 	dummy, err := dummyCert("dummy")
 	if err != nil {
 		t.Fatalf("dummyCert: %v", err)

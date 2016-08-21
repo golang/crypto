@@ -12,8 +12,9 @@ package acme
 import (
 	"bytes"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
@@ -717,7 +718,7 @@ func keyAuth(pub crypto.PublicKey, token string) (string, error) {
 // tlsChallengeCert creates a temporary certificate for TLS-SNI challenges
 // with the given SANs.
 func tlsChallengeCert(san ...string) (tls.Certificate, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return tls.Certificate{}, err
 	}
