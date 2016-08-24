@@ -471,6 +471,20 @@ func (c *Client) Accept(ctx context.Context, chal *Challenge) (*Challenge, error
 	return v.challenge(), nil
 }
 
+// DNS01ChallengeRecord returns a DNS record value for a dns-01 challenge response.
+// A TXT record containing the returned value must be provisioned under
+// "_acme-challenge" name of the domain being validated.
+//
+// The token argument is a Challenge.Token value.
+func (c *Client) DNS01ChallengeRecord(token string) (string, error) {
+	ka, err := keyAuth(c.Key.Public(), token)
+	if err != nil {
+		return "", err
+	}
+	b := sha256.Sum256([]byte(ka))
+	return base64.RawURLEncoding.EncodeToString(b[:]), nil
+}
+
 // HTTP01ChallengeResponse returns the response for an http-01 challenge.
 // Servers should respond with the value to HTTP requests at the URL path
 // provided by HTTP01ChallengePath to validate the challenge and prove control
