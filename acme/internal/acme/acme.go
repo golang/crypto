@@ -45,6 +45,24 @@ const (
 	maxCertSize = 1 << 20 // max size of a certificate, in bytes
 )
 
+// CertOption is an optional argument type for Client methods which manipulate
+// certificate data.
+type CertOption interface {
+	privateCertOpt()
+}
+
+// WithKey creates an option holding a private/public key pair.
+// The private part signs a certificate, and the public part represents the signee.
+func WithKey(key crypto.Signer) CertOption {
+	return &certOptKey{key}
+}
+
+type certOptKey struct {
+	key crypto.Signer
+}
+
+func (co *certOptKey) privateCertOpt() {}
+
 // Client is an ACME client.
 // The only required field is Key. An example of creating a client with a new key
 // is as follows:
@@ -514,10 +532,13 @@ func (c *Client) HTTP01ChallengePath(token string) string {
 // For more details on TLS-SNI-01 see https://tools.ietf.org/html/draft-ietf-acme-acme-01#section-7.3.
 //
 // The token argument is a Challenge.Token value.
+// If a WithKey option is provided, its private part signs the returned cert,
+// and the public part is used to specify the signee.
+// If no WithKey option is provided, a new ECDSA key is generated using P-256 curve.
 //
 // The returned certificate is valid for the next 24 hours and must be presented only when
 // the server name of the client hello matches exactly the returned name value.
-func (c *Client) TLSSNI01ChallengeCert(token string) (cert tls.Certificate, name string, err error) {
+func (c *Client) TLSSNI01ChallengeCert(token string, opt ...CertOption) (cert tls.Certificate, name string, err error) {
 	ka, err := keyAuth(c.Key.Public(), token)
 	if err != nil {
 		return tls.Certificate{}, "", err
@@ -525,7 +546,7 @@ func (c *Client) TLSSNI01ChallengeCert(token string) (cert tls.Certificate, name
 	b := sha256.Sum256([]byte(ka))
 	h := hex.EncodeToString(b[:])
 	name = fmt.Sprintf("%s.%s.acme.invalid", h[:32], h[32:])
-	cert, err = tlsChallengeCert(name)
+	cert, err = tlsChallengeCert([]string{name}, opt)
 	if err != nil {
 		return tls.Certificate{}, "", err
 	}
@@ -538,10 +559,13 @@ func (c *Client) TLSSNI01ChallengeCert(token string) (cert tls.Certificate, name
 // https://tools.ietf.org/html/draft-ietf-acme-acme-03#section-7.3.
 //
 // The token argument is a Challenge.Token value.
+// If a WithKey option is provided, its private part signs the returned cert,
+// and the public part is used to specify the signee.
+// If no WithKey option is provided, a new ECDSA key is generated using P-256 curve.
 //
 // The returned certificate is valid for the next 24 hours and must be presented only when
 // the server name in the client hello matches exactly the returned name value.
-func (c *Client) TLSSNI02ChallengeCert(token string) (cert tls.Certificate, name string, err error) {
+func (c *Client) TLSSNI02ChallengeCert(token string, opt ...CertOption) (cert tls.Certificate, name string, err error) {
 	b := sha256.Sum256([]byte(token))
 	h := hex.EncodeToString(b[:])
 	sanA := fmt.Sprintf("%s.%s.token.acme.invalid", h[:32], h[32:])
@@ -554,7 +578,7 @@ func (c *Client) TLSSNI02ChallengeCert(token string) (cert tls.Certificate, name
 	h = hex.EncodeToString(b[:])
 	sanB := fmt.Sprintf("%s.%s.ka.acme.invalid", h[:32], h[32:])
 
-	cert, err = tlsChallengeCert(sanA, sanB)
+	cert, err = tlsChallengeCert([]string{sanA, sanB}, opt)
 	if err != nil {
 		return tls.Certificate{}, "", err
 	}
@@ -815,11 +839,27 @@ func keyAuth(pub crypto.PublicKey, token string) (string, error) {
 }
 
 // tlsChallengeCert creates a temporary certificate for TLS-SNI challenges
-// with the given SANs.
-func tlsChallengeCert(san ...string) (tls.Certificate, error) {
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		return tls.Certificate{}, err
+// with the given SANs and auto-generated public/private key pair.
+// To create a cert with a custom key pair, specify WithKey option.
+func tlsChallengeCert(san []string, opt []CertOption) (tls.Certificate, error) {
+	var key crypto.Signer
+	for _, o := range opt {
+		switch o := o.(type) {
+		case *certOptKey:
+			if key != nil {
+				return tls.Certificate{}, errors.New("acme: duplicate key option")
+			}
+			key = o.key
+		default:
+			// package's fault, if we let this happen:
+			panic(fmt.Sprintf("unsupported option type %T", o))
+		}
+	}
+	if key == nil {
+		var err error
+		if key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader); err != nil {
+			return tls.Certificate{}, err
+		}
 	}
 	t := x509.Certificate{
 		SerialNumber:          big.NewInt(1),
@@ -829,7 +869,10 @@ func tlsChallengeCert(san ...string) (tls.Certificate, error) {
 		KeyUsage:              x509.KeyUsageKeyEncipherment,
 		DNSNames:              san,
 	}
-	der, err := x509.CreateCertificate(rand.Reader, &t, &t, &key.PublicKey, key)
+	der, err := x509.CreateCertificate(rand.Reader, &t, &t, key.Public(), key)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
 	return tls.Certificate{
 		Certificate: [][]byte{der},
 		PrivateKey:  key,
