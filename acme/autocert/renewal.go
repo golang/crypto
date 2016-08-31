@@ -5,9 +5,10 @@
 package autocert
 
 import (
-	"context"
 	"crypto"
 	"time"
+
+	"golang.org/x/net/context"
 )
 
 // maxRandRenew is a maximum deviation from Manager.RenewBefore.
