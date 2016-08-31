@@ -1,10 +1,16 @@
-package secretbox
+// Copyright 2016 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package secretbox_test
 
 import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"io"
+
+	"golang.org/x/crypto/nacl/secretbox"
 )
 
 func Example() {
@@ -29,7 +35,7 @@ func Example() {
 	}
 
 	// This encrypts "hello world" and appends the result to the nonce.
-	encrypted := Seal(nonce[:], []byte("hello world"), &nonce, &secretKey)
+	encrypted := secretbox.Seal(nonce[:], []byte("hello world"), &nonce, &secretKey)
 
 	// When you decrypt, you must use the same nonce and key you used to
 	// encrypt the message. One way to achieve this is to store the nonce
@@ -37,7 +43,7 @@ func Example() {
 	// 24 bytes of the encrypted text.
 	var decryptNonce [24]byte
 	copy(decryptNonce[:], encrypted[:24])
-	decrypted, ok := Open([]byte{}, encrypted[24:], &decryptNonce, &secretKey)
+	decrypted, ok := secretbox.Open([]byte{}, encrypted[24:], &decryptNonce, &secretKey)
 	if !ok {
 		panic("decryption error")
 	}
