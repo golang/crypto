@@ -6,6 +6,10 @@
 // Automatic Certificate Management Environment (ACME) spec.
 // See https://tools.ietf.org/html/draft-ietf-acme-acme-02 for details.
 //
+// Most common scenarios will want to use autocert subdirectory instead,
+// which provides automatic access to certificates from Let's Encrypt
+// and any other ACME-based CA.
+//
 // This package is a work in progress and makes no API stability promises.
 package acme
 

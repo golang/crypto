@@ -27,7 +27,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/crypto/acme/internal/acme"
+	"golang.org/x/crypto/acme"
 	"golang.org/x/net/context"
 )
 
