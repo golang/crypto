@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/acme"
@@ -35,7 +36,7 @@ import (
 var pseudoRand *lockedMathRand
 
 func init() {
-	src := mathrand.NewSource(timeNow().UnixNano())
+	src := mathrand.NewSource(time.Now().UnixNano())
 	pseudoRand = &lockedMathRand{rnd: mathrand.New(src)}
 }
 
@@ -718,8 +719,23 @@ func (r *lockedMathRand) int63n(max int64) int64 {
 	return n
 }
 
+func timeNow() time.Time {
+	return clock.Load().(func() time.Time)()
+}
+
 // for easier testing
 var (
-	timeNow          = time.Now
+	// clock stores the time.Now func pointer or a fake
+	// thereof. It's an atomic.Value because tests weren't waiting
+	// for goroutines to shut down during completing causing races.
+	// TODO(crhym3,bradfitz): make tests more well-behaved, and
+	// then revert this back to just a func() time.Time type.
+	// This was the easier quick fix.
+	clock atomic.Value
+
 	testDidRenewLoop = func(next time.Duration, err error) {}
 )
+
+func init() {
+	clock.Store(time.Now)
+}

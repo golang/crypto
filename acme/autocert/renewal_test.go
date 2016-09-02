@@ -22,8 +22,8 @@ import (
 
 func TestRenewalNext(t *testing.T) {
 	now := time.Now()
-	timeNow = func() time.Time { return now }
-	defer func() { timeNow = time.Now }()
+	clock.Store(func() time.Time { return now })
+	defer clock.Store(time.Now)
 
 	man := &Manager{RenewBefore: 7 * 24 * time.Hour}
 	tt := []struct {
