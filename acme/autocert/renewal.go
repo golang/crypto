@@ -6,6 +6,7 @@ package autocert
 
 import (
 	"crypto"
+	"sync"
 	"time"
 
 	"golang.org/x/net/context"
@@ -20,11 +21,45 @@ type domainRenewal struct {
 	m      *Manager
 	domain string
 	key    crypto.Signer
+
+	timerMu sync.Mutex
+	timer   *time.Timer
+}
+
+// start starts a cert renewal timer at the time
+// defined by the certificate expiration time exp.
+//
+// If the timer is already started, calling start is a noop.
+func (dr *domainRenewal) start(exp time.Time) {
+	dr.timerMu.Lock()
+	defer dr.timerMu.Unlock()
+	if dr.timer != nil {
+		return
+	}
+	dr.timer = time.AfterFunc(dr.next(exp), dr.renew)
+}
+
+// stop stops the cert renewal timer.
+// If the timer is already stopped, calling stop is a noop.
+func (dr *domainRenewal) stop() {
+	dr.timerMu.Lock()
+	defer dr.timerMu.Unlock()
+	if dr.timer == nil {
+		return
+	}
+	dr.timer.Stop()
+	dr.timer = nil
 }
 
 // renew is called periodically by a timer.
-// The first renew call is kicked off by dr.m.renew.
+// The first renew call is kicked off by dr.start.
 func (dr *domainRenewal) renew() {
+	dr.timerMu.Lock()
+	defer dr.timerMu.Unlock()
+	if dr.timer == nil {
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	// TODO: rotate dr.key at some point?
@@ -33,8 +68,8 @@ func (dr *domainRenewal) renew() {
 		next = maxRandRenew / 2
 		next += time.Duration(pseudoRand.int63n(int64(next)))
 	}
+	dr.timer = time.AfterFunc(next, dr.renew)
 	testDidRenewLoop(next, err)
-	time.AfterFunc(next, dr.renew)
 }
 
 // do is similar to Manager.createCert but it doesn't lock a Manager.state item.
@@ -86,3 +121,5 @@ func (dr *domainRenewal) next(expiry time.Time) time.Duration {
 	}
 	return d
 }
+
+var testDidRenewLoop = func(next time.Duration, err error) {}

@@ -109,6 +109,7 @@ func decodePayload(v interface{}, r io.Reader) error {
 func TestGetCertificate(t *testing.T) {
 	const domain = "example.org"
 	man := &Manager{Prompt: AcceptTOS}
+	defer man.stopRenew()
 
 	// echo token-02 | shasum -a 256
 	// then divide result in 2 parts separated by dot
@@ -264,7 +265,8 @@ func TestCache(t *testing.T) {
 	}
 
 	cache := make(memCache)
-	man := Manager{Cache: cache}
+	man := &Manager{Cache: cache}
+	defer man.stopRenew()
 	if err := man.cachePut("example.org", tlscert); err != nil {
 		t.Fatalf("man.cachePut: %v", err)
 	}

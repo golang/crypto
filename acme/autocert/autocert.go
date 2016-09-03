@@ -25,7 +25,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/acme"
@@ -36,7 +35,7 @@ import (
 var pseudoRand *lockedMathRand
 
 func init() {
-	src := mathrand.NewSource(time.Now().UnixNano())
+	src := mathrand.NewSource(timeNow().UnixNano())
 	pseudoRand = &lockedMathRand{rnd: mathrand.New(src)}
 }
 
@@ -531,7 +530,18 @@ func (m *Manager) renew(domain string, key crypto.Signer, exp time.Time) {
 	}
 	dr := &domainRenewal{m: m, domain: domain, key: key}
 	m.renewal[domain] = dr
-	time.AfterFunc(dr.next(exp), dr.renew)
+	dr.start(exp)
+}
+
+// stopRenew stops all currently running cert renewal timers.
+// The timers are not restarted during the lifetime of the Manager.
+func (m *Manager) stopRenew() {
+	m.renewalMu.Lock()
+	defer m.renewalMu.Unlock()
+	for name, dr := range m.renewal {
+		delete(m.renewal, name)
+		dr.stop()
+	}
 }
 
 func (m *Manager) acmeClient(ctx context.Context) (*acme.Client, error) {
@@ -719,23 +729,5 @@ func (r *lockedMathRand) int63n(max int64) int64 {
 	return n
 }
 
-func timeNow() time.Time {
-	return clock.Load().(func() time.Time)()
-}
-
 // for easier testing
-var (
-	// clock stores the time.Now func pointer or a fake
-	// thereof. It's an atomic.Value because tests weren't waiting
-	// for goroutines to shut down during completing causing races.
-	// TODO(crhym3,bradfitz): make tests more well-behaved, and
-	// then revert this back to just a func() time.Time type.
-	// This was the easier quick fix.
-	clock atomic.Value
-
-	testDidRenewLoop = func(next time.Duration, err error) {}
-)
-
-func init() {
-	clock.Store(time.Now)
-}
+var timeNow = time.Now
