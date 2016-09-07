@@ -380,6 +380,34 @@ func (c *Client) GetAuthorization(ctx context.Context, url string) (*Authorizati
 	return v.authorization(url), nil
 }
 
+// RevokeAuthorization relinquishes an existing authorization identified
+// by the given URL.
+// The url argument is an Authorization.URI value.
+//
+// If successful, the caller will be required to obtain a new authorization
+// using the Authorize method before being able to request a new certificate
+// for the domain associated with the authorization.
+//
+// It does not revoke existing certificates.
+func (c *Client) RevokeAuthorization(ctx context.Context, url string) error {
+	req := struct {
+		Resource string `json:"resource"`
+		Delete   bool   `json:"delete"`
+	}{
+		Resource: "authz",
+		Delete:   true,
+	}
+	res, err := postJWS(ctx, c.HTTPClient, c.Key, url, req)
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		return responseError(res)
+	}
+	return nil
+}
+
 // WaitAuthorization polls an authorization at the given URL
 // until it is in one of the final states, StatusValid or StatusInvalid,
 // or the context is done.
