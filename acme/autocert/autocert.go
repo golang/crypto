@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/tls"
@@ -127,7 +128,7 @@ type Manager struct {
 	// Client is used to perform low-level operations, such as account registration
 	// and requesting new certificates.
 	// If Client is nil, a zero-value acme.Client is used with acme.LetsEncryptURL
-	// directory endpoint and a newly-generated 2048-bit RSA key.
+	// directory endpoint and a newly-generated ECDSA P-256 key.
 	//
 	// Mutating the field after the first call of GetCertificate method will have no effect.
 	Client *acme.Client
@@ -379,7 +380,7 @@ func (m *Manager) certState(domain string) (*certState, error) {
 		return state, nil
 	}
 	// new locked state
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, err
 	}
@@ -557,7 +558,7 @@ func (m *Manager) acmeClient(ctx context.Context) (*acme.Client, error) {
 	}
 	if client.Key == nil {
 		var err error
-		client.Key, err = rsa.GenerateKey(rand.Reader, 2048)
+		client.Key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
 			return nil, err
 		}
