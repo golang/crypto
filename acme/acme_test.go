@@ -1060,20 +1060,28 @@ func TestTLSSNI02ChallengeCert(t *testing.T) {
 	}
 }
 
-func TestTLSChallengeCertRSA(t *testing.T) {
+func TestTLSChallengeCertOpt(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 512)
 	if err != nil {
 		t.Fatal(err)
 	}
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(2),
+		Subject:      pkix.Name{Organization: []string{"Test"}},
+		DNSNames:     []string{"should-be-overwritten"},
+	}
+	opts := []CertOption{WithKey(key), WithTemplate(tmpl)}
+
 	client := &Client{Key: testKeyEC}
-	cert1, _, err := client.TLSSNI01ChallengeCert("token", WithKey(key))
+	cert1, _, err := client.TLSSNI01ChallengeCert("token", opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cert2, _, err := client.TLSSNI02ChallengeCert("token", WithKey(key))
+	cert2, _, err := client.TLSSNI02ChallengeCert("token", opts...)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	for i, tlscert := range []tls.Certificate{cert1, cert2} {
 		// verify generated cert private key
 		tlskey, ok := tlscert.PrivateKey.(*rsa.PrivateKey)
@@ -1097,6 +1105,20 @@ func TestTLSChallengeCertRSA(t *testing.T) {
 		}
 		if tlspub.N.Cmp(key.N) != 0 {
 			t.Errorf("%d: tlspub.N = %v; want %v", i, tlspub.N, key.N)
+		}
+		// verify template option
+		sn := big.NewInt(2)
+		if x509Cert.SerialNumber.Cmp(sn) != 0 {
+			t.Errorf("%d: SerialNumber = %v; want %v", i, x509Cert.SerialNumber, sn)
+		}
+		org := []string{"Test"}
+		if !reflect.DeepEqual(x509Cert.Subject.Organization, org) {
+			t.Errorf("%d: Subject.Organization = %+v; want %+v", i, x509Cert.Subject.Organization, org)
+		}
+		for _, v := range x509Cert.DNSNames {
+			if !strings.HasSuffix(v, ".acme.invalid") {
+				t.Errorf("%d: invalid DNSNames element: %q", i, v)
+			}
 		}
 	}
 }
