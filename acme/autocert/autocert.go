@@ -21,6 +21,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	mathrand "math/rand"
 	"net/http"
 	"strconv"
@@ -300,12 +301,7 @@ func (m *Manager) cachePut(domain string, tlscert *tls.Certificate) error {
 	// private
 	switch key := tlscert.PrivateKey.(type) {
 	case *ecdsa.PrivateKey:
-		b, err := x509.MarshalECPrivateKey(key)
-		if err != nil {
-			return err
-		}
-		pb := &pem.Block{Type: "EC PRIVATE KEY", Bytes: b}
-		if err := pem.Encode(&buf, pb); err != nil {
+		if err := encodeECDSAKey(&buf, key); err != nil {
 			return err
 		}
 	case *rsa.PrivateKey:
@@ -329,6 +325,15 @@ func (m *Manager) cachePut(domain string, tlscert *tls.Certificate) error {
 	// TODO: might want to define a cache timeout on m
 	ctx := context.Background()
 	return m.Cache.Put(ctx, domain, buf.Bytes())
+}
+
+func encodeECDSAKey(w io.Writer, key *ecdsa.PrivateKey) error {
+	b, err := x509.MarshalECPrivateKey(key)
+	if err != nil {
+		return err
+	}
+	pb := &pem.Block{Type: "EC PRIVATE KEY", Bytes: b}
+	return pem.Encode(w, pb)
 }
 
 // createCert starts the domain ownership verification and returns a certificate
@@ -545,6 +550,43 @@ func (m *Manager) stopRenew() {
 	}
 }
 
+func (m *Manager) accountKey(ctx context.Context) (crypto.Signer, error) {
+	const keyName = "acme_account.key"
+
+	genKey := func() (*ecdsa.PrivateKey, error) {
+		return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	}
+
+	if m.Cache == nil {
+		return genKey()
+	}
+
+	data, err := m.Cache.Get(ctx, keyName)
+	if err == ErrCacheMiss {
+		key, err := genKey()
+		if err != nil {
+			return nil, err
+		}
+		var buf bytes.Buffer
+		if err := encodeECDSAKey(&buf, key); err != nil {
+			return nil, err
+		}
+		if err := m.Cache.Put(ctx, keyName, buf.Bytes()); err != nil {
+			return nil, err
+		}
+		return key, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	priv, _ := pem.Decode(data)
+	if priv == nil || !strings.Contains(priv.Type, "PRIVATE") {
+		return nil, errors.New("acme/autocert: invalid account key found in cache")
+	}
+	return parsePrivateKey(priv.Bytes)
+}
+
 func (m *Manager) acmeClient(ctx context.Context) (*acme.Client, error) {
 	m.clientMu.Lock()
 	defer m.clientMu.Unlock()
@@ -558,7 +600,7 @@ func (m *Manager) acmeClient(ctx context.Context) (*acme.Client, error) {
 	}
 	if client.Key == nil {
 		var err error
-		client.Key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		client.Key, err = m.accountKey(ctx)
 		if err != nil {
 			return nil, err
 		}

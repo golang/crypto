@@ -21,6 +21,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 
@@ -242,6 +243,23 @@ func TestGetCertificate(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Error("token cert was not removed")
 	case <-done:
+	}
+}
+
+func TestAccountKeyCache(t *testing.T) {
+	cache := make(memCache)
+	m := Manager{Cache: cache}
+	ctx := context.Background()
+	k1, err := m.accountKey(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k2, err := m.accountKey(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(k1, k2) {
+		t.Errorf("account keys don't match: k1 = %#v; k2 = %#v", k1, k2)
 	}
 }
 
