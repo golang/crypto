@@ -65,28 +65,20 @@ TEXT ·poly1305(SB), $0-32
 	MOVQ mlen+16(FP), R15
 	MOVQ key+24(FP), AX
 
-	MOVQ SP, BP
-	ANDQ $0xFFFFFFFFFFFFFFF0, SP
-	SUBQ $32, SP
-
-	MOVOU 0(AX), X0
-	MOVOU 16(AX), X1
-	MOVOU poly1305Mask<>(SB), X2
-	PAND  X2, X0
-	MOVO  X0, 0(SP)
-	MOVO  X1, 16(SP)
-
-	XORQ R8, R8     // h0
-	XORQ R9, R9     // h1
-	XORQ R10, R10   // h2
-	MOVQ 0(SP), R11 // r0
-	MOVQ 8(SP), R12 // r1
+	MOVQ 0(AX), R11
+	MOVQ 8(AX), R12
+	ANDQ poly1305Mask<>(SB), R11   // r0
+	ANDQ poly1305Mask<>+8(SB), R12 // r1
+	XORQ R8, R8                    // h0
+	XORQ R9, R9                    // h1
+	XORQ R10, R10                  // h2
 
 	CMPQ R15, $16
 	JB   bytes_between_0_and_15
 
 loop:
 	POLY1305_ADD(SI, R8, R9, R10)
+
 multiply:
 	POLY1305_MUL(R8, R9, R10, R11, R12, BX, CX, R13, R14)
 	SUBQ $16, R15
@@ -124,10 +116,10 @@ done:
 	SBBQ    $3, R10
 	CMOVQCS R8, AX
 	CMOVQCS R9, BX
-	ADDQ    16(SP), AX
-	ADCQ    24(SP), BX
+	MOVQ    key+24(FP), R8
+	ADDQ    16(R8), AX
+	ADCQ    24(R8), BX
 
-	MOVQ BP, SP
 	MOVQ AX, 0(DI)
 	MOVQ BX, 8(DI)
 	RET
