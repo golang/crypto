@@ -513,13 +513,15 @@ openSSETail16:
 	MOVOU  (inp), T0
 	ADDQ   inl, inp
 	PAND   -16(t0)(itr2*1), T0
+	MOVO   T0, 0+tmpStore
 	MOVQ   T0, t0
-	PEXTRQ $1, T0, t1
+	MOVQ   8+tmpStore, t1
 	PXOR   A1, T0
 
 	// We can only store one byte at a time, since plaintext can be shorter than 16 bytes
 openSSETail16Store:
-	PEXTRB $0, T0, (oup)
+	MOVQ T0, t3
+	MOVB t3, (oup)
 	PSRLDQ $1, T0
 	INCQ   oup
 	DECQ   inl
@@ -1879,7 +1881,8 @@ sealSSE128Seal:
 
 	// Extract for hashing
 	MOVQ   A1, t0
-	PEXTRQ $1, A1, t1
+	PSRLDQ $8, A1
+	MOVQ A1, t1
 	ADDQ   t0, acc0; ADCQ t1, acc1; ADCQ $1, acc2
 	polyMul
 
@@ -1903,19 +1906,27 @@ sealSSETail:
 	LEAQ andMask<>(SB), t0
 	MOVQ inl, itr1
 	LEAQ -1(inp)(inl*1), inp
-	PXOR T0, T0
+	XORQ t2, t2
+	XORQ t3, t3
+	XORQ AX, AX
 
 sealSSETailLoadLoop:
-	PSLLDQ $1, T0
-	PINSRB $0, (inp), T0
+	SHLQ $8, t2, t3
+	SHLQ $8, t2
+	MOVB (inp), AX
+	XORQ AX, t2
 	LEAQ   -1(inp), inp
 	DECQ   itr1
 	JNE    sealSSETailLoadLoop
-	PXOR   A1, T0
-	MOVOU  T0, (oup)
-	PAND   -16(t0)(itr2*1), T0
-	MOVQ   T0, t0
-	PEXTRQ $1, T0, t1
+	MOVQ t2, 0+tmpStore
+	MOVQ t3, 8+tmpStore
+	PXOR 0+tmpStore, A1
+	MOVOU  A1, (oup)
+	MOVOU  -16(t0)(itr2*1), T0
+	PAND   T0, A1
+	MOVQ   A1, t0
+	PSRLDQ $8, A1
+	MOVQ   A1, t1
 	ADDQ   t0, acc0; ADCQ t1, acc1; ADCQ $1, acc2
 	polyMul
 
