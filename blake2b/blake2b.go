@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package blake2b implemnets the BLAKE2b hash algorithm as
+// Package blake2b implements the BLAKE2b hash algorithm as
 // defined in RFC 7693.
 package blake2b
 
