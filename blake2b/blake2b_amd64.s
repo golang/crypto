@@ -111,7 +111,7 @@ GLOBL ·c48<>(SB), (NOPTR+RODATA), $16
 	PINSRQ $1, i7*8(src), m3
 
 // func hashBlocksSSE4(h *[8]uint64, c *[2]uint64, flag uint64, blocks []byte)
-TEXT ·hashBlocksSSE4(SB), 4, $0-48
+TEXT ·hashBlocksSSE4(SB), 4, $32-48 // frame size = 16 + 16 byte alignment
 	MOVQ h+0(FP), AX
 	MOVQ c+8(FP), BX
 	MOVQ flag+16(FP), CX
@@ -119,8 +119,10 @@ TEXT ·hashBlocksSSE4(SB), 4, $0-48
 	MOVQ blocks_len+32(FP), DI
 
 	MOVQ SP, BP
-	ANDQ $0xFFFFFFFFFFFFFFF0, SP
-	SUBQ $(16+16), SP
+	MOVQ SP, R9
+	ADDQ $15, R9
+	ANDQ $~15, R9
+	MOVQ R9, SP
 
 	MOVOU ·iv3<>(SB), X0
 	MOVO  X0, 0(SP)

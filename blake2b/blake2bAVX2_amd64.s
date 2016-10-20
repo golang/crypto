@@ -95,7 +95,7 @@ GLOBL ·AVX_c48<>(SB), (NOPTR+RODATA), $32
 	VINSERTI128 $1, X11, Y15, Y15
 
 // func hashBlocksAVX2(h *[8]uint64, c *[2]uint64, flag uint64, blocks []byte)
-TEXT ·hashBlocksAVX2(SB), 4, $0-48
+TEXT ·hashBlocksAVX2(SB), 4, $320-48 // frame size = 288 + 32 byte alignment
 	MOVQ h+0(FP), AX
 	MOVQ c+8(FP), BX
 	MOVQ flag+16(FP), CX
@@ -103,8 +103,10 @@ TEXT ·hashBlocksAVX2(SB), 4, $0-48
 	MOVQ blocks_len+32(FP), DI
 
 	MOVQ SP, DX
-	ANDQ $0xFFFFFFFFFFFFFFE0, SP
-	SUBQ $(32+32+256), SP
+	MOVQ SP, R9
+	ADDQ $31, R9
+	ANDQ $~31, R9
+	MOVQ R9, SP
 
 	MOVQ CX, 16(SP)
 	XORQ CX, CX
