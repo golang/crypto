@@ -8,14 +8,8 @@
 // +build amd64,!gccgo,!appengine
 
 // func ladderstep(inout *[5][5]uint64)
-TEXT ·ladderstep(SB),0,$384-8
+TEXT ·ladderstep(SB),0,$352-8
 	MOVQ inout+0(FP),DI
-
-	MOVQ SP,R11
-	MOVQ $31,CX
-	NOTQ CX
-	ANDQ CX,SP
-	ADDQ $32,SP
 
 	MOVQ R11,0(SP)
 	MOVQ R12,8(SP)
@@ -1392,7 +1386,6 @@ TEXT ·ladderstep(SB),0,$384-8
 	MOVQ 32(SP),R15
 	MOVQ 40(SP),BX
 	MOVQ 48(SP),BP
-	MOVQ R11,SP
 	MOVQ DI,AX
 	MOVQ SI,DX
 	RET

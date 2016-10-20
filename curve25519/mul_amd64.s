@@ -8,16 +8,10 @@
 // +build amd64,!gccgo,!appengine
 
 // func mul(dest, a, b *[5]uint64)
-TEXT ·mul(SB),0,$128-24
+TEXT ·mul(SB),0,$80-24
 	MOVQ dest+0(FP), DI
 	MOVQ a+8(FP), SI
 	MOVQ b+16(FP), DX
-
-	MOVQ SP,R11
-	MOVQ $31,CX
-	NOTQ CX
-	ANDQ CX,SP
-	ADDQ $32,SP
 
 	MOVQ R11,0(SP)
 	MOVQ R12,8(SP)
@@ -185,7 +179,6 @@ TEXT ·mul(SB),0,$128-24
 	MOVQ 32(SP),R15
 	MOVQ 40(SP),BX
 	MOVQ 48(SP),BP
-	MOVQ R11,SP
 	MOVQ DI,AX
 	MOVQ SI,DX
 	RET
