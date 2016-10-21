@@ -7,8 +7,10 @@
 package blake2s
 
 var (
-	useSSSE3 = supportSSSE3()
-	useSSE2  = supportSSE2()
+	useSSE4    = false
+	useSSSE3   = supportSSSE3()
+	useSSE2    = supportSSE2()
+	useGeneric = true
 )
 
 //go:noescape

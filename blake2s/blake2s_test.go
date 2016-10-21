@@ -11,6 +11,32 @@ import (
 )
 
 func TestHashes(t *testing.T) {
+	defer func(sse2, ssse3, sse4 bool) {
+		useSSE2, useSSSE3, useSSE4 = sse2, ssse3, sse4
+	}(useSSE2, useSSSE3, useSSE4)
+
+	if useSSE4 {
+		t.Log("SSE4 version")
+		testHashes(t)
+		useSSE4 = false
+	}
+	if useSSSE3 {
+		t.Log("SSSE3 version")
+		testHashes(t)
+		useSSSE3 = false
+	}
+	if useSSE2 {
+		t.Log("SSE2 version")
+		testHashes(t)
+		useSSE2 = false
+	}
+	if useGeneric {
+		t.Log("generic version")
+		testHashes(t)
+	}
+}
+
+func testHashes(t *testing.T) {
 	key, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
 
 	input := make([]byte, 255)
