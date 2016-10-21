@@ -290,7 +290,7 @@ GLOBL counter<>(SB), (NOPTR+RODATA), $16
 	MOVL t, 8*4+off+576(dst)
 
 // func hashBlocksSSE2(h *[8]uint32, c *[2]uint32, flag uint32, blocks []byte)
-TEXT ·hashBlocksSSE2(SB), 4, $672-24 // frame = 656 + 16 byte alignment
+TEXT ·hashBlocksSSE2(SB), 0, $672-24 // frame = 656 + 16 byte alignment
 	MOVL h+0(FP), AX
 	MOVL c+4(FP), BX
 	MOVL flag+8(FP), CX
@@ -359,7 +359,7 @@ loop:
 	RET
 
 // func hashBlocksSSSE3(h *[8]uint32, c *[2]uint32, flag uint32, blocks []byte)
-TEXT ·hashBlocksSSSE3(SB), 4, $704-24 // frame = 688 + 16 byte alignment
+TEXT ·hashBlocksSSSE3(SB), 0, $704-24 // frame = 688 + 16 byte alignment
 	MOVL h+0(FP), AX
 	MOVL c+4(FP), BX
 	MOVL flag+8(FP), CX
