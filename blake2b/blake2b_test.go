@@ -21,6 +21,25 @@ func fromHex(s string) []byte {
 }
 
 func TestHashes(t *testing.T) {
+	defer func(sse4, avx2 bool) {
+		useSSE4, useAVX2 = sse4, avx2
+	}(useSSE4, useAVX2)
+
+	if useAVX2 {
+		t.Log("AVX2 version")
+		testHashes(t)
+		useAVX2 = false
+	}
+	if useSSE4 {
+		t.Log("SSE4 version")
+		testHashes(t)
+		useSSE4 = false
+	}
+	t.Log("generic version")
+	testHashes(t)
+}
+
+func testHashes(t *testing.T) {
 	key, _ := hex.DecodeString("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f")
 
 	input := make([]byte, 255)
