@@ -433,7 +433,7 @@ TEXT ·hashBlocksSSSE3(SB), 0, $672-48 // frame = 656 + 16 byte alignment
 	RET
 
 // func hashBlocksSSE4(h *[8]uint32, c *[2]uint32, flag uint32, blocks []byte)
-TEXT ·hashBlocksSSE4(SB), 0, $16-48 // frame = 0 + 16 byte alignment
+TEXT ·hashBlocksSSE4(SB), 0, $32-48 // frame = 16 + 16 byte alignment
 	HASH_BLOCKS(h+0(FP), c+8(FP), flag+16(FP), blocks_base+24(FP), blocks_len+32(FP), BLAKE2s_SSE4)
 	RET
 
