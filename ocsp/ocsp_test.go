@@ -2,6 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// +build go1.7
+
 package ocsp
 
 import (
@@ -222,46 +224,76 @@ func TestOCSPResponse(t *testing.T) {
 		ExtraExtensions:  extensions,
 	}
 
-	responseBytes, err := CreateResponse(issuer, responder, template, responderPrivateKey)
-	if err != nil {
-		t.Fatal(err)
+	template.IssuerHash = crypto.MD5
+	_, err = CreateResponse(issuer, responder, template, responderPrivateKey)
+	if err == nil {
+		t.Fatal("CreateResponse didn't fail with non-valid template.IssuerHash value crypto.MD5")
 	}
 
-	resp, err := ParseResponse(responseBytes, nil)
-	if err != nil {
-		t.Fatal(err)
+	testCases := []struct {
+		name       string
+		issuerHash crypto.Hash
+	}{
+		{"Zero value", 0},
+		{"crypto.SHA1", crypto.SHA1},
+		{"crypto.SHA256", crypto.SHA256},
+		{"crypto.SHA384", crypto.SHA384},
+		{"crypto.SHA512", crypto.SHA512},
 	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			template.IssuerHash = tc.issuerHash
+			responseBytes, err := CreateResponse(issuer, responder, template, responderPrivateKey)
+			if err != nil {
+				t.Fatalf("CreateResponse failed: %s", err)
+			}
 
-	if !reflect.DeepEqual(resp.ThisUpdate, template.ThisUpdate) {
-		t.Errorf("resp.ThisUpdate: got %d, want %d", resp.ThisUpdate, template.ThisUpdate)
-	}
+			resp, err := ParseResponse(responseBytes, nil)
+			if err != nil {
+				t.Fatalf("ParseResponse failed: %s", err)
+			}
 
-	if !reflect.DeepEqual(resp.NextUpdate, template.NextUpdate) {
-		t.Errorf("resp.NextUpdate: got %d, want %d", resp.NextUpdate, template.NextUpdate)
-	}
+			if !reflect.DeepEqual(resp.ThisUpdate, template.ThisUpdate) {
+				t.Errorf("resp.ThisUpdate: got %d, want %d", resp.ThisUpdate, template.ThisUpdate)
+			}
 
-	if !reflect.DeepEqual(resp.RevokedAt, template.RevokedAt) {
-		t.Errorf("resp.RevokedAt: got %d, want %d", resp.RevokedAt, template.RevokedAt)
-	}
+			if !reflect.DeepEqual(resp.NextUpdate, template.NextUpdate) {
+				t.Errorf("resp.NextUpdate: got %d, want %d", resp.NextUpdate, template.NextUpdate)
+			}
 
-	if !reflect.DeepEqual(resp.Extensions, template.ExtraExtensions) {
-		t.Errorf("resp.Extensions: got %v, want %v", resp.Extensions, template.ExtraExtensions)
-	}
+			if !reflect.DeepEqual(resp.RevokedAt, template.RevokedAt) {
+				t.Errorf("resp.RevokedAt: got %d, want %d", resp.RevokedAt, template.RevokedAt)
+			}
 
-	if !resp.ProducedAt.Equal(producedAt) {
-		t.Errorf("resp.ProducedAt: got %d, want %d", resp.ProducedAt, producedAt)
-	}
+			if !reflect.DeepEqual(resp.Extensions, template.ExtraExtensions) {
+				t.Errorf("resp.Extensions: got %v, want %v", resp.Extensions, template.ExtraExtensions)
+			}
 
-	if resp.Status != template.Status {
-		t.Errorf("resp.Status: got %d, want %d", resp.Status, template.Status)
-	}
+			if !resp.ProducedAt.Equal(producedAt) {
+				t.Errorf("resp.ProducedAt: got %d, want %d", resp.ProducedAt, producedAt)
+			}
 
-	if resp.SerialNumber.Cmp(template.SerialNumber) != 0 {
-		t.Errorf("resp.SerialNumber: got %x, want %x", resp.SerialNumber, template.SerialNumber)
-	}
+			if resp.Status != template.Status {
+				t.Errorf("resp.Status: got %d, want %d", resp.Status, template.Status)
+			}
 
-	if resp.RevocationReason != template.RevocationReason {
-		t.Errorf("resp.RevocationReason: got %d, want %d", resp.RevocationReason, template.RevocationReason)
+			if resp.SerialNumber.Cmp(template.SerialNumber) != 0 {
+				t.Errorf("resp.SerialNumber: got %x, want %x", resp.SerialNumber, template.SerialNumber)
+			}
+
+			if resp.RevocationReason != template.RevocationReason {
+				t.Errorf("resp.RevocationReason: got %d, want %d", resp.RevocationReason, template.RevocationReason)
+			}
+
+			expectedHash := tc.issuerHash
+			if tc.issuerHash == 0 {
+				expectedHash = crypto.SHA1
+			}
+
+			if resp.IssuerHash != expectedHash {
+				t.Errorf("resp.IssuerHash: got %d, want %d", resp.IssuerHash, expectedHash)
+			}
+		})
 	}
 }
 
