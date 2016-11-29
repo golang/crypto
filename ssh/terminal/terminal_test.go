@@ -92,6 +92,12 @@ var keyPressTests = []struct {
 		in: "\x1b[B\r", // down
 	},
 	{
+		in: "\016\r", // ^P
+	},
+	{
+		in: "\014\r", // ^N
+	},
+	{
 		in:   "line\x1b[A\x1b[B\r", // up then down
 		line: "line",
 	},
