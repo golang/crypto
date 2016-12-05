@@ -5,6 +5,7 @@
 package terminal
 
 import (
+	"bytes"
 	"io"
 	"os"
 	"testing"
@@ -287,5 +288,19 @@ func TestMakeRawState(t *testing.T) {
 
 	if *st != *raw {
 		t.Errorf("states do not match; was %v, expected %v", raw, st)
+	}
+}
+
+func TestOutputNewlines(t *testing.T) {
+	// \n should be changed to \r\n in terminal output.
+	buf := new(bytes.Buffer)
+	term := NewTerminal(buf, ">")
+
+	term.Write([]byte("1\n2\n"))
+	output := string(buf.Bytes())
+	const expected = "1\r\n2\r\n"
+
+	if output != expected {
+		t.Errorf("incorrect output: was %q, expected %q", output, expected)
 	}
 }
