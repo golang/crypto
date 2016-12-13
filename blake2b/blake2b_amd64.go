@@ -7,6 +7,7 @@
 package blake2b
 
 var useAVX2 = false
+var useAVX = false
 var useSSE4 = supportSSE4()
 
 //go:noescape
