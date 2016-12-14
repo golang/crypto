@@ -116,12 +116,11 @@ type basicResponse struct {
 }
 
 type responseData struct {
-	Raw              asn1.RawContent
-	Version          int           `asn1:"optional,default:0,explicit,tag:0"`
-	RawResponderName asn1.RawValue `asn1:"optional,explicit,tag:1"`
-	KeyHash          []byte        `asn1:"optional,explicit,tag:2"`
-	ProducedAt       time.Time     `asn1:"generalized"`
-	Responses        []singleResponse
+	Raw            asn1.RawContent
+	Version        int `asn1:"optional,default:0,explicit,tag:0"`
+	RawResponderID asn1.RawValue
+	ProducedAt     time.Time `asn1:"generalized"`
+	Responses      []singleResponse
 }
 
 type singleResponse struct {
@@ -363,6 +362,15 @@ type Response struct {
 	// If zero, the default is crypto.SHA1.
 	IssuerHash crypto.Hash
 
+	// RawResponderName optionally contains the DER-encoded subject of the
+	// responder certificate. Exactly one of RawResponderName and
+	// ResponderKeyHash is set.
+	RawResponderName []byte
+	// ResponderKeyHash optionally contains the SHA-1 hash of the
+	// responder's public key. Exactly one of RawResponderName and
+	// ResponderKeyHash is set.
+	ResponderKeyHash []byte
+
 	// Extensions contains raw X.509 extensions from the singleExtensions field
 	// of the OCSP response. When parsing certificates, this can be used to
 	// extract non-critical extensions that are not parsed by this package. When
@@ -494,6 +502,25 @@ func ParseResponseForCert(bytes []byte, cert, issuer *x509.Certificate) (*Respon
 		SignatureAlgorithm: getSignatureAlgorithmFromOID(basicResp.SignatureAlgorithm.Algorithm),
 	}
 
+	// Handle the ResponderID CHOICE tag. ResponderID can be flattened into
+	// TBSResponseData once https://go-review.googlesource.com/34503 has been
+	// released.
+	rawResponderID := basicResp.TBSResponseData.RawResponderID
+	switch rawResponderID.Tag {
+	case 1: // Name
+		var rdn pkix.RDNSequence
+		if rest, err := asn1.Unmarshal(rawResponderID.Bytes, &rdn); err != nil || len(rest) != 0 {
+			return nil, ParseError("invalid responder name")
+		}
+		ret.RawResponderName = rawResponderID.Bytes
+	case 2: // KeyHash
+		if rest, err := asn1.Unmarshal(rawResponderID.Bytes, &ret.ResponderKeyHash); err != nil || len(rest) != 0 {
+			return nil, ParseError("invalid responder key hash")
+		}
+	default:
+		return nil, ParseError("invalid responder id tag")
+	}
+
 	if len(basicResp.Certificates) > 0 {
 		ret.Certificate, err = x509.ParseCertificate(basicResp.Certificates[0].FullBytes)
 		if err != nil {
@@ -501,17 +528,17 @@ func ParseResponseForCert(bytes []byte, cert, issuer *x509.Certificate) (*Respon
 		}
 
 		if err := ret.CheckSignatureFrom(ret.Certificate); err != nil {
-			return nil, ParseError("bad OCSP signature")
+			return nil, ParseError("bad signature on embedded certificate: " + err.Error())
 		}
 
 		if issuer != nil {
 			if err := issuer.CheckSignature(ret.Certificate.SignatureAlgorithm, ret.Certificate.RawTBSCertificate, ret.Certificate.Signature); err != nil {
-				return nil, ParseError("bad signature on embedded certificate")
+				return nil, ParseError("bad OCSP signature: " + err.Error())
 			}
 		}
 	} else if issuer != nil {
 		if err := ret.CheckSignatureFrom(issuer); err != nil {
-			return nil, ParseError("bad OCSP signature")
+			return nil, ParseError("bad OCSP signature: " + err.Error())
 		}
 	}
 
@@ -620,8 +647,8 @@ func CreateRequest(cert, issuer *x509.Certificate, opts *RequestOptions) ([]byte
 // CreateResponse returns a DER-encoded OCSP response with the specified contents.
 // The fields in the response are populated as follows:
 //
-// The responder cert is used to populate the ResponderName field, and the certificate
-// itself is provided alongside the OCSP response signature.
+// The responder cert is used to populate the responder's name field, and the
+// certificate itself is provided alongside the OCSP response signature.
 //
 // The issuer cert is used to puplate the IssuerNameHash and IssuerKeyHash fields.
 //
@@ -649,7 +676,7 @@ func CreateResponse(issuer, responderCert *x509.Certificate, template Response, 
 	}
 
 	if !template.IssuerHash.Available() {
-		return nil, fmt.Errorf("issuer hash algorithm %v not linked into binarya", template.IssuerHash)
+		return nil, fmt.Errorf("issuer hash algorithm %v not linked into binary", template.IssuerHash)
 	}
 	h := template.IssuerHash.New()
 	h.Write(publicKeyInfo.PublicKey.RightAlign())
@@ -686,17 +713,17 @@ func CreateResponse(issuer, responderCert *x509.Certificate, template Response, 
 		}
 	}
 
-	responderName := asn1.RawValue{
+	rawResponderID := asn1.RawValue{
 		Class:      2, // context-specific
-		Tag:        1, // explicit tag
+		Tag:        1, // Name (explicit tag)
 		IsCompound: true,
 		Bytes:      responderCert.RawSubject,
 	}
 	tbsResponseData := responseData{
-		Version:          0,
-		RawResponderName: responderName,
-		ProducedAt:       time.Now().Truncate(time.Minute).UTC(),
-		Responses:        []singleResponse{innerResponse},
+		Version:        0,
+		RawResponderID: rawResponderID,
+		ProducedAt:     time.Now().Truncate(time.Minute).UTC(),
+		Responses:      []singleResponse{innerResponse},
 	}
 
 	tbsResponseDataDER, err := asn1.Marshal(tbsResponseData)
