@@ -1691,7 +1691,7 @@ sealSSETail64:
 	MOVO  D1, ctr0Store
 
 sealSSETail64LoopA:
-	// Perform ChaCha rounds, while hashing the prevsiosly encrpyted ciphertext
+	// Perform ChaCha rounds, while hashing the prevsiosly encrypted ciphertext
 	polyAdd(0(oup))
 	polyMul
 	LEAQ 16(oup), oup
@@ -1725,7 +1725,7 @@ sealSSETail128:
 	MOVO A0, A1; MOVO B0, B1; MOVO C0, C1; MOVO D0, D1; PADDL ·sseIncMask<>(SB), D1; MOVO D1, ctr1Store
 
 sealSSETail128LoopA:
-	// Perform ChaCha rounds, while hashing the prevsiosly encrpyted ciphertext
+	// Perform ChaCha rounds, while hashing the prevsiosly encrypted ciphertext
 	polyAdd(0(oup))
 	polyMul
 	LEAQ 16(oup), oup
@@ -1771,7 +1771,7 @@ sealSSETail192:
 	MOVO A1, A2; MOVO B1, B2; MOVO C1, C2; MOVO D1, D2; PADDL ·sseIncMask<>(SB), D2; MOVO D2, ctr2Store
 
 sealSSETail192LoopA:
-	// Perform ChaCha rounds, while hashing the prevsiosly encrpyted ciphertext
+	// Perform ChaCha rounds, while hashing the prevsiosly encrypted ciphertext
 	polyAdd(0(oup))
 	polyMul
 	LEAQ 16(oup), oup
