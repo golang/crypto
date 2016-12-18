@@ -596,7 +596,7 @@ func (t *Terminal) writeLine(line []rune) {
 	}
 }
 
-// writeWithCRLF writes buf to w but replaces all occurances of \n with \r\n.
+// writeWithCRLF writes buf to w but replaces all occurrences of \n with \r\n.
 func writeWithCRLF(w io.Writer, buf []byte) (n int, err error) {
 	for len(buf) > 0 {
 		i := bytes.IndexByte(buf, '\n')
