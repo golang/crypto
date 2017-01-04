@@ -278,8 +278,15 @@ TEXT ·chacha20Poly1305Open(SB), 0, $288-97
 	MOVQ ad+72(FP), adp
 
 	// Check for AVX2 support
-	CMPB runtime·support_avx2(SB), $1
-	JE   chacha20Poly1305Open_AVX2
+	CMPB runtime·support_avx2(SB), $0
+	JE   noavx2bmi2Open
+
+	// Check BMI2 bit for MULXQ.
+	// runtime·cpuid_ebx7 is always available here
+	// because it passed avx2 check
+	TESTL $(1<<8), runtime·cpuid_ebx7(SB)
+	JNE   chacha20Poly1305Open_AVX2
+noavx2bmi2Open:
 
 	// Special optimization, for very short buffers
 	CMPQ inl, $128
@@ -1485,8 +1492,15 @@ TEXT ·chacha20Poly1305Seal(SB), 0, $288-96
 	MOVQ ad+72(FP), adp
 
 	// Check for AVX2 support
-	CMPB runtime·support_avx2(SB), $1
-	JE   chacha20Poly1305Seal_AVX2
+	CMPB runtime·support_avx2(SB), $0
+	JE   noavx2bmi2Seal
+
+	// Check BMI2 bit for MULXQ.
+	// runtime·cpuid_ebx7 is always available here
+	// because it passed avx2 check
+	TESTL $(1<<8), runtime·cpuid_ebx7(SB)
+	JNE   chacha20Poly1305Seal_AVX2
+noavx2bmi2Seal:
 
 	// Special optimization, for very short buffers
 	CMPQ inl, $128
