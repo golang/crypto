@@ -1313,6 +1313,12 @@ func (priv *PrivateKey) Import(in []byte) bool {
 		mpis[i] = new(big.Int).SetBytes(mpiBytes)
 	}
 
+	for _, mpi := range mpis {
+		if mpi.Sign() <= 0 {
+			return false
+		}
+	}
+
 	priv.PrivateKey.P = mpis[0]
 	priv.PrivateKey.Q = mpis[1]
 	priv.PrivateKey.G = mpis[2]
