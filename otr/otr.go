@@ -943,6 +943,7 @@ func (c *Conversation) processData(in []byte) (out []byte, tlvs []tlv, err error
 			t.data, tlvData, ok3 = getNBytes(tlvData, int(t.length))
 			if !ok1 || !ok2 || !ok3 {
 				err = errors.New("otr: corrupt tlv data")
+				return
 			}
 			tlvs = append(tlvs, t)
 		}
