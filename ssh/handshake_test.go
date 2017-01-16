@@ -249,9 +249,25 @@ func TestHandshakeAutoRekeyWrite(t *testing.T) {
 	defer trC.Close()
 	defer trS.Close()
 
+	done := make(chan int, 1)
+	const numPacket = 5
+	go func() {
+		defer close(done)
+		j := 0
+		for ; j < numPacket; j++ {
+			if _, err := trS.readPacket(); err != nil {
+				break
+			}
+		}
+
+		if j != numPacket {
+			t.Errorf("got %d, want 5 messages", j)
+		}
+	}()
+
 	<-checker.called
 
-	for i := 0; i < 5; i++ {
+	for i := 0; i < numPacket; i++ {
 		packet := make([]byte, 251)
 		packet[0] = msgRequestSuccess
 		if err := trC.writePacket(packet); err != nil {
@@ -263,18 +279,7 @@ func TestHandshakeAutoRekeyWrite(t *testing.T) {
 		}
 
 	}
-
-	j := 0
-	for ; j < 5; j++ {
-		_, err := trS.readPacket()
-		if err != nil {
-			break
-		}
-	}
-
-	if j != 5 {
-		t.Errorf("got %d, want 5 messages", j)
-	}
+	<-done
 }
 
 type syncChecker struct {
@@ -305,12 +310,19 @@ func TestHandshakeAutoRekeyRead(t *testing.T) {
 	if err := trS.writePacket(packet); err != nil {
 		t.Fatalf("writePacket: %v", err)
 	}
+
 	// While we read out the packet, a key change will be
 	// initiated.
-	if _, err := trC.readPacket(); err != nil {
-		t.Fatalf("readPacket(client): %v", err)
-	}
+	done := make(chan int, 1)
+	go func() {
+		defer close(done)
+		if _, err := trC.readPacket(); err != nil {
+			t.Fatalf("readPacket(client): %v", err)
+		}
 
+	}()
+
+	<-done
 	<-sync.called
 }
 
