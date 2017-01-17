@@ -930,12 +930,6 @@ func readPasswordLine(reader io.Reader) ([]byte, error) {
 
 	for {
 		n, err := reader.Read(buf[:])
-		if err != nil {
-			if err == io.EOF && len(ret) > 0 {
-				return ret, nil
-			}
-			return ret, err
-		}
 		if n > 0 {
 			switch buf[0] {
 			case '\n':
@@ -945,6 +939,13 @@ func readPasswordLine(reader io.Reader) ([]byte, error) {
 			default:
 				ret = append(ret, buf[0])
 			}
+			continue
+		}
+		if err != nil {
+			if err == io.EOF && len(ret) > 0 {
+				return ret, nil
+			}
+			return ret, err
 		}
 	}
 }
