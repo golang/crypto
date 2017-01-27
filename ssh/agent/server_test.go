@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/froodian/crypto/ssh"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestServer(t *testing.T) {

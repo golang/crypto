@@ -3,5 +3,5 @@
 // license that can be found in the LICENSE file.
 
 // This package contains integration tests for the
-// github.com/froodian/crypto/ssh package.
-package test // import "github.com/froodian/crypto/ssh/test"
+// golang.org/x/crypto/ssh package.
+package test // import "golang.org/x/crypto/ssh/test"
