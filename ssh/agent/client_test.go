@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/ssh"
+	"github.com/froodian/crypto/ssh"
 )
 
 // startAgent executes ssh-agent, and returns a Agent interface to it.

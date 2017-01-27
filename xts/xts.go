@@ -19,7 +19,7 @@
 //
 // (Note: this package does not implement ciphertext-stealing so sectors must
 // be a multiple of 16 bytes.)
-package xts // import "golang.org/x/crypto/xts"
+package xts // import "github.com/froodian/crypto/xts"
 
 import (
 	"crypto/cipher"

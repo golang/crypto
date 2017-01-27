@@ -29,7 +29,7 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/crypto/acme"
+	"github.com/froodian/crypto/acme"
 	"golang.org/x/net/context"
 )
 
