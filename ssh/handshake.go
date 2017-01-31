@@ -314,7 +314,7 @@ write:
 				break
 			}
 		}
-		t.pendingPackets = t.pendingPackets[0:]
+		t.pendingPackets = t.pendingPackets[:0]
 		t.mu.Unlock()
 	}
 
