@@ -574,7 +574,9 @@ func (t *handshakeTransport) enterKeyExchange(otherInitPacket []byte) error {
 	}
 	result.SessionID = t.sessionID
 
-	t.conn.prepareKeyChange(t.algorithms, result)
+	if err := t.conn.prepareKeyChange(t.algorithms, result); err != nil {
+		return err
+	}
 	if err = t.conn.writePacket([]byte{msgNewKeys}); err != nil {
 		return err
 	}
