@@ -40,7 +40,7 @@ func (t *testChecker) Check(dialAddr string, addr net.Addr, key PublicKey) error
 // therefore is buffered (net.Pipe deadlocks if both sides start with
 // a write.)
 func netPipe() (net.Conn, net.Conn, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := net.Listen("tcp", ":0")
 	if err != nil {
 		return nil, nil, err
 	}
