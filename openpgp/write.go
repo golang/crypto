@@ -202,7 +202,7 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 	// or hash functions, these are the ones that we assume that every
 	// implementation supports.
 	defaultCiphers := candidateCiphers[len(candidateCiphers)-1:]
-	defaultHashes := candidateHashes[len(candidateHashes)-1:]
+	defaultHashes := candidateHashes[0:3]
 
 	encryptKeys := make([]Key, len(to))
 	for i := range to {
