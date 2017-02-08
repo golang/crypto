@@ -14,6 +14,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -852,5 +853,35 @@ func TestManagerGetCertificateBogusSNI(t *testing.T) {
 		if got != tt.wantErr {
 			t.Errorf("GetCertificate(SNI = %q) = %q; want %q", tt.name, got, tt.wantErr)
 		}
+	}
+}
+
+func TestCertRequest(t *testing.T) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An extension from RFC7633. Any will do.
+	ext := pkix.Extension{
+		Id:    asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1},
+		Value: []byte("dummy"),
+	}
+	b, err := certRequest(key, "example.org", []pkix.Extension{ext}, "san.example.org")
+	if err != nil {
+		t.Fatalf("certRequest: %v", err)
+	}
+	r, err := x509.ParseCertificateRequest(b)
+	if err != nil {
+		t.Fatalf("ParseCertificateRequest: %v", err)
+	}
+	var found bool
+	for _, v := range r.Extensions {
+		if v.Id.Equal(ext.Id) {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("want %v in Extensions: %v", ext, r.Extensions)
 	}
 }
