@@ -1,3 +1,7 @@
+// Copyright 2016 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package acme
 
 import (
@@ -5,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // ACME server response statuses used to describe Authorization and Challenge states.
@@ -77,6 +82,27 @@ func (a *AuthorizationError) Error() string {
 		e[i] = err.Error()
 	}
 	return fmt.Sprintf("acme: authorization error for %s: %s", a.Identifier, strings.Join(e, "; "))
+}
+
+// RateLimit reports whether err represents a rate limit error and
+// any Retry-After duration returned by the server.
+//
+// See the following for more details on rate limiting:
+// https://tools.ietf.org/html/draft-ietf-acme-acme-05#section-5.6
+func RateLimit(err error) (time.Duration, bool) {
+	e, ok := err.(*Error)
+	if !ok {
+		return 0, false
+	}
+	// Some CA implementations may return incorrect values.
+	// Use case-insensitive comparison.
+	if !strings.HasSuffix(strings.ToLower(e.ProblemType), ":ratelimited") {
+		return 0, false
+	}
+	if e.Header == nil {
+		return 0, true
+	}
+	return retryAfter(e.Header.Get("Retry-After"), 0), true
 }
 
 // Account is a user account. It is associated with a private key.
