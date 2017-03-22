@@ -112,7 +112,7 @@ type Manager struct {
 	// RenewBefore optionally specifies how early certificates should
 	// be renewed before they expire.
 	//
-	// If zero, they're renewed 1 week before expiration.
+	// If zero, they're renewed 30 days before expiration.
 	RenewBefore time.Duration
 
 	// Client is used to perform low-level operations, such as account registration
@@ -631,10 +631,10 @@ func (m *Manager) hostPolicy() HostPolicy {
 }
 
 func (m *Manager) renewBefore() time.Duration {
-	if m.RenewBefore > maxRandRenew {
+	if m.RenewBefore > renewJitter {
 		return m.RenewBefore
 	}
-	return 7 * 24 * time.Hour // 1 week
+	return 720 * time.Hour // 30 days
 }
 
 // certState is ready when its mutex is unlocked for reading.
