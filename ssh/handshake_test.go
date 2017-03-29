@@ -436,6 +436,7 @@ func testHandshakeErrorHandlingN(t *testing.T, readLimit, writeLimit int, couple
 	clientConf.SetDefaults()
 	clientConn := newHandshakeTransport(&errorKeyingTransport{b, -1, -1}, &clientConf, []byte{'a'}, []byte{'b'})
 	clientConn.hostKeyAlgorithms = []string{key.PublicKey().Type()}
+	clientConn.hostKeyCallback = InsecureIgnoreHostKey()
 	go clientConn.readLoop()
 	go clientConn.kexLoop()
 

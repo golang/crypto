@@ -74,7 +74,7 @@ type handshakeTransport struct {
 	startKex chan *pendingKex
 
 	// data for host key checking
-	hostKeyCallback func(hostname string, remote net.Addr, key PublicKey) error
+	hostKeyCallback HostKeyCallback
 	dialAddress     string
 	remoteAddr      net.Addr
 
@@ -614,11 +614,9 @@ func (t *handshakeTransport) client(kex kexAlgorithm, algs *algorithms, magics *
 		return nil, err
 	}
 
-	if t.hostKeyCallback != nil {
-		err = t.hostKeyCallback(t.dialAddress, t.remoteAddr, hostKey)
-		if err != nil {
-			return nil, err
-		}
+	err = t.hostKeyCallback(t.dialAddress, t.remoteAddr, hostKey)
+	if err != nil {
+		return nil, err
 	}
 
 	return result, nil
