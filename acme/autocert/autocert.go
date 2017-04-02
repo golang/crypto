@@ -10,6 +10,7 @@ package autocert
 
 import (
 	"bytes"
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -30,7 +31,6 @@ import (
 	"time"
 
 	"golang.org/x/crypto/acme"
-	"golang.org/x/net/context"
 )
 
 // pseudoRand is safe for concurrent use.

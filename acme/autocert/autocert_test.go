@@ -5,6 +5,7 @@
 package autocert
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -27,7 +28,6 @@ import (
 	"time"
 
 	"golang.org/x/crypto/acme"
-	"golang.org/x/net/context"
 )
 
 var discoTmpl = template.Must(template.New("disco").Parse(`{

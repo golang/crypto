@@ -5,6 +5,7 @@
 package autocert
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -18,7 +19,6 @@ import (
 	"time"
 
 	"golang.org/x/crypto/acme"
-	"golang.org/x/net/context"
 )
 
 func TestRenewalNext(t *testing.T) {
