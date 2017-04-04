@@ -72,7 +72,7 @@ func TestHostKeyCheck(t *testing.T) {
 		_, _, _, err = NewClientConn(c2, "", &clientConf)
 		if err != nil {
 			if tt.wantError == "" || !strings.Contains(err.Error(), tt.wantError) {
-				t.Errorf("%s: got error %q, missing %q", err.Error(), tt.wantError)
+				t.Errorf("%s: got error %q, missing %q", tt.name, err.Error(), tt.wantError)
 			}
 		} else if tt.wantError != "" {
 			t.Errorf("%s: succeeded, but want error string %q", tt.name, tt.wantError)
