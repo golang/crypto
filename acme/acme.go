@@ -974,7 +974,8 @@ func tlsChallengeCert(san []string, opt []CertOption) (tls.Certificate, error) {
 			NotBefore:             time.Now(),
 			NotAfter:              time.Now().Add(24 * time.Hour),
 			BasicConstraintsValid: true,
-			KeyUsage:              x509.KeyUsageKeyEncipherment,
+			KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+			ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
 		}
 	}
 	tmpl.DNSNames = san
