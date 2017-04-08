@@ -980,7 +980,8 @@ func TestNonce_fetch(t *testing.T) {
 	defer ts.Close()
 	for ; i < len(tests); i++ {
 		test := tests[i]
-		n, err := fetchNonce(context.Background(), http.DefaultClient, ts.URL)
+		c := &Client{}
+		n, err := c.fetchNonce(context.Background(), ts.URL)
 		if n != test.nonce {
 			t.Errorf("%d: n=%q; want %q", i, n, test.nonce)
 		}
@@ -998,7 +999,8 @@ func TestNonce_fetchError(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer ts.Close()
-	_, err := fetchNonce(context.Background(), http.DefaultClient, ts.URL)
+	c := &Client{}
+	_, err := c.fetchNonce(context.Background(), ts.URL)
 	e, ok := err.(*Error)
 	if !ok {
 		t.Fatalf("err is %T; want *Error", err)
