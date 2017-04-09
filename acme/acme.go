@@ -198,7 +198,7 @@ func (c *Client) CreateCert(ctx context.Context, csr []byte, exp time.Duration, 
 		req.NotAfter = now.Add(exp).Format(time.RFC3339)
 	}
 
-	res, err := c.postJWS(ctx, c.Key, c.dir.CertURL, req)
+	res, err := c.retryPostJWS(ctx, c.Key, c.dir.CertURL, req)
 	if err != nil {
 		return nil, "", err
 	}
@@ -273,7 +273,7 @@ func (c *Client) RevokeCert(ctx context.Context, key crypto.Signer, cert []byte,
 	if key == nil {
 		key = c.Key
 	}
-	res, err := c.postJWS(ctx, key, c.dir.RevokeURL, body)
+	res, err := c.retryPostJWS(ctx, key, c.dir.RevokeURL, body)
 	if err != nil {
 		return err
 	}
@@ -361,7 +361,7 @@ func (c *Client) Authorize(ctx context.Context, domain string) (*Authorization, 
 		Resource:   "new-authz",
 		Identifier: authzID{Type: "dns", Value: domain},
 	}
-	res, err := c.postJWS(ctx, c.Key, c.dir.AuthzURL, req)
+	res, err := c.retryPostJWS(ctx, c.Key, c.dir.AuthzURL, req)
 	if err != nil {
 		return nil, err
 	}
@@ -419,7 +419,7 @@ func (c *Client) RevokeAuthorization(ctx context.Context, url string) error {
 		Status:   "deactivated",
 		Delete:   true,
 	}
-	res, err := c.postJWS(ctx, c.Key, url, req)
+	res, err := c.retryPostJWS(ctx, c.Key, url, req)
 	if err != nil {
 		return err
 	}
@@ -438,21 +438,7 @@ func (c *Client) RevokeAuthorization(ctx context.Context, url string) error {
 // In all other cases WaitAuthorization returns an error.
 // If the Status is StatusInvalid, the returned error is ErrAuthorizationFailed.
 func (c *Client) WaitAuthorization(ctx context.Context, url string) (*Authorization, error) {
-	var count int
-	sleep := func(v string, inc int) error {
-		count += inc
-		d := backoff(count, 10*time.Second)
-		d = retryAfter(v, d)
-		wakeup := time.NewTimer(d)
-		defer wakeup.Stop()
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-wakeup.C:
-			return nil
-		}
-	}
-
+	sleep := sleeper(ctx)
 	for {
 		res, err := c.get(ctx, url)
 		if err != nil {
@@ -525,7 +511,7 @@ func (c *Client) Accept(ctx context.Context, chal *Challenge) (*Challenge, error
 		Type:     chal.Type,
 		Auth:     auth,
 	}
-	res, err := c.postJWS(ctx, c.Key, chal.URI, req)
+	res, err := c.retryPostJWS(ctx, c.Key, chal.URI, req)
 	if err != nil {
 		return nil, err
 	}
@@ -658,7 +644,7 @@ func (c *Client) doReg(ctx context.Context, url string, typ string, acct *Accoun
 		req.Contact = acct.Contact
 		req.Agreement = acct.AgreedTerms
 	}
-	res, err := c.postJWS(ctx, c.Key, url, req)
+	res, err := c.retryPostJWS(ctx, c.Key, url, req)
 	if err != nil {
 		return nil, err
 	}
@@ -695,6 +681,40 @@ func (c *Client) doReg(ctx context.Context, url string, typ string, acct *Accoun
 	}, nil
 }
 
+// retryPostJWS will retry calls to postJWS if there is a badNonce error,
+// clearing the stored nonces after each error.
+// If the response was 4XX-5XX, then responseError is called on the body,
+// the body is closed, and the error returned.
+func (c *Client) retryPostJWS(ctx context.Context, key crypto.Signer, url string, body interface{}) (*http.Response, error) {
+	sleep := sleeper(ctx)
+	for {
+		res, err := c.postJWS(ctx, key, url, body)
+		if err != nil {
+			return nil, err
+		}
+		// handle errors 4XX-5XX with responseError
+		if res.StatusCode >= 400 && res.StatusCode <= 599 {
+			err := responseError(res)
+			res.Body.Close()
+			// according to spec badNonce is urn:ietf:params:acme:error:badNonce
+			// however, acme servers in the wild return their version of the error
+			// https://tools.ietf.org/html/draft-ietf-acme-acme-02#section-5.4
+			if ae, ok := err.(*Error); ok && strings.HasSuffix(strings.ToLower(ae.ProblemType), ":badnonce") {
+				// clear any nonces that we might've stored that might now be
+				// considered bad
+				c.clearNonces()
+				retry := res.Header.Get("retry-after")
+				if err := sleep(retry, 1); err != nil {
+					return nil, err
+				}
+				continue
+			}
+			return nil, err
+		}
+		return res, nil
+	}
+}
+
 // postJWS signs the body with the given key and POSTs it to the provided url.
 // The body argument must be JSON-serializable.
 func (c *Client) postJWS(ctx context.Context, key crypto.Signer, url string, body interface{}) (*http.Response, error) {
@@ -728,6 +748,13 @@ func (c *Client) popNonce(ctx context.Context, url string) (string, error) {
 		break
 	}
 	return nonce, nil
+}
+
+// clearNonces clears any stored nonces
+func (c *Client) clearNonces() {
+	c.noncesMu.Lock()
+	defer c.noncesMu.Unlock()
+	c.nonces = make(map[string]struct{})
 }
 
 // addNonce stores a nonce value found in h (if any) for future use.
@@ -939,6 +966,28 @@ func linkHeader(h http.Header, rel string) []string {
 		}
 	}
 	return links
+}
+
+// sleeper returns a function that accepts the Retry-After HTTP header value
+// and an increment that's used with backoff to increasingly sleep on
+// consecutive calls until the context is done. If the Retry-After header
+// cannot be parsed, then backoff is used with a maximum sleep time of 10
+// seconds.
+func sleeper(ctx context.Context) func(ra string, inc int) error {
+	var count int
+	return func(ra string, inc int) error {
+		count += inc
+		d := backoff(count, 10*time.Second)
+		d = retryAfter(ra, d)
+		wakeup := time.NewTimer(d)
+		defer wakeup.Stop()
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-wakeup.C:
+			return nil
+		}
+	}
 }
 
 // retryAfter parses a Retry-After HTTP header value,
