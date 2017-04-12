@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 )
 
 // ACME server response statuses used to describe Authorization and Challenge states.
@@ -33,14 +34,8 @@ const (
 	CRLReasonAACompromise         CRLReasonCode = 10
 )
 
-var (
-	// ErrAuthorizationFailed indicates that an authorization for an identifier
-	// did not succeed.
-	ErrAuthorizationFailed = errors.New("acme: identifier authorization failed")
-
-	// ErrUnsupportedKey is returned when an unsupported key type is encountered.
-	ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
-)
+// ErrUnsupportedKey is returned when an unsupported key type is encountered.
+var ErrUnsupportedKey = errors.New("acme: unknown key type; only RSA and ECDSA are supported")
 
 // Error is an ACME error, defined in Problem Details for HTTP APIs doc
 // http://tools.ietf.org/html/draft-ietf-appsawg-http-problem.
@@ -53,11 +48,35 @@ type Error struct {
 	// Detail is a human-readable explanation specific to this occurrence of the problem.
 	Detail string
 	// Header is the original server error response headers.
+	// It may be nil.
 	Header http.Header
 }
 
 func (e *Error) Error() string {
 	return fmt.Sprintf("%d %s: %s", e.StatusCode, e.ProblemType, e.Detail)
+}
+
+// AuthorizationError indicates that an authorization for an identifier
+// did not succeed.
+// It contains all errors from Challenge items of the failed Authorization.
+type AuthorizationError struct {
+	// URI uniquely identifies the failed Authorization.
+	URI string
+
+	// Identifier is an AuthzID.Value of the failed Authorization.
+	Identifier string
+
+	// Errors is a collection of non-nil error values of Challenge items
+	// of the failed Authorization.
+	Errors []error
+}
+
+func (a *AuthorizationError) Error() string {
+	e := make([]string, len(a.Errors))
+	for i, err := range a.Errors {
+		e[i] = err.Error()
+	}
+	return fmt.Sprintf("acme: authorization error for %s: %s", a.Identifier, strings.Join(e, "; "))
 }
 
 // Account is a user account. It is associated with a private key.
@@ -118,6 +137,8 @@ type Directory struct {
 }
 
 // Challenge encodes a returned CA challenge.
+// Its Error field may be non-nil if the challenge is part of an Authorization
+// with StatusInvalid.
 type Challenge struct {
 	// Type is the challenge type, e.g. "http-01", "tls-sni-02", "dns-01".
 	Type string
@@ -130,6 +151,11 @@ type Challenge struct {
 
 	// Status identifies the status of this challenge.
 	Status string
+
+	// Error indicates the reason for an authorization failure
+	// when this challenge was used.
+	// The type of a non-nil value is *Error.
+	Error error
 }
 
 // Authorization encodes an authorization response.
@@ -187,12 +213,26 @@ func (z *wireAuthz) authorization(uri string) *Authorization {
 	return a
 }
 
+func (z *wireAuthz) error(uri string) *AuthorizationError {
+	err := &AuthorizationError{
+		URI:        uri,
+		Identifier: z.Identifier.Value,
+	}
+	for _, raw := range z.Challenges {
+		if raw.Error != nil {
+			err.Errors = append(err.Errors, raw.Error.error(nil))
+		}
+	}
+	return err
+}
+
 // wireChallenge is ACME JSON challenge representation.
 type wireChallenge struct {
 	URI    string `json:"uri"`
 	Type   string
 	Token  string
 	Status string
+	Error  *wireError
 }
 
 func (c *wireChallenge) challenge() *Challenge {
@@ -205,5 +245,25 @@ func (c *wireChallenge) challenge() *Challenge {
 	if v.Status == "" {
 		v.Status = StatusPending
 	}
+	if c.Error != nil {
+		v.Error = c.Error.error(nil)
+	}
 	return v
+}
+
+// wireError is a subset of fields of the Problem Details object
+// as described in https://tools.ietf.org/html/rfc7807#section-3.1.
+type wireError struct {
+	Status int
+	Type   string
+	Detail string
+}
+
+func (e *wireError) error(h http.Header) *Error {
+	return &Error{
+		StatusCode:  e.Status,
+		ProblemType: e.Type,
+		Detail:      e.Detail,
+		Header:      h,
+	}
 }
