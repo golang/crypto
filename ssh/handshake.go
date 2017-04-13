@@ -245,6 +245,8 @@ func (t *handshakeTransport) resetWriteThresholds() {
 		t.writeBytesLeft = int64(t.config.RekeyThreshold)
 	} else if t.algorithms != nil {
 		t.writeBytesLeft = t.algorithms.w.rekeyBytes()
+	} else {
+		t.writeBytesLeft = 1 << 30
 	}
 }
 
@@ -355,8 +357,10 @@ func (t *handshakeTransport) resetReadThresholds() {
 	t.readPacketsLeft = packetRekeyThreshold
 	if t.config.RekeyThreshold > 0 {
 		t.readBytesLeft = int64(t.config.RekeyThreshold)
-	} else {
+	} else if t.algorithms != nil {
 		t.readBytesLeft = t.algorithms.r.rekeyBytes()
+	} else {
+		t.readBytesLeft = 1 << 30
 	}
 }
 
