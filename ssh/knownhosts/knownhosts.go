@@ -135,7 +135,7 @@ func (l *keyDBLine) match(addrs []addr) bool {
 type hostKeyDB struct {
 	// Serialized version of revoked keys
 	revoked map[string]*KnownKey
-	lines   []keyDBLine
+	lines   []*keyDBLine
 }
 
 func (db *hostKeyDB) String() string {
@@ -287,7 +287,7 @@ func (db *hostKeyDB) parseLine(line []byte, filename string, linenum int) error 
 		})
 	}
 
-	db.lines = append(db.lines, entry)
+	db.lines = append(db.lines, &entry)
 	return nil
 }
 

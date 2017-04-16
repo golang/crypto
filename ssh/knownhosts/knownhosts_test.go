@@ -163,6 +163,33 @@ func TestBasic(t *testing.T) {
 	}
 }
 
+func TestMultiple(t *testing.T) {
+	buf := bytes.NewBuffer(nil)
+	fmt.Fprintf(buf, "#comment\n\n")
+	fmt.Fprintf(buf, "server.org,%s %s\n", testAddr, edKeyStr)
+	fmt.Fprintf(buf, "foo.bar,%s %s\n", "42.42.42.42", edKeyStr)
+
+	db := testDB(t, buf.String())
+	if err := db.check("server.org:22", testAddr, edKey); err != nil {
+		t.Errorf("got error %q, want none", err)
+	}
+
+	want := KnownKey{
+		Key:      edKey,
+		Filename: "testdb",
+		Line:     3,
+	}
+	if err := db.check("server.org:22", testAddr, ecKey); err == nil {
+		t.Errorf("succeeded, want KeyError")
+	} else if ke, ok := err.(*KeyError); !ok {
+		t.Errorf("got %T, want *KeyError", err)
+	} else if len(ke.Want) != 1 {
+		t.Errorf("got %v, want 1 entry", ke)
+	} else if !reflect.DeepEqual(ke.Want[0], want) {
+		t.Errorf("got %v, want %v", ke.Want[0], want)
+	}
+}
+
 func TestNegate(t *testing.T) {
 	str := fmt.Sprintf("%s,!server.org %s", testAddr, edKeyStr)
 	db := testDB(t, str)
