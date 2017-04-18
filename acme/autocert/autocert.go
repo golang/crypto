@@ -77,18 +77,6 @@ func defaultHostPolicy(context.Context, string) error {
 // It obtains and refreshes certificates automatically,
 // as well as providing them to a TLS server via tls.Config.
 //
-// A simple usage example:
-//
-//	m := autocert.Manager{
-//		Prompt: autocert.AcceptTOS,
-//		HostPolicy: autocert.HostWhitelist("example.org"),
-//	}
-//	s := &http.Server{
-//		Addr: ":https",
-//		TLSConfig: &tls.Config{GetCertificate: m.GetCertificate},
-//	}
-//	s.ListenAndServeTLS("", "")
-//
 // To preserve issued certificates and improve overall performance,
 // use a cache implementation of Cache. For instance, DirCache.
 type Manager struct {
