@@ -162,6 +162,10 @@ type Manager struct {
 // The error is propagated back to the caller of GetCertificate and is user-visible.
 // This does not affect cached certs. See HostPolicy field description for more details.
 func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+	if m.Prompt == nil {
+		return nil, errors.New("acme/autocert: Manager.Prompt not set")
+	}
+
 	name := hello.ServerName
 	if name == "" {
 		return nil, errors.New("acme/autocert: missing server name")
