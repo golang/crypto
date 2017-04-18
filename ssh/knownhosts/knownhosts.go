@@ -367,19 +367,19 @@ func (db *hostKeyDB) checkAddrs(addrs []addr, remoteKey ssh.PublicKey) error {
 	// hostname?
 
 	// Algorithm => key.
-	knownKeys := map[string]*KnownKey{}
+	knownKeys := map[string]KnownKey{}
 	for _, l := range db.lines {
 		if l.match(addrs) {
 			typ := l.knownKey.Key.Type()
 			if _, ok := knownKeys[typ]; !ok {
-				knownKeys[typ] = &l.knownKey
+				knownKeys[typ] = l.knownKey
 			}
 		}
 	}
 
 	keyErr := &KeyError{}
 	for _, v := range knownKeys {
-		keyErr.Want = append(keyErr.Want, *v)
+		keyErr.Want = append(keyErr.Want, v)
 	}
 
 	// Unknown remote host.
@@ -389,7 +389,7 @@ func (db *hostKeyDB) checkAddrs(addrs []addr, remoteKey ssh.PublicKey) error {
 
 	// If the remote host starts using a different, unknown key type, we
 	// also interpret that as a mismatch.
-	if known := knownKeys[remoteKey.Type()]; known == nil || !keyEq(known.Key, remoteKey) {
+	if known, ok := knownKeys[remoteKey.Type()]; !ok || !keyEq(known.Key, remoteKey) {
 		return keyErr
 	}
 

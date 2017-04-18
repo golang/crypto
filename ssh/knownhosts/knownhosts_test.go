@@ -141,7 +141,7 @@ func TestIPv6Address(t *testing.T) {
 }
 
 func TestBasic(t *testing.T) {
-	str := fmt.Sprintf("#comment\n\nserver.org,%s %s", testAddr, edKeyStr)
+	str := fmt.Sprintf("#comment\n\nserver.org,%s %s\notherhost %s", testAddr, edKeyStr, ecKeyStr)
 	db := testDB(t, str)
 	if err := db.check("server.org:22", testAddr, edKey); err != nil {
 		t.Errorf("got error %q, want none", err)
