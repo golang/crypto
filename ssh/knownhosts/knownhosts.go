@@ -401,7 +401,7 @@ func (db *hostKeyDB) Read(r io.Reader, filename string) error {
 		}
 
 		if err := db.parseLine(line, filename, lineNum); err != nil {
-			return err
+			return fmt.Errorf("knownhosts: %s:%d: %v", filename, lineNum, err)
 		}
 	}
 	return scanner.Err()
