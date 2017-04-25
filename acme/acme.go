@@ -152,7 +152,7 @@ func (c *Client) Discover(ctx context.Context) (Directory, error) {
 			CAA     []string `json:"caa-identities"`
 		}
 	}
-	if json.NewDecoder(res.Body).Decode(&v); err != nil {
+	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
 		return Directory{}, err
 	}
 	c.dir = &Directory{
