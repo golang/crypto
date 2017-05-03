@@ -588,8 +588,13 @@ func TestManagerGetCertificateBogusSNI(t *testing.T) {
 	}{
 		{"foo.com", "cache.Get of foo.com"},
 		{"foo.com.", "cache.Get of foo.com"},
-		{`a\b`, "acme/autocert: bogus SNI value"},
+		{`a\b.com`, "acme/autocert: server name contains invalid character"},
+		{`a/b.com`, "acme/autocert: server name contains invalid character"},
 		{"", "acme/autocert: missing server name"},
+		{"foo", "acme/autocert: server name component count invalid"},
+		{".foo", "acme/autocert: server name component count invalid"},
+		{"foo.", "acme/autocert: server name component count invalid"},
+		{"fo.o", "cache.Get of fo.o"},
 	}
 	for _, tt := range tests {
 		_, err := m.GetCertificate(&tls.ClientHelloInfo{ServerName: tt.name})

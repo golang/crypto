@@ -176,9 +176,11 @@ func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, 
 	if name == "" {
 		return nil, errors.New("acme/autocert: missing server name")
 	}
-
+	if !strings.Contains(strings.Trim(name, "."), ".") {
+		return nil, errors.New("acme/autocert: server name component count invalid")
+	}
 	if strings.ContainsAny(name, `/\`) {
-		return nil, errors.New("acme/autocert: bogus SNI value")
+		return nil, errors.New("acme/autocert: server name contains invalid character")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
