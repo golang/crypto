@@ -15,11 +15,11 @@ import (
 )
 
 // SymmetricallyEncrypted represents a symmetrically encrypted byte string. The
-// encrypted contents will consist of more OpenPGP packets. See RFC 4880,
+// encrypted Contents will consist of more OpenPGP packets. See RFC 4880,
 // sections 5.7 and 5.13.
 type SymmetricallyEncrypted struct {
 	MDC      bool // true iff this is a type 18 packet and thus has an embedded MAC.
-	contents io.Reader
+	Contents io.Reader
 	prefix   []byte
 }
 
@@ -37,11 +37,11 @@ func (se *SymmetricallyEncrypted) parse(r io.Reader) error {
 			return errors.UnsupportedError("unknown SymmetricallyEncrypted version")
 		}
 	}
-	se.contents = r
+	se.Contents = r
 	return nil
 }
 
-// Decrypt returns a ReadCloser, from which the decrypted contents of the
+// Decrypt returns a ReadCloser, from which the decrypted Contents of the
 // packet can be read. An incorrect key can, with high probability, be detected
 // immediately and this will result in a KeyIncorrect error being returned.
 func (se *SymmetricallyEncrypted) Decrypt(c CipherFunction, key []byte) (io.ReadCloser, error) {
@@ -55,7 +55,7 @@ func (se *SymmetricallyEncrypted) Decrypt(c CipherFunction, key []byte) (io.Read
 
 	if se.prefix == nil {
 		se.prefix = make([]byte, c.blockSize()+2)
-		_, err := readFull(se.contents, se.prefix)
+		_, err := readFull(se.Contents, se.prefix)
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +74,7 @@ func (se *SymmetricallyEncrypted) Decrypt(c CipherFunction, key []byte) (io.Read
 		return nil, errors.ErrKeyIncorrect
 	}
 
-	plaintext := cipher.StreamReader{S: s, R: se.contents}
+	plaintext := cipher.StreamReader{S: s, R: se.Contents}
 
 	if se.MDC {
 		// MDC packets have an embedded hash that we need to check.
@@ -104,7 +104,7 @@ const mdcTrailerSize = 1 /* tag byte */ + 1 /* length byte */ + sha1.Size
 
 // An seMDCReader wraps an io.Reader, maintains a running hash and keeps hold
 // of the most recent 22 bytes (mdcTrailerSize). Upon EOF, those bytes form an
-// MDC packet containing a hash of the previous contents which is checked
+// MDC packet containing a hash of the previous Contents which is checked
 // against the running hash. See RFC 4880, section 5.13.
 type seMDCReader struct {
 	in          io.Reader
@@ -253,7 +253,7 @@ func (c noOpCloser) Close() error {
 // to w and returns a WriteCloser to which the to-be-encrypted packets can be
 // written.
 // If config is nil, sensible defaults will be used.
-func SerializeSymmetricallyEncrypted(w io.Writer, c CipherFunction, key []byte, config *Config) (contents io.WriteCloser, err error) {
+func SerializeSymmetricallyEncrypted(w io.Writer, c CipherFunction, key []byte, config *Config) (Contents io.WriteCloser, err error) {
 	if c.KeySize() != len(key) {
 		return nil, errors.InvalidArgumentError("SymmetricallyEncrypted.Serialize: bad key length")
 	}
@@ -285,6 +285,6 @@ func SerializeSymmetricallyEncrypted(w io.Writer, c CipherFunction, key []byte, 
 	h := sha1.New()
 	h.Write(iv)
 	h.Write(iv[blockSize-2:])
-	contents = &seMDCWriter{w: plaintext, h: h}
+	Contents = &seMDCWriter{w: plaintext, h: h}
 	return
 }
