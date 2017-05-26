@@ -216,39 +216,29 @@ func Decode(pfxData []byte, password string) (privateKey interface{}, certificat
 		return nil, nil, err
 	}
 
-	// if len(bags) != 2 {
-	// 	err = errors.New("pkcs12: expected exactly two safe bags in the PFX PDU")
-	// 	return
-	// }
-
 	for _, bag := range bags {
 		switch {
 		case bag.Id.Equal(oidCertBag):
-			if certificate != nil {
-				err = errors.New("pkcs12: expected exactly one certificate bag")
+			if certificate == nil {
+				certsData, bagErr := decodeCertBag(bag.Value.Bytes)
+				if bagErr != nil {
+					continue
+				}
+				certs, bagErr := x509.ParseCertificates(certsData)
+				if bagErr != nil {
+					continue
+				}
+				if len(certs) != 1 {
+					err = errors.New("pkcs12: expected exactly one certificate in the certBag")
+					continue
+				}
+				certificate = certs[0]
 			}
-
-			certsData, err := decodeCertBag(bag.Value.Bytes)
-			if err != nil {
-				return nil, nil, err
-			}
-			certs, err := x509.ParseCertificates(certsData)
-			if err != nil {
-				return nil, nil, err
-			}
-			if len(certs) != 1 {
-				err = errors.New("pkcs12: expected exactly one certificate in the certBag")
-				return nil, nil, err
-			}
-			certificate = certs[0]
-
 		case bag.Id.Equal(oidPKCS8ShroundedKeyBag):
-			if privateKey != nil {
-				err = errors.New("pkcs12: expected exactly one key bag")
-			}
-
-			if privateKey, err = decodePkcs8ShroudedKeyBag(bag.Value.Bytes, encodedPassword); err != nil {
-				return nil, nil, err
+			if privateKey == nil {
+				if privateKey, err = decodePkcs8ShroudedKeyBag(bag.Value.Bytes, encodedPassword); err != nil {
+					continue
+				}
 			}
 		}
 	}
