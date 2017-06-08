@@ -241,3 +241,17 @@ func Key(password, salt []byte, N, r, p, keyLen int) ([]byte, error) {
 
 	return pbkdf2.Key(password, b, 1, keyLen, sha256.New), nil
 }
+
+
+func checkPassword(inputPass string, HashedPass string , salt []byte ,N, r, p, keyLen int) error{
+    checkFunc,err := scrypt.Key([]byte(inputPass), salt, N, r, p, keyLen)
+    if err != nil{
+        panic(err)
+    }
+    if string(checkFunc) == HashedPass{
+        errOrg = nil
+    }else{
+        errOrg = errors.New("WRONG PASSWORD!")
+    }
+    return errOrg;
+}
