@@ -276,6 +276,9 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 	sessionID := s.transport.getSessionID()
 	var cache pubKeyCache
 	var perms *Permissions
+	// addition to break after maxTries
+	var count = 0
+	const maxTries = 3
 
 	authFailures := 0
 
@@ -335,6 +338,12 @@ userAuthLoop:
 			}
 
 			perms, authErr = config.PasswordCallback(s, password)
+			// addition to break after maxTries
+			if count >= maxTries {
+				authErr = errors.New("ssh: maxTries reached")
+				break
+			}
+
 		case "keyboard-interactive":
 			if config.KeyboardInteractiveCallback == nil {
 				authErr = errors.New("ssh: keyboard-interactive auth not configubred")
