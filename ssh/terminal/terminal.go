@@ -112,6 +112,8 @@ func NewTerminal(c io.ReadWriter, prompt string) *Terminal {
 
 const (
 	keyCtrlD     = 4
+	keyCtrlN     = 14
+	keyCtrlP     = 16
 	keyCtrlU     = 21
 	keyEnter     = '\r'
 	keyEscape    = 27
@@ -157,6 +159,10 @@ func bytesToKey(b []byte, pasteActive bool) (rune, []byte) {
 			return keyDeleteLine, b[1:]
 		case 12: // ^L
 			return keyClearScreen, b[1:]
+		case 14: // ^N
+			return keyDown, b[1:]
+		case 16: // ^P
+			return keyUp, b[1:]
 		case 23: // ^W
 			return keyDeleteWord, b[1:]
 		}
