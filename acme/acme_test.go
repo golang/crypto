@@ -371,7 +371,7 @@ func TestAuthorize(t *testing.T) {
 		t.Errorf("c.URI = %q; want https://ca.tld/acme/challenge/publickey/id1", c.URI)
 	}
 	if c.Token != "token1" {
-		t.Errorf("c.Token = %q; want token1", c.Type)
+		t.Errorf("c.Token = %q; want token1", c.Token)
 	}
 
 	c = auth.Challenges[1]
@@ -382,7 +382,7 @@ func TestAuthorize(t *testing.T) {
 		t.Errorf("c.URI = %q; want https://ca.tld/acme/challenge/publickey/id2", c.URI)
 	}
 	if c.Token != "token2" {
-		t.Errorf("c.Token = %q; want token2", c.Type)
+		t.Errorf("c.Token = %q; want token2", c.Token)
 	}
 
 	combs := [][]int{{0}, {1}}
@@ -464,7 +464,7 @@ func TestGetAuthorization(t *testing.T) {
 		t.Errorf("c.URI = %q; want https://ca.tld/acme/challenge/publickey/id1", c.URI)
 	}
 	if c.Token != "token1" {
-		t.Errorf("c.Token = %q; want token1", c.Type)
+		t.Errorf("c.Token = %q; want token1", c.Token)
 	}
 
 	c = auth.Challenges[1]
@@ -475,7 +475,7 @@ func TestGetAuthorization(t *testing.T) {
 		t.Errorf("c.URI = %q; want https://ca.tld/acme/challenge/publickey/id2", c.URI)
 	}
 	if c.Token != "token2" {
-		t.Errorf("c.Token = %q; want token2", c.Type)
+		t.Errorf("c.Token = %q; want token2", c.Token)
 	}
 
 	combs := [][]int{{0}, {1}}
@@ -645,7 +645,7 @@ func TestPollChallenge(t *testing.T) {
 		t.Errorf("c.URI = %q; want https://ca.tld/acme/challenge/publickey/id1", chall.URI)
 	}
 	if chall.Token != "token1" {
-		t.Errorf("c.Token = %q; want token1", chall.Type)
+		t.Errorf("c.Token = %q; want token1", chall.Token)
 	}
 }
 
@@ -707,7 +707,7 @@ func TestAcceptChallenge(t *testing.T) {
 		t.Errorf("c.URI = %q; want https://ca.tld/acme/challenge/publickey/id1", c.URI)
 	}
 	if c.Token != "token1" {
-		t.Errorf("c.Token = %q; want token1", c.Type)
+		t.Errorf("c.Token = %q; want token1", c.Token)
 	}
 }
 
