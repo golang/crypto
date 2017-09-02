@@ -73,7 +73,7 @@ func Precompute(sharedKey, peersPublicKey, privateKey *[32]byte) {
 }
 
 // Seal appends an encrypted and authenticated copy of message to out, which
-// will be Overhead bytes longer than the original and must not overlap. The
+// will be Overhead bytes longer than the original and must not overlap it. The
 // nonce must be unique for each distinct message for a given pair of keys.
 func Seal(out, message []byte, nonce *[24]byte, peersPublicKey, privateKey *[32]byte) []byte {
 	var sharedKey [32]byte
