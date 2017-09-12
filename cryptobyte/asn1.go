@@ -562,9 +562,6 @@ func (s *String) ReadOptionalASN1(out *String, outPresent *bool, tag asn1.Tag) b
 	if outPresent != nil {
 		*outPresent = present
 	}
-	if out != nil {
-		*out = String(nil)
-	}
 	if present && !s.ReadASN1(out, tag) {
 		return false
 	}
@@ -727,7 +724,7 @@ func (s *String) readASN1(out *String, outTag *asn1.Tag, skipHeader bool) bool {
 	if uint32(int(length)) != length || !s.ReadBytes((*[]byte)(out), int(length)) {
 		return false
 	}
-	if skipHeader && out != nil && !out.Skip(int(headerLen)) {
+	if skipHeader && !out.Skip(int(headerLen)) {
 		panic("cryptobyte: internal error")
 	}
 
