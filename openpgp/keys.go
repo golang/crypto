@@ -507,6 +507,11 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		e.Identities[uid.Id].SelfSignature.PreferredHash = []uint8{hashToHashId(config.DefaultHash)}
 	}
 
+	// Likewise for DefaultCipher.
+	if config != nil && config.DefaultCipher != 0 {
+		e.Identities[uid.Id].SelfSignature.PreferredSymmetric = []uint8{uint8(config.DefaultCipher)}
+	}
+
 	e.Subkeys = make([]Subkey, 1)
 	e.Subkeys[0] = Subkey{
 		PublicKey:  packet.NewRSAPublicKey(currentTime, &encryptingPriv.PublicKey),
