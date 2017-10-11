@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nem-toolchain/crypto/ed25519/internal/edwards25519"
+	"golang.org/x/crypto/ed25519/internal/edwards25519"
 	"fmt"
 )
 
