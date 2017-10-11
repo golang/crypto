@@ -21,7 +21,7 @@ import (
 	"io"
 	"strconv"
 
-	"golang.org/x/crypto/ed25519/internal/edwards25519"
+	"github.com/nem-toolchain/crypto/ed25519/internal/edwards25519"
 	"github.com/nem-toolchain/crypto/sha3"
 )
 
@@ -184,9 +184,10 @@ func Verify(publicKey PublicKey, message, sig []byte) bool {
 func reverseBytes(input []byte) []byte {
 	output := make([]byte, len(input))
 
-	for i := len(input)/2-1; i >= 0; i-- {
-		opp := len(input)-1-i
-		output[opp] = input[i]
+	j := len(input) -1
+	for i := 0; i < len(input); i++ {
+		output[j] = input[i]
+		j--
 	}
 
 	return output

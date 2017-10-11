@@ -15,7 +15,8 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/crypto/ed25519/internal/edwards25519"
+	"github.com/nem-toolchain/crypto/ed25519/internal/edwards25519"
+	"fmt"
 )
 
 type zeroReader struct{}
@@ -151,9 +152,10 @@ func TestReverseBytes(t *testing.T) {
 	reversed := []byte {5, 4, 3, 2, 1}
 
 	out := reverseBytes(in)
+	fmt.Println(">> DEBUG", out)
 	for i := range out {
 		if out[i] != reversed[i] {
-			t.Error("failsd ot reverse bytes")
+			t.Error("failed ot reverse bytes")
 		}
 	}
 }
