@@ -146,6 +146,18 @@ func TestGolden(t *testing.T) {
 	}
 }
 
+func TestReverseBytes(t *testing.T) {
+	in := []byte {1, 2, 3, 4, 5}
+	reversed := []byte {5, 4, 3, 2, 1}
+
+	out := reverseBytes(in)
+	for i := range out {
+		if out[i] != reversed[i] {
+			t.Error("failsd ot reverse bytes")
+		}
+	}
+}
+
 func BenchmarkKeyGeneration(b *testing.B) {
 	var zero zeroReader
 	for i := 0; i < b.N; i++ {
