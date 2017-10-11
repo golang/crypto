@@ -21,8 +21,8 @@ import (
 	"io"
 	"strconv"
 
-	"github.com/nem-toolchain/crypto/ed25519/internal/edwards25519"
 	"github.com/nem-toolchain/crypto/sha3"
+	"github.com/nem-toolchain/crypto/ed25519/internal/edwards25519"
 )
 
 const (
