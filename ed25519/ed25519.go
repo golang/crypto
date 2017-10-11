@@ -74,7 +74,7 @@ func GenerateKey(rand io.Reader) (publicKey PublicKey, privateKey PrivateKey, er
 		return nil, nil, err
 	}
 
-	digest := sha3.SumKeccak512(reverseBytes(privateKey)[:32])
+	digest := sha3.SumKeccak512(reverseBytes(privateKey[:32]))
 	digest[0] &= 248
 	digest[31] &= 127
 	digest[31] |= 64
@@ -100,7 +100,7 @@ func Sign(privateKey PrivateKey, message []byte) []byte {
 	}
 
 	h := sha3.NewKeccak512()
-	h.Write(reverseBytes(privateKey)[:32])
+	h.Write(reverseBytes(privateKey[:32]))
 
 	var digest1, messageDigest, hramDigest [64]byte
 	var expandedSecretKey [32]byte
