@@ -995,6 +995,7 @@ func keyAuth(pub crypto.PublicKey, token string) (string, error) {
 
 // tlsChallengeCert creates a temporary certificate for TLS-SNI challenges
 // with the given SANs and auto-generated public/private key pair.
+// The Subject Common Name is set to the first SAN to aid debugging.
 // To create a cert with a custom key pair, specify WithKey option.
 func tlsChallengeCert(san []string, opt []CertOption) (tls.Certificate, error) {
 	var (
@@ -1033,6 +1034,9 @@ func tlsChallengeCert(san []string, opt []CertOption) (tls.Certificate, error) {
 		}
 	}
 	tmpl.DNSNames = san
+	if len(san) > 0 {
+		tmpl.Subject.CommonName = san[0]
+	}
 
 	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, key.Public(), key)
 	if err != nil {
