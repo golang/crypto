@@ -1,3 +1,12 @@
+/*Package rc6 ...
+RC6 (Rivest cipher 6) is a symmetric key block cipher derived from RC5. It was designed by Ron Rivest, Matt Robshaw, Ray Sidney, and Yiqun Lisa Yin to meet the requirements of the Advanced Encryption Standard (AES) competition. The algorithm was one of the five finalists, and also was submitted to the NESSIE and CRYPTREC projects.
+
+RC6 proper has a block size of 128 bits and supports key sizes of 128, 192, and 256 bits up to 2040-bits, but, like RC5, it may be parameterised to support a wide variety of word-lengths, key sizes, and number of rounds. However, this implementation uses 32 bit words and a fixed block size of 16 bytes.
+
+Abstract paraphrased from Wikipedia: https://en.wikipedia.org/wiki/RC6
+
+This implementation is ©2017 by Jon Jenkins <jon@mj12.su>. Released under MIT license.
+*/
 package rc6
 
 import (
