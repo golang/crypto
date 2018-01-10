@@ -254,15 +254,14 @@ func generateKeys(d direction, algs directionAlgorithms, kex *kexResult) (iv, ke
 func newPacketCipher(d direction, algs directionAlgorithms, kex *kexResult) (packetCipher, error) {
 	iv, key, macKey := generateKeys(d, algs, kex)
 
-	if algs.Cipher == gcmCipherID {
+	switch algs.Cipher {
+	case chacha20Poly1305ID:
+		return newChaCha20Cipher(key)
+	case gcmCipherID:
 		return newGCMCipher(iv, key)
-	}
-
-	if algs.Cipher == aes128cbcID {
+	case aes128cbcID:
 		return newAESCBCCipher(iv, key, macKey, algs)
-	}
-
-	if algs.Cipher == tripledescbcID {
+	case tripledescbcID:
 		return newTripleDESCBCCipher(iv, key, macKey, algs)
 	}
 
