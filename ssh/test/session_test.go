@@ -324,13 +324,15 @@ func TestWindowChange(t *testing.T) {
 	}
 }
 
+var deprecatedCiphers = []string{
+	"aes128-cbc", "3des-cbc",
+	"arcfour128", "arcfour256",
+}
+
 func TestCiphers(t *testing.T) {
 	var config ssh.Config
 	config.SetDefaults()
-	cipherOrder := config.Ciphers
-	// These ciphers will not be tested when commented out in cipher.go it will
-	// fallback to the next available as per line 292.
-	cipherOrder = append(cipherOrder, "aes128-cbc", "3des-cbc")
+	cipherOrder := append(config.Ciphers, deprecatedCiphers...)
 
 	for _, ciph := range cipherOrder {
 		t.Run(ciph, func(t *testing.T) {
