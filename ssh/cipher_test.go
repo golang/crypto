@@ -7,7 +7,6 @@ package ssh
 import (
 	"bytes"
 	"crypto"
-	"crypto/aes"
 	"crypto/rand"
 	"testing"
 )
@@ -72,9 +71,6 @@ func testPacketCipher(t *testing.T, cipher, mac string) {
 }
 
 func TestCBCOracleCounterMeasure(t *testing.T) {
-	cipherModes[aes128cbcID] = &streamCipherMode{16, aes.BlockSize, 0, nil}
-	defer delete(cipherModes, aes128cbcID)
-
 	kr := &kexResult{Hash: crypto.SHA1}
 	algs := directionAlgorithms{
 		Cipher:      aes128cbcID,
