@@ -671,7 +671,7 @@ func (c *chacha20Poly1305Cipher) readPacket(seqNum uint32, r io.Reader) ([]byte,
 	chacha20.XORKeyStream(polyKey[:], chacha20PolyKeyInput[:], &counter, &c.contentKey)
 
 	encryptedLength := c.buf[:4]
-	if _, err := r.Read(encryptedLength); err != nil {
+	if _, err := io.ReadFull(r, encryptedLength); err != nil {
 		return nil, err
 	}
 
@@ -692,13 +692,12 @@ func (c *chacha20Poly1305Cipher) readPacket(seqNum uint32, r io.Reader) ([]byte,
 		c.buf = c.buf[:packetEnd]
 	}
 
-	if _, err := r.Read(c.buf[4:packetEnd]); err != nil {
-		return nil, err
+	if _, err := io.ReadFull(r, c.buf[4:packetEnd]); err != nil {
+		return nil, errors.New("ssh: MAC failure")
 	}
 
 	var mac [poly1305.TagSize]byte
 	copy(mac[:], c.buf[contentEnd:packetEnd])
-
 	if !poly1305.Verify(&mac, c.buf[:contentEnd], &polyKey) {
 		return nil, errors.New("ssh: MAC failure")
 	}
@@ -720,6 +719,7 @@ func (c *chacha20Poly1305Cipher) readPacket(seqNum uint32, r io.Reader) ([]byte,
 	}
 
 	plain = plain[1 : len(plain)-int(padding)]
+
 	return plain, nil
 }
 
