@@ -693,7 +693,7 @@ func (c *chacha20Poly1305Cipher) readPacket(seqNum uint32, r io.Reader) ([]byte,
 	}
 
 	if _, err := io.ReadFull(r, c.buf[4:packetEnd]); err != nil {
-		return nil, errors.New("ssh: MAC failure")
+		return nil, err
 	}
 
 	var mac [poly1305.TagSize]byte
