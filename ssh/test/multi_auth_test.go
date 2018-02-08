@@ -14,6 +14,8 @@
 // not exist these tests will be skipped. See compile instructions
 // (for linux) in file ./sshd_test_pw.c.
 
+// +build linux
+
 package test
 
 import (
