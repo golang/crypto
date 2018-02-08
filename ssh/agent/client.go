@@ -25,8 +25,17 @@ import (
 	"math/big"
 	"sync"
 
+	"crypto"
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh"
+)
+
+type SignatureFlags uint32
+
+const (
+	SignatureFlagReserved SignatureFlags = 1 << iota
+	SignatureFlagRsaSha256
+	SignatureFlagRsaSha512
 )
 
 // Agent represents the capabilities of an ssh-agent.
@@ -55,6 +64,13 @@ type Agent interface {
 
 	// Signers returns signers for all the known keys.
 	Signers() ([]ssh.Signer, error)
+}
+
+type ExtendedAgent interface {
+	Agent
+
+	// The same as Sign, but allows for additional flags to be sent/received
+	SignWithFlags(key ssh.PublicKey, data []byte, flags SignatureFlags) (*ssh.Signature, error)
 }
 
 // ConstraintExtension describes an optional constraint defined by users.
@@ -260,7 +276,7 @@ type client struct {
 
 // NewClient returns an Agent that talks to an ssh-agent process over
 // the given connection.
-func NewClient(rw io.ReadWriter) Agent {
+func NewClient(rw io.ReadWriter) ExtendedAgent {
 	return &client{conn: rw}
 }
 
@@ -369,9 +385,14 @@ func (c *client) List() ([]*Key, error) {
 // Sign has the agent sign the data using a protocol 2 key as defined
 // in [PROTOCOL.agent] section 2.6.2.
 func (c *client) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) {
+	return c.SignWithFlags(key, data, 0)
+}
+
+func (c *client) SignWithFlags(key ssh.PublicKey, data []byte, flags SignatureFlags) (*ssh.Signature, error) {
 	req := ssh.Marshal(signRequestAgentMsg{
 		KeyBlob: key.Marshal(),
 		Data:    data,
+		Flags:   uint32(flags),
 	})
 
 	msg, err := c.call(req)
@@ -680,4 +701,17 @@ func (s *agentKeyringSigner) PublicKey() ssh.PublicKey {
 func (s *agentKeyringSigner) Sign(rand io.Reader, data []byte) (*ssh.Signature, error) {
 	// The agent has its own entropy source, so the rand argument is ignored.
 	return s.agent.Sign(s.pub, data)
+}
+
+func (s *agentKeyringSigner) SignWithOpts(rand io.Reader, data []byte, opts crypto.SignerOpts) (*ssh.Signature, error) {
+	var flags SignatureFlags
+	if opts != nil {
+		switch opts.HashFunc() {
+		case crypto.SHA256:
+			flags = SignatureFlagRsaSha256
+		case crypto.SHA512:
+			flags = SignatureFlagRsaSha512
+		}
+	}
+	return s.agent.SignWithFlags(s.pub, data, flags)
 }

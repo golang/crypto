@@ -20,7 +20,7 @@ import (
 )
 
 // startOpenSSHAgent executes ssh-agent, and returns an Agent interface to it.
-func startOpenSSHAgent(t *testing.T) (client Agent, socket string, cleanup func()) {
+func startOpenSSHAgent(t *testing.T) (client ExtendedAgent, socket string, cleanup func()) {
 	if testing.Short() {
 		// ssh-agent is not always available, and the key
 		// types supported vary by platform.
@@ -80,7 +80,7 @@ func startOpenSSHAgent(t *testing.T) (client Agent, socket string, cleanup func(
 }
 
 // startKeyringAgent uses Keyring to simulate a ssh-agent Server and returns a client.
-func startKeyringAgent(t *testing.T) (client Agent, cleanup func()) {
+func startKeyringAgent(t *testing.T) (client ExtendedAgent, cleanup func()) {
 	c1, c2, err := netPipe()
 	if err != nil {
 		t.Fatalf("netPipe: %v", err)
@@ -107,7 +107,7 @@ func testKeyringAgent(t *testing.T, key interface{}, cert *ssh.Certificate, life
 	testAgentInterface(t, agent, key, cert, lifetimeSecs)
 }
 
-func testAgentInterface(t *testing.T, agent Agent, key interface{}, cert *ssh.Certificate, lifetimeSecs uint32) {
+func testAgentInterface(t *testing.T, agent ExtendedAgent, key interface{}, cert *ssh.Certificate, lifetimeSecs uint32) {
 	signer, err := ssh.NewSignerFromKey(key)
 	if err != nil {
 		t.Fatalf("NewSignerFromKey(%T): %v", key, err)
@@ -157,6 +157,25 @@ func testAgentInterface(t *testing.T, agent Agent, key interface{}, cert *ssh.Ce
 
 	if err := pubKey.Verify(data, sig); err != nil {
 		t.Fatalf("Verify(%s): %v", pubKey.Type(), err)
+	}
+
+	// For tests on RSA keys, try signing with SHA-256 and SHA-512 flags
+	if pubKey.Type() == "ssh-rsa" {
+		sshFlagTest := func(flag SignatureFlags, expectedSigFormat string) {
+			sig, err = agent.SignWithFlags(pubKey, data, flag)
+			if err != nil {
+				t.Fatalf("SignWithFlags(%s): %v", pubKey.Type(), err)
+			}
+			if sig.Format != expectedSigFormat {
+				t.Fatalf("Signature format didn't match expected value: %s != %s", sig.Format, expectedSigFormat)
+			}
+			if err := pubKey.Verify(data, sig); err != nil {
+				t.Fatalf("Verify(%s): %v", pubKey.Type(), err)
+			}
+		}
+		sshFlagTest(0, "ssh-rsa")
+		sshFlagTest(SignatureFlagRsaSha256, "rsa-sha2-256")
+		sshFlagTest(SignatureFlagRsaSha512, "rsa-sha2-512")
 	}
 
 	// If the key has a lifetime, is it removed when it should be?

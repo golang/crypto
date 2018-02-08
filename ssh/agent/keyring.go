@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"crypto"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -182,6 +183,10 @@ func (r *keyring) Add(key AddedKey) error {
 
 // Sign returns a signature for the data.
 func (r *keyring) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) {
+	return r.SignWithFlags(key, data, 0)
+}
+
+func (r *keyring) SignWithFlags(key ssh.PublicKey, data []byte, flags SignatureFlags) (*ssh.Signature, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.locked {
@@ -192,7 +197,22 @@ func (r *keyring) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) {
 	wanted := key.Marshal()
 	for _, k := range r.keys {
 		if bytes.Equal(k.signer.PublicKey().Marshal(), wanted) {
-			return k.signer.Sign(rand.Reader, data)
+
+			// If the key supports signer opts, translate the flag to the appropriate option
+			if parameterizedSigner, ok := k.signer.(ssh.ParameterizedSigner); ok {
+				var opts crypto.SignerOpts
+				switch flags {
+				case SignatureFlagRsaSha256:
+					opts = crypto.SHA256
+				case SignatureFlagRsaSha512:
+					opts = crypto.SHA512
+				default:
+					opts = nil
+				}
+				return parameterizedSigner.SignWithOpts(rand.Reader, data, opts)
+			} else {
+				return k.signer.Sign(rand.Reader, data)
+			}
 		}
 	}
 	return nil, errors.New("not found")

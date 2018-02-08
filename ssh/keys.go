@@ -301,6 +301,12 @@ type Signer interface {
 	Sign(rand io.Reader, data []byte) (*Signature, error)
 }
 
+type ParameterizedSigner interface {
+	Signer
+
+	SignWithOpts(rand io.Reader, data []byte, opts crypto.SignerOpts) (*Signature, error)
+}
+
 type rsaPublicKey rsa.PublicKey
 
 func (r *rsaPublicKey) Type() string {
@@ -349,13 +355,21 @@ func (r *rsaPublicKey) Marshal() []byte {
 }
 
 func (r *rsaPublicKey) Verify(data []byte, sig *Signature) error {
-	if sig.Format != r.Type() {
+	var hash crypto.Hash
+	switch sig.Format {
+	case "ssh-rsa":
+		hash = crypto.SHA1
+	case "rsa-sha2-256":
+		hash = crypto.SHA256
+	case "rsa-sha2-512":
+		hash = crypto.SHA512
+	default:
 		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, r.Type())
 	}
-	h := crypto.SHA1.New()
+	h := hash.New()
 	h.Write(data)
 	digest := h.Sum(nil)
-	return rsa.VerifyPKCS1v15((*rsa.PublicKey)(r), crypto.SHA1, digest, sig.Blob)
+	return rsa.VerifyPKCS1v15((*rsa.PublicKey)(r), hash, digest, sig.Blob)
 }
 
 func (r *rsaPublicKey) CryptoPublicKey() crypto.PublicKey {
@@ -691,16 +705,24 @@ func (s *wrappedSigner) PublicKey() PublicKey {
 }
 
 func (s *wrappedSigner) Sign(rand io.Reader, data []byte) (*Signature, error) {
+	return s.SignWithOpts(rand, data, nil)
+}
+
+func (s *wrappedSigner) SignWithOpts(rand io.Reader, data []byte, opts crypto.SignerOpts) (*Signature, error) {
 	var hashFunc crypto.Hash
 
-	switch key := s.pubKey.(type) {
-	case *rsaPublicKey, *dsaPublicKey:
-		hashFunc = crypto.SHA1
-	case *ecdsaPublicKey:
-		hashFunc = ecHash(key.Curve)
-	case ed25519PublicKey:
-	default:
-		return nil, fmt.Errorf("ssh: unsupported key type %T", key)
+	if opts != nil {
+		hashFunc = opts.HashFunc()
+	} else {
+		switch key := s.pubKey.(type) {
+		case *rsaPublicKey, *dsaPublicKey:
+			hashFunc = crypto.SHA1
+		case *ecdsaPublicKey:
+			hashFunc = ecHash(key.Curve)
+		case ed25519PublicKey:
+		default:
+			return nil, fmt.Errorf("ssh: unsupported key type %T", key)
+		}
 	}
 
 	var digest []byte
@@ -744,8 +766,17 @@ func (s *wrappedSigner) Sign(rand io.Reader, data []byte) (*Signature, error) {
 		}
 	}
 
+	format := s.pubKey.Type()
+	if format == "ssh-rsa" {
+		if hashFunc == crypto.SHA256 {
+			format = "rsa-sha2-256"
+		} else if hashFunc == crypto.SHA512 {
+			format = "rsa-sha2-512"
+		}
+	}
+
 	return &Signature{
-		Format: s.pubKey.Type(),
+		Format: format,
 		Blob:   signature,
 	}, nil
 }

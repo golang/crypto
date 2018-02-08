@@ -6,6 +6,7 @@ package ssh
 
 import (
 	"bytes"
+	"crypto"
 	"errors"
 	"fmt"
 	"io"
@@ -222,6 +223,11 @@ type openSSHCertSigner struct {
 	signer Signer
 }
 
+type parameterizedOpenSSHCertSigner struct {
+	*openSSHCertSigner
+	parameterizedSigner ParameterizedSigner
+}
+
 // NewCertSigner returns a Signer that signs with the given Certificate, whose
 // private key is held by signer. It returns an error if the public key in cert
 // doesn't match the key used by signer.
@@ -230,7 +236,12 @@ func NewCertSigner(cert *Certificate, signer Signer) (Signer, error) {
 		return nil, errors.New("ssh: signer and cert have different public key")
 	}
 
-	return &openSSHCertSigner{cert, signer}, nil
+	if parameterizedSigner, ok := signer.(ParameterizedSigner); ok {
+		return &parameterizedOpenSSHCertSigner{
+			&openSSHCertSigner{cert, signer}, parameterizedSigner}, nil
+	} else {
+		return &openSSHCertSigner{cert, signer}, nil
+	}
 }
 
 func (s *openSSHCertSigner) Sign(rand io.Reader, data []byte) (*Signature, error) {
@@ -239,6 +250,10 @@ func (s *openSSHCertSigner) Sign(rand io.Reader, data []byte) (*Signature, error
 
 func (s *openSSHCertSigner) PublicKey() PublicKey {
 	return s.pub
+}
+
+func (s *parameterizedOpenSSHCertSigner) SignWithOpts(rand io.Reader, data []byte, opts crypto.SignerOpts) (*Signature, error) {
+	return s.parameterizedSigner.SignWithOpts(rand, data, opts)
 }
 
 const sourceAddressCriticalOption = "source-address"

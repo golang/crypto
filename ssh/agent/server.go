@@ -128,7 +128,14 @@ func (s *server) processRequest(data []byte) (interface{}, error) {
 			Blob:   req.KeyBlob,
 		}
 
-		sig, err := s.agent.Sign(k, req.Data) //  TODO(hanwen): flags.
+		var sig *ssh.Signature
+		var err error
+		if extendedAgent, ok := s.agent.(ExtendedAgent); ok {
+			sig, err = extendedAgent.SignWithFlags(k, req.Data, SignatureFlags(req.Flags))
+		} else {
+			sig, err = s.agent.Sign(k, req.Data)
+		}
+
 		if err != nil {
 			return nil, err
 		}
