@@ -79,18 +79,22 @@ func startOpenSSHAgent(t *testing.T) (client ExtendedAgent, socket string, clean
 	}
 }
 
-// startKeyringAgent uses Keyring to simulate a ssh-agent Server and returns a client.
-func startKeyringAgent(t *testing.T) (client ExtendedAgent, cleanup func()) {
+func startAgent(t *testing.T, agent Agent) (client ExtendedAgent, cleanup func()) {
 	c1, c2, err := netPipe()
 	if err != nil {
 		t.Fatalf("netPipe: %v", err)
 	}
-	go ServeAgent(NewKeyring(), c2)
+	go ServeAgent(agent, c2)
 
 	return NewClient(c1), func() {
 		c1.Close()
 		c2.Close()
 	}
+}
+
+// startKeyringAgent uses Keyring to simulate a ssh-agent Server and returns a client.
+func startKeyringAgent(t *testing.T) (client ExtendedAgent, cleanup func()) {
+	return startAgent(t, NewKeyring())
 }
 
 func testOpenSSHAgent(t *testing.T, key interface{}, cert *ssh.Certificate, lifetimeSecs uint32) {
@@ -394,5 +398,40 @@ func testAgentLifetime(t *testing.T, agent Agent) {
 		t.Errorf("List: %v", err)
 	} else if len(keys) != 0 {
 		t.Errorf("Want 0 keys, got %v", len(keys))
+	}
+}
+
+type keyringExtended struct {
+	*keyring
+}
+
+func (r *keyringExtended) Extension(extensionType string, contents []byte) ([]byte, error) {
+	if extensionType != "my-extension@example.com" {
+		return []byte{agentExtensionFailure}, nil
+	}
+	return append([]byte{agentSuccess}, contents...), nil
+}
+
+func TestAgentExtensions(t *testing.T) {
+	agent, _, cleanup := startOpenSSHAgent(t)
+	defer cleanup()
+	result, err := agent.Extension("my-extension@example.com", []byte{0x00, 0x01, 0x02})
+	if err == nil {
+		t.Fatal("should have gotten agent extension failure")
+	}
+
+	agent, cleanup = startAgent(t, &keyringExtended{})
+	defer cleanup()
+	result, err = agent.Extension("my-extension@example.com", []byte{0x00, 0x01, 0x02})
+	if err != nil {
+		t.Fatalf("agent extension failure: %v", err)
+	}
+	if len(result) != 4 || !bytes.Equal(result, []byte{agentSuccess, 0x00, 0x01, 0x02}) {
+		t.Fatalf("agent extension result invalid: %v", result)
+	}
+
+	result, err = agent.Extension("bad-extension@example.com", []byte{0x00, 0x01, 0x02})
+	if err == nil {
+		t.Fatal("should have gotten agent extension failure")
 	}
 }
