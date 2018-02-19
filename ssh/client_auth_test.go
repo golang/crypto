@@ -614,8 +614,8 @@ func TestClientAuthErrorList(t *testing.T) {
 	for i, e := range authErrs.Errors {
 		switch i {
 		case 0:
-			if _, ok := e.(*NoAuthError); !ok {
-				t.Fatalf("errors: got error type %T, want NoAuthError", e)
+			if e != errNoAuth {
+				t.Fatalf("errors: got %v, want %v", e, errNoAuth)
 			}
 		case 1:
 			if e != publicKeyErr {
