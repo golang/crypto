@@ -111,6 +111,23 @@ func (b *Builder) AddASN1GeneralizedTime(t time.Time) {
 	})
 }
 
+const (
+	utcTimeFormatStrShort = "0601021504Z0700"
+	utcTimeFormatStrLong  = "060102150405Z0700"
+)
+
+// AddASN1UTCTime appends a DER-encoded ASN.1 UTCTIME
+func (b *Builder) AddASN1UTCTime(t *time.Time) {
+	var year = t.Year()
+	if year < 1950 || year >= 2050 {
+		b.err = fmt.Errorf("cryptobyte: cannot represent %v as UTCTime", t)
+		return
+	}
+	b.AddASN1(asn1.UTCTime, func(c *Builder) {
+		c.AddBytes([]byte(t.Format(utcTimeFormatStrLong)))
+	})
+}
+
 // AddASN1BitString appends a DER-encoded ASN.1 BIT STRING. This does not
 // support BIT STRINGs that are not a whole number of bytes.
 func (b *Builder) AddASN1BitString(data []byte) {
@@ -447,6 +464,51 @@ func (s *String) ReadASN1GeneralizedTime(out *time.Time) bool {
 	}
 	*out = res
 	return true
+}
+
+// ReadASN1UTCTime decodes an ASN.1 UTC into out and
+// advances. It returns true on success and false on error.
+func (s *String) ReadASN1UTCTime(out *time.Time) bool {
+	var bytes String
+	var formatString = utcTimeFormatStrShort
+
+	if !s.ReadASN1(&bytes, asn1.UTCTime) {
+		return false
+	}
+
+	t := string(bytes)
+	res, err := time.Parse(formatString, t)
+	if err != nil {
+		formatString = utcTimeFormatStrLong
+		res, err = time.Parse(formatString, t)
+	}
+	if err != nil {
+		return false
+	}
+	if serialized := res.Format(formatString); serialized != t {
+		return false
+	}
+
+	if res.Year() >= 2050 {
+		// UTCTime only encodes times prior to 2050. See https://tools.ietf.org/html/rfc5280#section-4.1.2.5.1
+		res = res.AddDate(-100, 0, 0)
+	}
+
+	*out = res
+	return true
+}
+
+// ReadASN1Time decodes an ASN.1 GENERALIZEDTIME or UTCTIME into out and
+// advances. It return true on success and false on error.
+func (s *String) ReadASN1Time(out *time.Time) bool {
+	switch {
+	case s.PeekASN1Tag(asn1.GeneralizedTime):
+		return s.ReadASN1GeneralizedTime(out)
+	case s.PeekASN1Tag(asn1.UTCTime):
+		return s.ReadASN1UTCTime(out)
+	default:
+		return false
+	}
 }
 
 // ReadASN1BitString decodes an ASN.1 BIT STRING into out and advances. It
