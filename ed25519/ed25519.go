@@ -21,6 +21,7 @@ import (
 	"io"
 	"strconv"
 
+	"golang.org/x/crypto/sha3"
 	"golang.org/x/crypto/ed25519/internal/edwards25519"
 )
 
@@ -73,7 +74,7 @@ func GenerateKey(rand io.Reader) (publicKey PublicKey, privateKey PrivateKey, er
 		return nil, nil, err
 	}
 
-	digest := sha512.Sum512(privateKey[:32])
+	digest := sha3.SumKeccak512(reverseBytes(privateKey[:32]))
 	digest[0] &= 248
 	digest[31] &= 127
 	digest[31] |= 64
@@ -98,8 +99,8 @@ func Sign(privateKey PrivateKey, message []byte) []byte {
 		panic("ed25519: bad private key length: " + strconv.Itoa(l))
 	}
 
-	h := sha512.New()
-	h.Write(privateKey[:32])
+	h := sha3.NewKeccak512()
+	h.Write(reverseBytes(privateKey[:32]))
 
 	var digest1, messageDigest, hramDigest [64]byte
 	var expandedSecretKey [32]byte
@@ -178,4 +179,16 @@ func Verify(publicKey PublicKey, message, sig []byte) bool {
 	var checkR [32]byte
 	R.ToBytes(&checkR)
 	return bytes.Equal(sig[:32], checkR[:])
+}
+
+func reverseBytes(input []byte) []byte {
+	output := make([]byte, len(input))
+
+	j := len(input) -1
+	for i := 0; i < len(input); i++ {
+		output[j] = input[i]
+		j--
+	}
+
+	return output
 }

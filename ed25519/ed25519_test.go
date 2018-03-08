@@ -16,6 +16,7 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/ed25519/internal/edwards25519"
+	"fmt"
 )
 
 type zeroReader struct{}
@@ -143,6 +144,19 @@ func TestGolden(t *testing.T) {
 
 	if err := scanner.Err(); err != nil {
 		t.Fatalf("error reading test data: %s", err)
+	}
+}
+
+func TestReverseBytes(t *testing.T) {
+	in := []byte {1, 2, 3, 4, 5}
+	reversed := []byte {5, 4, 3, 2, 1}
+
+	out := reverseBytes(in)
+	fmt.Println(">> DEBUG", out)
+	for i := range out {
+		if out[i] != reversed[i] {
+			t.Error("failed ot reverse bytes")
+		}
 	}
 }
 
