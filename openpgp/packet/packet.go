@@ -8,13 +8,11 @@ package packet // import "golang.org/x/crypto/openpgp/packet"
 
 import (
 	"bufio"
-	"crypto/aes"
 	"crypto/cipher"
-	"crypto/des"
-	"golang.org/x/crypto/cast5"
-	"golang.org/x/crypto/openpgp/errors"
 	"io"
-	"math/big"
+
+	"golang.org/x/crypto/openpgp/errors"
+	"golang.org/x/crypto/openpgp/internal/algorithm"
 )
 
 // readFull is the same as io.ReadFull except that reading zero bytes returns
@@ -410,13 +408,15 @@ const (
 	// RFC 6637, Section 5.
 	PubKeyAlgoECDH  PublicKeyAlgorithm = 18
 	PubKeyAlgoECDSA PublicKeyAlgorithm = 19
+	// https://www.ietf.org/archive/id/draft-koch-eddsa-for-openpgp-04.txt
+	PubKeyAlgoEdDSA PublicKeyAlgorithm = 22
 )
 
 // CanEncrypt returns true if it's possible to encrypt a message to a public
 // key of the given type.
 func (pka PublicKeyAlgorithm) CanEncrypt() bool {
 	switch pka {
-	case PubKeyAlgoRSA, PubKeyAlgoRSAEncryptOnly, PubKeyAlgoElGamal:
+	case PubKeyAlgoRSA, PubKeyAlgoRSAEncryptOnly, PubKeyAlgoElGamal, PubKeyAlgoECDH:
 		return true
 	}
 	return false
@@ -426,7 +426,7 @@ func (pka PublicKeyAlgorithm) CanEncrypt() bool {
 // sign a message.
 func (pka PublicKeyAlgorithm) CanSign() bool {
 	switch pka {
-	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly, PubKeyAlgoDSA, PubKeyAlgoECDSA:
+	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly, PubKeyAlgoDSA, PubKeyAlgoECDSA, PubKeyAlgoEdDSA:
 		return true
 	}
 	return false
@@ -434,7 +434,7 @@ func (pka PublicKeyAlgorithm) CanSign() bool {
 
 // CipherFunction represents the different block ciphers specified for OpenPGP. See
 // http://www.iana.org/assignments/pgp-parameters/pgp-parameters.xhtml#pgp-parameters-13
-type CipherFunction uint8
+type CipherFunction algorithm.CipherFunction
 
 const (
 	Cipher3DES   CipherFunction = 2
@@ -446,83 +446,17 @@ const (
 
 // KeySize returns the key size, in bytes, of cipher.
 func (cipher CipherFunction) KeySize() int {
-	switch cipher {
-	case Cipher3DES:
-		return 24
-	case CipherCAST5:
-		return cast5.KeySize
-	case CipherAES128:
-		return 16
-	case CipherAES192:
-		return 24
-	case CipherAES256:
-		return 32
-	}
-	return 0
+	return algorithm.CipherFunction(cipher).KeySize()
 }
 
 // blockSize returns the block size, in bytes, of cipher.
 func (cipher CipherFunction) blockSize() int {
-	switch cipher {
-	case Cipher3DES:
-		return des.BlockSize
-	case CipherCAST5:
-		return 8
-	case CipherAES128, CipherAES192, CipherAES256:
-		return 16
-	}
-	return 0
+	return algorithm.CipherFunction(cipher).BlockSize()
 }
 
 // new returns a fresh instance of the given cipher.
 func (cipher CipherFunction) new(key []byte) (block cipher.Block) {
-	switch cipher {
-	case Cipher3DES:
-		block, _ = des.NewTripleDESCipher(key)
-	case CipherCAST5:
-		block, _ = cast5.NewCipher(key)
-	case CipherAES128, CipherAES192, CipherAES256:
-		block, _ = aes.NewCipher(key)
-	}
-	return
-}
-
-// readMPI reads a big integer from r. The bit length returned is the bit
-// length that was specified in r. This is preserved so that the integer can be
-// reserialized exactly.
-func readMPI(r io.Reader) (mpi []byte, bitLength uint16, err error) {
-	var buf [2]byte
-	_, err = readFull(r, buf[0:])
-	if err != nil {
-		return
-	}
-	bitLength = uint16(buf[0])<<8 | uint16(buf[1])
-	numBytes := (int(bitLength) + 7) / 8
-	mpi = make([]byte, numBytes)
-	_, err = readFull(r, mpi)
-	return
-}
-
-// mpiLength returns the length of the given *big.Int when serialized as an
-// MPI.
-func mpiLength(n *big.Int) (mpiLengthInBytes int) {
-	mpiLengthInBytes = 2 /* MPI length */
-	mpiLengthInBytes += (n.BitLen() + 7) / 8
-	return
-}
-
-// writeMPI serializes a big integer to w.
-func writeMPI(w io.Writer, bitLength uint16, mpiBytes []byte) (err error) {
-	_, err = w.Write([]byte{byte(bitLength >> 8), byte(bitLength)})
-	if err == nil {
-		_, err = w.Write(mpiBytes)
-	}
-	return
-}
-
-// writeBig serializes a *big.Int to w.
-func writeBig(w io.Writer, i *big.Int) error {
-	return writeMPI(w, uint16(i.BitLen()), i.Bytes())
+	return algorithm.CipherFunction(cipher).New(key)
 }
 
 // CompressionAlgo Represents the different compression algorithms

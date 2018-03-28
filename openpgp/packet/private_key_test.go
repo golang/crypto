@@ -17,6 +17,8 @@ import (
 	"io"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/ed25519"
 )
 
 var privateKeyTests = []struct {
@@ -233,6 +235,52 @@ func TestECDSASignerPrivateKey(t *testing.T) {
 
 	sig := &Signature{
 		PubKeyAlgo: PubKeyAlgoECDSA,
+		Hash:       crypto.SHA256,
+	}
+	msg := []byte("Hello World!")
+
+	h, err := populateHash(sig.Hash, msg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := sig.Sign(h, priv, nil); err != nil {
+		t.Fatal(err)
+	}
+
+	if h, err = populateHash(sig.Hash, msg); err != nil {
+		t.Fatal(err)
+	}
+	if err := priv.VerifySignature(h, sig); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type eddsaSigner struct {
+	priv ed25519.PrivateKey
+}
+
+func (s *eddsaSigner) Public() crypto.PublicKey {
+	return s.priv.Public()
+}
+
+func (s *eddsaSigner) Sign(rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
+	return s.priv.Sign(rand, msg, opts)
+}
+
+func TestEdDSASignerPrivateKey(t *testing.T) {
+	_, eddsaPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	priv := NewSignerPrivateKey(time.Now(), &eddsaSigner{eddsaPriv})
+
+	if priv.PubKeyAlgo != PubKeyAlgoEdDSA {
+		t.Fatal("NewSignerPrivateKey should have made a EdDSA private key")
+	}
+
+	sig := &Signature{
+		PubKeyAlgo: PubKeyAlgoEdDSA,
 		Hash:       crypto.SHA256,
 	}
 	msg := []byte("Hello World!")

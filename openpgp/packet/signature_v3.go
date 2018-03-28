@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/openpgp/errors"
+	"golang.org/x/crypto/openpgp/internal/encoding"
 	"golang.org/x/crypto/openpgp/s2k"
 )
 
@@ -28,8 +29,8 @@ type SignatureV3 struct {
 	Hash         crypto.Hash
 	HashTag      [2]byte
 
-	RSASignature     parsedMPI
-	DSASigR, DSASigS parsedMPI
+	RSASignature     encoding.Field
+	DSASigR, DSASigS encoding.Field
 }
 
 func (sig *SignatureV3) parse(r io.Reader) (err error) {
@@ -88,12 +89,16 @@ func (sig *SignatureV3) parse(r io.Reader) (err error) {
 
 	switch sig.PubKeyAlgo {
 	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly:
-		sig.RSASignature.bytes, sig.RSASignature.bitLength, err = readMPI(r)
+		sig.RSASignature = new(encoding.MPI)
+		_, err = sig.RSASignature.ReadFrom(r)
 	case PubKeyAlgoDSA:
-		if sig.DSASigR.bytes, sig.DSASigR.bitLength, err = readMPI(r); err != nil {
+		sig.DSASigR = new(encoding.MPI)
+		if _, err = sig.DSASigR.ReadFrom(r); err != nil {
 			return
 		}
-		sig.DSASigS.bytes, sig.DSASigS.bitLength, err = readMPI(r)
+
+		sig.DSASigS = new(encoding.MPI)
+		_, err = sig.DSASigS.ReadFrom(r)
 	default:
 		panic("unreachable")
 	}
@@ -130,15 +135,18 @@ func (sig *SignatureV3) Serialize(w io.Writer) (err error) {
 		return
 	}
 
-	if sig.RSASignature.bytes == nil && sig.DSASigR.bytes == nil {
+	if sig.RSASignature.Bytes() == nil && sig.DSASigR.Bytes() == nil {
 		return errors.InvalidArgumentError("Signature: need to call Sign, SignUserId or SignKey before Serialize")
 	}
 
 	switch sig.PubKeyAlgo {
 	case PubKeyAlgoRSA, PubKeyAlgoRSASignOnly:
-		err = writeMPIs(w, sig.RSASignature)
+		_, err = w.Write(sig.RSASignature.EncodedBytes())
 	case PubKeyAlgoDSA:
-		err = writeMPIs(w, sig.DSASigR, sig.DSASigS)
+		if _, err = w.Write(sig.DSASigR.EncodedBytes()); err != nil {
+			return
+		}
+		_, err = w.Write(sig.DSASigS.EncodedBytes())
 	default:
 		panic("impossible")
 	}

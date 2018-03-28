@@ -23,6 +23,8 @@ var pubKeyTests = []struct {
 	{rsaPkDataHex, rsaFingerprintHex, time.Unix(0x4d3c5c10, 0), PubKeyAlgoRSA, 0xa34d7e18c20c31bb, "A34D7E18C20C31BB", "C20C31BB"},
 	{dsaPkDataHex, dsaFingerprintHex, time.Unix(0x4d432f89, 0), PubKeyAlgoDSA, 0x8e8fbe54062f19ed, "8E8FBE54062F19ED", "062F19ED"},
 	{ecdsaPkDataHex, ecdsaFingerprintHex, time.Unix(0x5071c294, 0), PubKeyAlgoECDSA, 0x43fe956c542ca00b, "43FE956C542CA00B", "542CA00B"},
+	{ecdhPkDataHex, ecdhFingerprintHex, time.Unix(0x4d530592, 0), PubKeyAlgoECDH, 0xaa8B938f9a201946, "AA8B938F9A201946", "9A201946"},
+	{eddsaPkDataHex, eddsaFingerprintHex, time.Unix(0x056e2132b, 0), PubKeyAlgoEdDSA, 0x907e75e1dd99ad8, "0907E75E1DD99AD8", "1DD99AD8"},
 }
 
 func TestPublicKeyRead(t *testing.T) {
@@ -101,11 +103,11 @@ func TestEcc384Serialize(t *testing.T) {
 			t.Error(err)
 		}
 		pubkey := p.(*PublicKey)
-		if !bytes.Equal(pubkey.ec.oid, []byte{0x2b, 0x81, 0x04, 0x00, 0x22}) {
-			t.Errorf("Unexpected pubkey OID: %x", pubkey.ec.oid)
+		if !bytes.Equal(pubkey.oid.Bytes(), []byte{0x2b, 0x81, 0x04, 0x00, 0x22}) {
+			t.Errorf("Unexpected pubkey OID: %x", pubkey.oid.Bytes())
 		}
-		if !bytes.Equal(pubkey.ec.p.bytes[:5], []byte{0x04, 0xf6, 0xb8, 0xc5, 0xac}) {
-			t.Errorf("Unexpected pubkey P[:5]: %x", pubkey.ec.p.bytes)
+		if !bytes.Equal(pubkey.p.Bytes()[:5], []byte{0x04, 0xf6, 0xb8, 0xc5, 0xac}) {
+			t.Errorf("Unexpected pubkey P[:5]: %x", pubkey.p.Bytes())
 		}
 		if pubkey.KeyId != 0x098033880F54719F {
 			t.Errorf("Unexpected pubkey ID: %x", pubkey.KeyId)
@@ -147,17 +149,14 @@ func TestEcc384Serialize(t *testing.T) {
 			t.Error(err)
 		}
 		subkey := p.(*PublicKey)
-		if !bytes.Equal(subkey.ec.oid, []byte{0x2b, 0x81, 0x04, 0x00, 0x22}) {
-			t.Errorf("Unexpected subkey OID: %x", subkey.ec.oid)
+		if !bytes.Equal(subkey.oid.Bytes(), []byte{0x2b, 0x81, 0x04, 0x00, 0x22}) {
+			t.Errorf("Unexpected subkey OID: %x", subkey.oid.Bytes())
 		}
-		if !bytes.Equal(subkey.ec.p.bytes[:5], []byte{0x04, 0x2f, 0xaa, 0x84, 0x02}) {
-			t.Errorf("Unexpected subkey P[:5]: %x", subkey.ec.p.bytes)
+		if !bytes.Equal(subkey.p.Bytes()[:5], []byte{0x04, 0x2f, 0xaa, 0x84, 0x02}) {
+			t.Errorf("Unexpected subkey P[:5]: %x", subkey.p.Bytes())
 		}
-		if subkey.ecdh.KdfHash != 0x09 {
-			t.Error("Expected KDF hash function SHA384 (0x09), got", subkey.ecdh.KdfHash)
-		}
-		if subkey.ecdh.KdfAlgo != 0x09 {
-			t.Error("Expected KDF symmetric alg AES256 (0x09), got", subkey.ecdh.KdfAlgo)
+		if !bytes.Equal(subkey.kdf.Bytes(), []byte{0x01, 0x09, 0x09}) {
+			t.Errorf("Unexpected subkey KDF: %x", subkey.kdf.Bytes())
 		}
 		if subkey.KeyId != 0xAA8B938F9A201946 {
 			t.Errorf("Unexpected subkey ID: %x", subkey.KeyId)
@@ -197,6 +196,14 @@ const dsaPkDataHex = "9901a2044d432f89110400cd581334f0d7a1e1bdc8b9d6d8c0baf68793
 const ecdsaFingerprintHex = "9892270b38b8980b05c8d56d43fe956c542ca00b"
 
 const ecdsaPkDataHex = "9893045071c29413052b8104002304230401f4867769cedfa52c325018896245443968e52e51d0c2df8d939949cb5b330f2921711fbee1c9b9dddb95d15cb0255e99badeddda7cc23d9ddcaacbc290969b9f24019375d61c2e4e3b36953a28d8b2bc95f78c3f1d592fb24499be348656a7b17e3963187b4361afe497bc5f9f81213f04069f8e1fb9e6a6290ae295ca1a92b894396cb4"
+
+const ecdhFingerprintHex = "722354df2475a42164d1d49faa8b938f9a201946"
+
+const ecdhPkDataHex = "b90073044d53059212052b810400220303042faa84024a20b6735c4897efa5bfb41bf85b7eefeab5ca0cb9ffc8ea04a46acb25534a577694f9e25340a4ab5223a9dd1eda530c8aa2e6718db10d7e672558c7736fe09369ea5739a2a3554bf16d41faa50562f11c6d39bbd5dffb6b9a9ec91803010909"
+
+const eddsaFingerprintHex = "b2d5e5ec0e6deca6bc8eeeb00907e75e1dd99ad8"
+
+const eddsaPkDataHex = "98330456e2132b16092b06010401da470f01010740bbda39266affa511a8c2d02edf690fb784b0499c4406185811a163539ef11dc1b41d74657374696e67203c74657374696e674074657374696e672e636f6d3e8879041316080021050256e2132b021b03050b09080702061508090a0b020416020301021e01021780000a09100907e75e1dd99ad86d0c00fe39d2008359352782bc9b61ac382584cd8eff3f57a18c2287e3afeeb05d1f04ba00fe2d0bc1ddf3ff8adb9afa3e7d9287244b4ec567f3db4d60b74a9b5465ed528203"
 
 // Source: https://sites.google.com/site/brainhub/pgpecckeys#TOC-ECC-NIST-P-384-key
 const ecc384PubHex = `99006f044d53059213052b81040022030304f6b8c5aced5b84ef9f4a209db2e4a9dfb70d28cb8c10ecd57674a9fa5a67389942b62d5e51367df4c7bfd3f8e500feecf07ed265a621a8ebbbe53e947ec78c677eba143bd1533c2b350e1c29f82313e1e1108eba063be1e64b10e6950e799c2db42465635f6473615f64685f333834203c6f70656e70677040627261696e6875622e6f72673e8900cb04101309005305024d530592301480000000002000077072656665727265642d656d61696c2d656e636f64696e67407067702e636f6d7067706d696d65040b090807021901051b03000000021602051e010000000415090a08000a0910098033880f54719fca2b0180aa37350968bd5f115afd8ce7bc7b103822152dbff06d0afcda835329510905b98cb469ba208faab87c7412b799e7b633017f58364ea480e8a1a3f253a0c5f22c446e8be9a9fce6210136ee30811abbd49139de28b5bdf8dc36d06ae748579e9ff503b90073044d53059212052b810400220303042faa84024a20b6735c4897efa5bfb41bf85b7eefeab5ca0cb9ffc8ea04a46acb25534a577694f9e25340a4ab5223a9dd1eda530c8aa2e6718db10d7e672558c7736fe09369ea5739a2a3554bf16d41faa50562f11c6d39bbd5dffb6b9a9ec9180301090989008404181309000c05024d530592051b0c000000000a0910098033880f54719f80970180eee7a6d8fcee41ee4f9289df17f9bcf9d955dca25c583b94336f3a2b2d4986dc5cf417b8d2dc86f741a9e1a6d236c0e3017d1c76575458a0cfb93ae8a2b274fcc65ceecd7a91eec83656ba13219969f06945b48c56bd04152c3a0553c5f2f4bd1267`
