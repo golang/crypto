@@ -194,6 +194,9 @@ type Authorization struct {
 	// Status identifies the status of an authorization.
 	Status string
 
+	// Optional expiration of an authorization.
+	Expires time.Time
+
 	// Identifier is what the account is authorized to represent.
 	Identifier AuthzID
 
