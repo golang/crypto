@@ -10,9 +10,6 @@ package curve25519
 
 import (
 	"encoding/binary"
-	"crypto/elliptic"
-	"math/big"
-	"sync"
 )
 
 // This code is a port of the public domain, "ref10" implementation of
@@ -835,4 +832,3 @@ func scalarMult(out, in, base *[32]byte) {
 	feMul(&x2, &x2, &z2)
 	feToBytes(out, &x2)
 }
-
