@@ -169,7 +169,20 @@ func hashToHashId(h crypto.Hash) uint8 {
 // the recipients in processing the message. The resulting WriteCloser must
 // be closed after the contents of the file have been written.
 // If config is nil, sensible defaults will be used.
+// The signing is done in text mode
+func EncryptText(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
+	return encrypt(ciphertext, to, signed, hints, packet.SigTypeText, config)
+}
+// Encrypt encrypts a message to a number of recipients and, optionally, signs
+// it. hints contains optional information, that is also encrypted, that aids
+// the recipients in processing the message. The resulting WriteCloser must
+// be closed after the contents of the file have been written.
+// If config is nil, sensible defaults will be used.
 func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
+	return encrypt(ciphertext, to, signed, hints, packet.SigTypeBinary, config)
+}
+
+func encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHints, sigType packet.SignatureType, config *packet.Config) (plaintext io.WriteCloser, err error) {
 	var signer *packet.PrivateKey
 	if signed != nil {
 		signKey, ok := signed.signingKey(config.Now())
@@ -286,7 +299,7 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 
 	if signer != nil {
 		ops := &packet.OnePassSignature{
-			SigType:    packet.SigTypeBinary,
+			SigType:    sigType,
 			Hash:       hash,
 			PubKeyAlgo: signer.PubKeyAlgo,
 			KeyId:      signer.KeyId,
@@ -319,11 +332,14 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 	}
 
 	if signer != nil {
-		return signatureWriter{encryptedData, literalData, hash, hash.New(), signer, config}, nil
+		h, wrappedHash, err := hashForSignature(hash, sigType)
+		if err != nil {
+			return nil, err
+		}
+		return signatureWriter{encryptedData, literalData, hash, h, wrappedHash, signer, sigType, config}, nil
 	}
 	return literalData, nil
 }
-
 // signatureWriter hashes the contents of a message while passing it along to
 // literalData. When closed, it closes literalData, writes a signature packet
 // to encryptedData and then also closes encryptedData.
@@ -331,19 +347,21 @@ type signatureWriter struct {
 	encryptedData io.WriteCloser
 	literalData   io.WriteCloser
 	hashType      crypto.Hash
+	wrappedHash	  hash.Hash
 	h             hash.Hash
 	signer        *packet.PrivateKey
+	sigType 	  packet.SignatureType
 	config        *packet.Config
 }
 
 func (s signatureWriter) Write(data []byte) (int, error) {
-	s.h.Write(data)
+	s.wrappedHash.Write(data)
 	return s.literalData.Write(data)
 }
 
 func (s signatureWriter) Close() error {
 	sig := &packet.Signature{
-		SigType:      packet.SigTypeBinary,
+		SigType:      s.sigType,
 		PubKeyAlgo:   s.signer.PubKeyAlgo,
 		Hash:         s.hashType,
 		CreationTime: s.config.Now(),
