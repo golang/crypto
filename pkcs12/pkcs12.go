@@ -267,6 +267,45 @@ func Decode(pfxData []byte, password string) (privateKey interface{}, certificat
 	return
 }
 
+// DecodeAll extracts all certificate and private keys from pfxData.
+func DecodeAll(pfxData []byte, password string) (privateKeys []interface{}, certificates []*x509.Certificate, err error) {
+	encodedPassword, err := bmpString(password)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	bags, encodedPassword, err := getSafeContents(pfxData, encodedPassword)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	for _, bag := range bags {
+		switch {
+		case bag.Id.Equal(oidCertBag):
+			certsData, err := decodeCertBag(bag.Value.Bytes)
+			if err != nil {
+				return nil, nil, err
+			}
+			certs, err := x509.ParseCertificates(certsData)
+			if err != nil {
+				return nil, nil, err
+			}
+			certificates = append(certificates, certs...)
+
+		case bag.Id.Equal(oidPKCS8ShroundedKeyBag):
+			privateKey, err := decodePkcs8ShroudedKeyBag(bag.Value.Bytes, encodedPassword)
+
+			if err != nil {
+				return nil, nil, err
+			}
+
+			privateKeys = append(privateKeys, privateKey)
+		}
+	}
+
+	return
+}
+
 func getSafeContents(p12Data, password []byte) (bags []safeBag, updatedPassword []byte, err error) {
 	pfx := new(pfxPdu)
 	if err := unmarshal(p12Data, pfx); err != nil {

@@ -31,6 +31,34 @@ func TestPfx(t *testing.T) {
 	}
 }
 
+func TestPfxDecodeAll(t *testing.T) {
+	for commonName, base64P12 := range testdata {
+		p12, _ := base64.StdEncoding.DecodeString(base64P12)
+
+		privs, certs, err := DecodeAll(p12, "")
+
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(privs) != 1 {
+			t.Errorf("expected 1 private key, but got %d", len(privs))
+		}
+
+		if len(certs) != 1 {
+			t.Errorf("expected 1 certificate, but got %d", len(certs))
+		}
+
+		if err := privs[0].(*rsa.PrivateKey).Validate(); err != nil {
+			t.Errorf("error while validating private key: %v", err)
+		}
+
+		if certs[0].Subject.CommonName != commonName {
+			t.Errorf("expected common name to be %q, but found %q", commonName, certs[0].Subject.CommonName)
+		}
+	}
+}
+
 func TestPEM(t *testing.T) {
 	for commonName, base64P12 := range testdata {
 		p12, _ := base64.StdEncoding.DecodeString(base64P12)
