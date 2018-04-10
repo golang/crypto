@@ -140,7 +140,7 @@ func (s *String) ReadUint24LengthPrefixed(out *String) bool {
 }
 
 // ReadBytes reads n bytes into out and advances over them. It returns true on
-// success and false and error.
+// success and false on error.
 func (s *String) ReadBytes(out *[]byte, n int) bool {
 	v := s.read(n)
 	if v == nil {
