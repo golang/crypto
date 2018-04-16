@@ -359,7 +359,13 @@ type signatureWriter struct {
 func (s signatureWriter) Write(data []byte) (int, error) {
 	s.wrappedHash.Write(data)
 	flag := 0
-	return writeCanonical(s.literalData, data, &flag)
+	switch s.sigType {
+		case packet.SigTypeBinary:
+			return s.literalData.Write(data)
+		case packet.SigTypeText:
+			return writeCanonical(s.literalData, data, &flag)
+	}
+	return 0, errors.UnsupportedError("unsupported signature type: " + strconv.Itoa(int(s.sigType)))
 }
 
 func (s signatureWriter) Close() error {
