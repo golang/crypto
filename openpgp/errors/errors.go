@@ -41,6 +41,14 @@ func (b SignatureError) Error() string {
 	return "openpgp: invalid signature: " + string(b)
 }
 
+type signatureExpiredError int
+
+func (se signatureExpiredError) Error() string {
+	return "openpgp: signature expired"
+}
+
+var ErrSignatureExpired error = signatureExpiredError(0)
+
 type keyIncorrectError int
 
 func (ki keyIncorrectError) Error() string {

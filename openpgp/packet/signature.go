@@ -479,7 +479,6 @@ func (sig *Signature) KeyExpired(currentTime time.Time) bool {
 	if sig.CreationTime.After(currentTime) {
 		return false
 	}
-	// TODO: also check for time in future!
 	if sig.KeyLifetimeSecs == nil {
 		return false
 	}
