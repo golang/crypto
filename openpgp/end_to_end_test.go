@@ -13,6 +13,7 @@ import (
 	"io/ioutil"
 	"time"
 	"io"
+
 )
 
 type algorithmSet struct {
@@ -275,7 +276,7 @@ func signVerifyTest(t *testing.T, testSetFrom algorithmSet, privateKeyFrom Entit
 	signatureReader := bytes.NewReader(buf.Bytes())
 
 	wrongmessage := bytes.NewReader(bytes.NewBufferString("testing 漢字").Bytes())
-	wrongsigner, err := CheckArmoredDetachedSignature(publicKeyFrom, wrongmessage, signatureReader)
+	wrongsigner, err := CheckArmoredDetachedSignature(publicKeyFrom, wrongmessage, signatureReader, nil)
 
 	if err == nil || wrongsigner != nil {
 		t.Fatal("Expected the signature to not verify")
@@ -286,7 +287,7 @@ func signVerifyTest(t *testing.T, testSetFrom algorithmSet, privateKeyFrom Entit
 	signatureReader.Seek(0, io.SeekStart)
 
 	wronglineendings := bytes.NewReader(bytes.NewBufferString("testing 漢字 \n \r\n \n").Bytes())
-	wronglinesigner, err := CheckArmoredDetachedSignature(publicKeyFrom, wronglineendings, signatureReader)
+	wronglinesigner, err := CheckArmoredDetachedSignature(publicKeyFrom, wronglineendings, signatureReader, nil)
 
 	if (binary) {
 		if err == nil || wronglinesigner != nil {
@@ -310,7 +311,7 @@ func signVerifyTest(t *testing.T, testSetFrom algorithmSet, privateKeyFrom Entit
 	message.Seek(0, io.SeekStart)
 	signatureReader.Seek(0, io.SeekStart)
 
-	signer, err := CheckArmoredDetachedSignature(publicKeyFrom, message, signatureReader)
+	signer, err := CheckArmoredDetachedSignature(publicKeyFrom, message, signatureReader, nil)
 
 	if err != nil {
 		t.Errorf("signature error: %s", err)

@@ -477,7 +477,7 @@ func serializeSubpackets(to []byte, subpackets []outputSubpacket, hashed bool) {
 // expired or is signed in the future.
 func (sig *Signature) KeyExpired(currentTime time.Time) bool {
 	if sig.CreationTime.After(currentTime) {
-		return false
+		return true
 	}
 	if sig.KeyLifetimeSecs == nil {
 		return false

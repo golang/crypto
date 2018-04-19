@@ -420,7 +420,7 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader, config
 		switch sig := p.(type) {
 		case *packet.Signature:
 			err = key.PublicKey.VerifySignature(h, sig)
-			if err == nil && !sig.KeyExpired(config.Now()) {
+			if err == nil && sig.KeyExpired(config.Now()) {
 				err = errors.ErrSignatureExpired
 			}
 		case *packet.SignatureV3:
