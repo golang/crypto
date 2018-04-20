@@ -9,6 +9,8 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+
+	"golang.org/x/crypto/cryptobyte/asn1"
 )
 
 func builderBytesEq(b *Builder, want ...byte) error {
@@ -381,6 +383,45 @@ func TestASN1Int64(t *testing.T) {
 		var n int64
 		s := String(b.BytesOrPanic())
 		ok := s.ReadASN1Integer(&n)
+		if !ok || n != tt.in {
+			t.Errorf("s.ReadASN1Integer(&n) = %v, n = %d; want true, n = %d (i = %d)",
+				ok, n, tt.in, i)
+		}
+		if len(s) != 0 {
+			t.Errorf("len(s) = %d, want 0", len(s))
+		}
+	}
+}
+
+func TestASN1Int64WithTag(t *testing.T) {
+	tests := []struct {
+		tag  asn1.Tag
+		in   int64
+		want []byte
+	}{
+		{0, -0x800000, []byte{0, 3, 128, 0, 0}},
+		{1, -256, []byte{1, 2, 255, 0}},
+		{2, -129, []byte{2, 2, 255, 127}},
+		{3, -128, []byte{3, 1, 128}},
+		{4, -1, []byte{4, 1, 255}},
+		{5, 0, []byte{5, 1, 0}},
+		{6, 1, []byte{6, 1, 1}},
+		{7, 2, []byte{7, 1, 2}},
+		{8, 127, []byte{8, 1, 127}},
+		{9, 128, []byte{9, 2, 0, 128}},
+		{17, 256, []byte{17, 2, 1, 0}},
+		{30, 0x800000, []byte{30, 4, 0, 128, 0, 0}},
+	}
+	for i, tt := range tests {
+		var b Builder
+		b.AddASN1Int64WithTag(tt.tag, tt.in)
+		if err := builderBytesEq(&b, tt.want...); err != nil {
+			t.Errorf("%v, (i = %d; in = %v)", err, i, tt.in)
+		}
+
+		var n int64
+		s := String(b.BytesOrPanic())
+		ok := s.ReadASN1Int64WithTag(&n, tt.tag)
 		if !ok || n != tt.in {
 			t.Errorf("s.ReadASN1Integer(&n) = %v, n = %d; want true, n = %d (i = %d)",
 				ok, n, tt.in, i)
