@@ -23,6 +23,12 @@ func (b *Builder) AddASN1Int64(v int64) {
 	b.addASN1Signed(asn1.INTEGER, v)
 }
 
+// AddASN1Int64WithTag appends a DER-encoded ASN.1 INTEGER with the
+// given tag.
+func (b *Builder) AddASN1Int64WithTag(tag asn1.Tag, v int64) {
+	b.addASN1Signed(tag, v)
+}
+
 // AddASN1Enum appends a DER-encoded ASN.1 ENUMERATION.
 func (b *Builder) AddASN1Enum(v int64) {
 	b.addASN1Signed(asn1.ENUM, v)
@@ -623,7 +629,7 @@ func (s *String) ReadOptionalASN1Integer(out interface{}, tag asn1.Tag, defaultV
 
 // ReadOptionalASN1OctetString attempts to read an optional ASN.1 OCTET STRING
 // explicitly tagged with tag into out and advances. If no element with a
-// matching tag is present, it writes defaultValue into out instead. It reports
+// matching tag is present, it sets "out" to nil instead. It reports
 // whether the read was successful.
 func (s *String) ReadOptionalASN1OctetString(out *[]byte, outPresent *bool, tag asn1.Tag) bool {
 	var present bool
@@ -733,5 +739,15 @@ func (s *String) readASN1(out *String, outTag *asn1.Tag, skipHeader bool) bool {
 		panic("cryptobyte: internal error")
 	}
 
+	return true
+}
+
+// ReadASN1Int64WithTag decodes into "out" a 64-bit integer encoded as ASN.1 raw data
+// with the given tag. It reports whether the read was successful.
+func (s *String) ReadASN1Int64WithTag(out *int64, tag asn1.Tag) bool {
+	var bytes String
+	if !s.ReadASN1(&bytes, tag) || !checkASN1Integer(bytes) || !asn1Signed(out, bytes) {
+		return false
+	}
 	return true
 }
