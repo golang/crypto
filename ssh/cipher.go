@@ -659,7 +659,7 @@ func newChaCha20Cipher(key, unusedIV, unusedMACKey []byte, unusedAlgs directionA
 	for i := range c.contentKey {
 		c.contentKey[i] = binary.LittleEndian.Uint32(key[i*4 : (i+1)*4])
 	}
-	for i := range c.contentKey {
+	for i := range c.lengthKey {
 		c.lengthKey[i] = binary.LittleEndian.Uint32(key[(i+8)*4 : (i+9)*4])
 	}
 	return c, nil
