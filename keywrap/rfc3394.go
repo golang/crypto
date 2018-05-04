@@ -1,4 +1,4 @@
-package minerva
+package keywrap
 
 import (
 	"crypto/aes"
