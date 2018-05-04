@@ -1,4 +1,4 @@
-package minerva
+package keywrap
 
 import (
 	"encoding/base64"
