@@ -71,10 +71,10 @@ func UnWrapKey(KEK, CipherText []byte) ([]byte, error) {
 }
 
 // WrapKey - Wrap key using KEK as par rfc 3394
-func WrapKey(KEK, KEYData, IV []byte) ([]byte, merry.Error) {
+func WrapKey(KEK, KEYData, IV []byte) ([]byte, error) {
 
 	if len(KEYData)%8 != 0 {
-		return nil, merry.Wrap(errors.New("invalid data length"))
+		return nil, errors.New("invalid data length")
 	}
 
 	if IV == nil {
@@ -112,7 +112,7 @@ func WrapKey(KEK, KEYData, IV []byte) ([]byte, merry.Error) {
 }
 
 // WrapKeyPadded - Wrap key using KEK as par rfc 5649
-func WrapKeyPadded(KEK, KEYData []byte) ([]byte, merry.Error) {
+func WrapKeyPadded(KEK, KEYData []byte) ([]byte, error) {
 	n := len(KEYData)
 	if len(KEYData)%8 != 0 {
 		pad := make([]byte, 8-(len(KEYData)%8))
@@ -132,9 +132,9 @@ func WrapKeyPadded(KEK, KEYData []byte) ([]byte, merry.Error) {
 }
 
 //UnwrapPadded - Unwrap key using KEK as par rfc 5649
-func UnwrapPadded(KEK, CipherText []byte) ([]byte, merry.Error) {
+func UnwrapPadded(KEK, CipherText []byte) ([]byte, error) {
 	var out []byte
-	var e merry.Error
+	var e error
 	n := len(CipherText)
 	if n == 16 {
 		out, e = aES1(KEK, CipherText)
