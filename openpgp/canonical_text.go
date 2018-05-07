@@ -4,7 +4,10 @@
 
 package openpgp
 
-import "hash"
+import (
+	"hash"
+	"io"
+)
 
 // NewCanonicalTextHash reformats text written to it into the canonical
 // form and then applies the hash h.  See RFC 4880, section 5.2.1.
@@ -19,26 +22,29 @@ type canonicalTextHash struct {
 
 var newline = []byte{'\r', '\n'}
 
-func (cth *canonicalTextHash) Write(buf []byte) (int, error) {
+func writeCanonical(cw io.Writer, buf []byte, s *int) (int, error) {
 	start := 0
-
 	for i, c := range buf {
-		switch cth.s {
+		switch *s {
 		case 0:
 			if c == '\r' {
-				cth.s = 1
+				*s = 1
 			} else if c == '\n' {
-				cth.h.Write(buf[start:i])
-				cth.h.Write(newline)
+				cw.Write(buf[start:i])
+				cw.Write(newline)
 				start = i + 1
 			}
 		case 1:
-			cth.s = 0
+			*s = 0
 		}
 	}
 
-	cth.h.Write(buf[start:])
+	cw.Write(buf[start:])
 	return len(buf), nil
+}
+
+func (cth *canonicalTextHash) Write(buf []byte) (int, error) {
+	return writeCanonical(cth.h, buf, &cth.s)
 }
 
 func (cth *canonicalTextHash) Sum(in []byte) []byte {

@@ -173,6 +173,7 @@ func hashToHashId(h crypto.Hash) uint8 {
 func EncryptText(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
 	return encrypt(ciphertext, to, signed, hints, packet.SigTypeText, config)
 }
+
 // Encrypt encrypts a message to a number of recipients and, optionally, signs
 // it. hints contains optional information, that is also encrypted, that aids
 // the recipients in processing the message. The resulting WriteCloser must
@@ -336,10 +337,11 @@ func encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 		if err != nil {
 			return nil, err
 		}
-		return signatureWriter{encryptedData, literalData, hash, h, wrappedHash, signer, sigType, config}, nil
+		return signatureWriter{encryptedData, literalData, hash, wrappedHash, h, signer, sigType, config}, nil
 	}
 	return literalData, nil
 }
+
 // signatureWriter hashes the contents of a message while passing it along to
 // literalData. When closed, it closes literalData, writes a signature packet
 // to encryptedData and then also closes encryptedData.
@@ -347,16 +349,23 @@ type signatureWriter struct {
 	encryptedData io.WriteCloser
 	literalData   io.WriteCloser
 	hashType      crypto.Hash
-	wrappedHash	  hash.Hash
+	wrappedHash   hash.Hash
 	h             hash.Hash
 	signer        *packet.PrivateKey
-	sigType 	  packet.SignatureType
+	sigType       packet.SignatureType
 	config        *packet.Config
 }
 
 func (s signatureWriter) Write(data []byte) (int, error) {
 	s.wrappedHash.Write(data)
-	return s.literalData.Write(data)
+	flag := 0
+	switch s.sigType {
+		case packet.SigTypeBinary:
+			return s.literalData.Write(data)
+		case packet.SigTypeText:
+			return writeCanonical(s.literalData, data, &flag)
+	}
+	return 0, errors.UnsupportedError("unsupported signature type: " + strconv.Itoa(int(s.sigType)))
 }
 
 func (s signatureWriter) Close() error {

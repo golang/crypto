@@ -12,9 +12,11 @@ import (
 	"io/ioutil"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/openpgp/armor"
 	"golang.org/x/crypto/openpgp/errors"
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 func readerFromHex(s string) io.Reader {
@@ -315,7 +317,7 @@ func TestSymmetricallyEncrypted(t *testing.T) {
 
 func testDetachedSignature(t *testing.T, kring KeyRing, signature io.Reader, sigInput, tag string, expectedSignerKeyId uint64) {
 	signed := bytes.NewBufferString(sigInput)
-	signer, err := CheckDetachedSignature(kring, signed, signature)
+	signer, err := CheckDetachedSignature(kring, signed, signature, nil)
 	if err != nil {
 		t.Errorf("%s: signature error: %s", tag, err)
 		return
@@ -329,6 +331,36 @@ func testDetachedSignature(t *testing.T, kring KeyRing, signature io.Reader, sig
 	}
 }
 
+func TestExpiredSignature(t *testing.T) {
+
+	kring, _ := ReadKeyRing(readerFromHex(testKeys1And2Hex))
+	signature := readerFromHex(detachedSignatureHex)
+	signed := bytes.NewBufferString(signedInput)
+	_, err := CheckDetachedSignature(kring, signed, signature, &packet.Config{
+		Time: func() time.Time {
+			loc, _ := time.LoadLocation("CET")
+			return time.Date(2011, time.January, 29, 0, 10, 45, 0, loc)
+		},
+	})
+	if err != errors.ErrSignatureExpired {
+		t.Errorf("expiration signature error: should have got signature expired error")
+	}
+
+	signed = bytes.NewBufferString(signedInput)
+	signature = readerFromHex(detachedSignatureHex)
+	_, err = CheckDetachedSignature(kring, signed, signature, &packet.Config{
+		Time: func() time.Time {
+			loc, _ := time.LoadLocation("CET")
+			return time.Date(2011, time.January, 30, 0, 10, 45, 0, loc)
+		},
+	})
+	if err != nil {
+		t.Errorf("expiration: signature error: %s", err)
+	}
+
+
+}
+
 func TestDetachedSignature(t *testing.T) {
 	kring, _ := ReadKeyRing(readerFromHex(testKeys1And2Hex))
 	testDetachedSignature(t, kring, readerFromHex(detachedSignatureHex), signedInput, "binary", testKey1KeyId)
@@ -336,7 +368,7 @@ func TestDetachedSignature(t *testing.T) {
 	testDetachedSignature(t, kring, readerFromHex(detachedSignatureV3TextHex), signedInput, "v3", testKey1KeyId)
 
 	incorrectSignedInput := signedInput + "X"
-	_, err := CheckDetachedSignature(kring, bytes.NewBufferString(incorrectSignedInput), readerFromHex(detachedSignatureHex))
+	_, err := CheckDetachedSignature(kring, bytes.NewBufferString(incorrectSignedInput), readerFromHex(detachedSignatureHex), nil)
 	if err == nil {
 		t.Fatal("CheckDetachedSignature returned without error for bad signature")
 	}
@@ -362,7 +394,7 @@ func TestDetachedSignatureP256(t *testing.T) {
 
 func testHashFunctionError(t *testing.T, signatureHex string) {
 	kring, _ := ReadKeyRing(readerFromHex(testKeys1And2Hex))
-	_, err := CheckDetachedSignature(kring, nil, readerFromHex(signatureHex))
+	_, err := CheckDetachedSignature(kring, nil, readerFromHex(signatureHex), nil)
 	if err == nil {
 		t.Fatal("Packet with bad hash type was correctly parsed")
 	}
@@ -386,7 +418,7 @@ func TestMissingHashFunction(t *testing.T) {
 	// RIPEMD160, which isn't compiled in.  Since that's the only signature
 	// packet we don't find any suitable packets and end up with ErrUnknownIssuer
 	kring, _ := ReadKeyRing(readerFromHex(testKeys1And2Hex))
-	_, err := CheckDetachedSignature(kring, nil, readerFromHex(missingHashFunctionHex))
+	_, err := CheckDetachedSignature(kring, nil, readerFromHex(missingHashFunctionHex), nil)
 	if err == nil {
 		t.Fatal("Packet with missing hash type was correctly parsed")
 	}

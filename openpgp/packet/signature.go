@@ -474,8 +474,11 @@ func serializeSubpackets(to []byte, subpackets []outputSubpacket, hashed bool) {
 }
 
 // KeyExpired returns whether sig is a self-signature of a key that has
-// expired.
+// expired or is signed in the future.
 func (sig *Signature) KeyExpired(currentTime time.Time) bool {
+	if sig.CreationTime.After(currentTime) {
+		return true
+	}
 	if sig.KeyLifetimeSecs == nil {
 		return false
 	}
