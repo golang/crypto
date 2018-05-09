@@ -7,6 +7,7 @@ package clearsign
 import (
 	"bytes"
 	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/packet"
 	"testing"
 )
 
@@ -34,7 +35,8 @@ func testParse(t *testing.T, input []byte, expected, expectedPlaintext string) {
 		t.Errorf("failed to parse public key: %s", err)
 	}
 
-	if _, err := openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body); err != nil {
+	config := &packet.Config{}
+	if _, err := openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body, config); err != nil {
 		t.Errorf("failed to check signature: %s", err)
 	}
 }
@@ -119,7 +121,8 @@ func TestSigning(t *testing.T) {
 			continue
 		}
 
-		if _, err := openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body); err != nil {
+		config := &packet.Config{}
+		if _, err := openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body, config); err != nil {
 			t.Errorf("#%d: failed to check signature: %s", i, err)
 		}
 	}

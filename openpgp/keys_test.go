@@ -19,7 +19,7 @@ func TestKeyExpiry(t *testing.T) {
 	entity := kring[0]
 
 	const timeFormat = "2006-01-02"
-	time1, _ := time.Parse(timeFormat, "2013-07-01")
+	time1, _ := time.Parse(timeFormat, "2013-07-02")
 
 	// The expiringKeyHex key is structured as:
 	//

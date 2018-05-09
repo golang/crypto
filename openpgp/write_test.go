@@ -255,7 +255,7 @@ func TestEncryption(t *testing.T) {
 			continue
 		}
 
-		testTime, _ := time.Parse("2006-01-02", "2013-07-01")
+		testTime, _ := time.Parse("2006-01-02", "2013-07-02")
 		if test.isSigned {
 			signKey, _ := kring[0].signingKey(testTime)
 			expectedKeyId := signKey.PublicKey.KeyId
