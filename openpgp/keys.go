@@ -29,7 +29,6 @@ type Entity struct {
 	Identities  map[string]*Identity // indexed by Identity.Name
 	Revocations []*packet.Signature
 	Subkeys     []Subkey
-	config      *packet.Config
 }
 
 // An Identity represents an identity claimed by an Entity and zero or more
@@ -484,7 +483,6 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		PrimaryKey: packet.NewRSAPublicKey(currentTime, &signingPriv.PublicKey),
 		PrivateKey: packet.NewRSAPrivateKey(currentTime, signingPriv),
 		Identities: make(map[string]*Identity),
-		config:     config,
 	}
 	isPrimaryId := true
 	e.Identities[uid.Id] = &Identity{
@@ -501,6 +499,10 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 			FlagCertify:  true,
 			IssuerKeyId:  &e.PrimaryKey.KeyId,
 		},
+	}
+	err = e.Identities[uid.Id].SelfSignature.SignUserId(uid.Id, e.PrimaryKey, e.PrivateKey, config)
+	if err != nil {
+		return nil, err
 	}
 
 	// If the user passes in a DefaultHash via packet.Config,
@@ -531,7 +533,10 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 	}
 	e.Subkeys[0].PublicKey.IsSubkey = true
 	e.Subkeys[0].PrivateKey.IsSubkey = true
-
+	err = e.Subkeys[0].Sig.SignKey(e.Subkeys[0].PublicKey, e.PrivateKey, config)
+	if err != nil {
+		return nil, err
+	}
 	return e, nil
 }
 
@@ -549,10 +554,6 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 		if err != nil {
 			return
 		}
-		err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
-		if err != nil {
-			return
-		}
 		err = ident.SelfSignature.Serialize(w)
 		if err != nil {
 			return
@@ -560,10 +561,6 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 	}
 	for _, subkey := range e.Subkeys {
 		err = subkey.PrivateKey.Serialize(w)
-		if err != nil {
-			return
-		}
-		err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
 		if err != nil {
 			return
 		}
@@ -576,8 +573,7 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 }
 
 // Serialize writes the public part of the given Entity to w. (No private
-// key material will be output). Only sign the identities and subkeys if
-// a private key exists for the entity and the signing action hasn't happened.
+// key material will be output).
 func (e *Entity) Serialize(w io.Writer) error {
 	err := e.PrimaryKey.Serialize(w)
 	if err != nil {
@@ -587,12 +583,6 @@ func (e *Entity) Serialize(w io.Writer) error {
 		err = ident.UserId.Serialize(w)
 		if err != nil {
 			return err
-		}
-		if e.PrivateKey != nil && ident.SelfSignature.Unsigned() {
-			err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, e.config)
-			if err != nil {
-				return err
-			}
 		}
 		err = ident.SelfSignature.Serialize(w)
 		if err != nil {
@@ -609,12 +599,6 @@ func (e *Entity) Serialize(w io.Writer) error {
 		err = subkey.PublicKey.Serialize(w)
 		if err != nil {
 			return err
-		}
-		if e.PrivateKey != nil && subkey.Sig.Unsigned() {
-			err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, e.config)
-			if err != nil {
-				return err
-			}
 		}
 		err = subkey.Sig.Serialize(w)
 		if err != nil {
