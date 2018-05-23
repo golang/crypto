@@ -543,7 +543,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 // SerializePrivate serializes an Entity, including private key material, to
 // the given Writer. For now, it must only be used on an Entity returned from
 // NewEntity.
-// If config is nil, sensible defaults will be used.
+// config is ignored
 func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error) {
 	err = e.PrivateKey.Serialize(w)
 	if err != nil {
