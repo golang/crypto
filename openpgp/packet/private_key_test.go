@@ -68,6 +68,51 @@ func TestPrivateKeyRead(t *testing.T) {
 	}
 }
 
+func TestPrivateKeyEncrypt(t *testing.T) {
+	for i, test := range privateKeyTests {
+		packet, err := Read(readerFromHex(test.privateKeyHex))
+		if err != nil {
+			t.Errorf("#%d: failed to parse: %s", i, err)
+			continue
+		}
+
+		privKey := packet.(*PrivateKey)
+
+		if !privKey.Encrypted {
+			t.Errorf("#%d: private key isn't encrypted", i)
+			continue
+		}
+
+		err = privKey.Decrypt([]byte("testing"))
+		if err != nil {
+			t.Errorf("#%d: failed to decrypt: %s", i, err)
+			continue
+		}
+
+		err = privKey.Encrypt([]byte("wrong password"))
+		if err != nil {
+			t.Errorf("#%d: failed to encrypt: %s", i, err)
+			continue
+		}
+
+		err = privKey.Decrypt([]byte("testing"))
+		if err == nil {
+			t.Errorf("#%d: decrypted with incorrect key", i)
+			continue
+		}
+
+		err = privKey.Decrypt([]byte("wrong password"))
+		if err != nil {
+			t.Errorf("#%d: failed to decrypt: %s", i, err)
+			continue
+		}
+
+		if !privKey.CreationTime.Equal(test.creationTime) || privKey.Encrypted {
+			t.Errorf("#%d: bad result, got: %#v", i, privKey)
+		}
+	}
+}
+
 func populateHash(hashFunc crypto.Hash, msg []byte) (hash.Hash, error) {
 	h := hashFunc.New()
 	if _, err := h.Write(msg); err != nil {
