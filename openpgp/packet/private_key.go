@@ -243,6 +243,9 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 	return
 }
 
+//SerializeEncrypted serialize encrypted privatekey
+//TODO::SerializeEncrypted should merge with Serialize they can't be used in same scenario
+//TODO::no time to add now do it later
 func (pk *PrivateKey) SerializeEncrypted(w io.Writer) error {
 	privateKeyBuf := bytes.NewBuffer(nil)
 	encodedKeyBuf := bytes.NewBuffer(nil)
