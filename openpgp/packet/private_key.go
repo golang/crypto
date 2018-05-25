@@ -186,33 +186,17 @@ func mod64kHash(d []byte) uint16 {
 }
 
 func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
-	// TODO(agl): support encrypted private keys
 	buf := bytes.NewBuffer(nil)
 	err = pk.PublicKey.serializeWithoutHeaders(buf)
 	if err != nil {
 		return
 	}
 
-	buf.WriteByte(0 /* no encryption */)
-
 	privateKeyBuf := bytes.NewBuffer(nil)
-
-	switch priv := pk.PrivateKey.(type) {
-	case *rsa.PrivateKey:
-		err = serializeRSAPrivateKey(privateKeyBuf, priv)
-	case *dsa.PrivateKey:
-		err = serializeDSAPrivateKey(privateKeyBuf, priv)
-	case *elgamal.PrivateKey:
-		err = serializeElGamalPrivateKey(privateKeyBuf, priv)
-	case *ecdsa.PrivateKey:
-		err = serializeECDSAPrivateKey(privateKeyBuf, priv)
-	case ed25519.PrivateKey:
-		err = serializeEdDSAPrivateKey(privateKeyBuf, priv)
-	default:
-		err = errors.InvalidArgumentError("unknown private key type")
-	}
-	if err != nil {
-		return
+	if pk.Encrypted {
+		pk.SerializeEncrypted(privateKeyBuf)
+	} else {
+		pk.SerializeUnEncrypted(privateKeyBuf)
 	}
 
 	ptype := packetTypePrivateKey
@@ -221,7 +205,7 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 	if pk.IsSubkey {
 		ptype = packetTypePrivateSubkey
 	}
-	err = serializeHeader(w, ptype, len(contents)+len(privateKeyBytes)+2)
+	err = serializeHeader(w, ptype, len(contents)+len(privateKeyBytes))
 	if err != nil {
 		return
 	}
@@ -233,19 +217,43 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 	if err != nil {
 		return
 	}
+	return
+}
 
-	checksum := mod64kHash(privateKeyBytes)
-	var checksumBytes [2]byte
-	checksumBytes[0] = byte(checksum >> 8)
-	checksumBytes[1] = byte(checksum)
-	_, err = w.Write(checksumBytes[:])
-
+// SerializeUnEncrypted ..
+func (pk *PrivateKey) SerializeUnEncrypted(w io.Writer) (err error) {
+	buf := bytes.NewBuffer(nil)
+	buf.Write([]byte{uint8(S2KNON)} /* no encryption */)
+	switch priv := pk.PrivateKey.(type) {
+	case *rsa.PrivateKey:
+		err = serializeRSAPrivateKey(buf, priv)
+	case *dsa.PrivateKey:
+		err = serializeDSAPrivateKey(buf, priv)
+	case *elgamal.PrivateKey:
+		err = serializeElGamalPrivateKey(buf, priv)
+	case *ecdsa.PrivateKey:
+		err = serializeECDSAPrivateKey(buf, priv)
+	default:
+		err = errors.InvalidArgumentError("unknown private key type")
+	}
+	privateKeyBytes := buf.Bytes()
+	if pk.sha1Checksum {
+		h := sha1.New()
+		h.Write(privateKeyBytes)
+		sum := h.Sum(nil)
+		privateKeyBytes = append(privateKeyBytes, sum...)
+	} else {
+		checksum := mod64kHash(privateKeyBytes)
+		var checksumBytes [2]byte
+		checksumBytes[0] = byte(checksum >> 8)
+		checksumBytes[1] = byte(checksum)
+		privateKeyBytes = append(privateKeyBytes, checksumBytes[:]...)
+	}
+	w.Write(privateKeyBytes)
 	return
 }
 
 //SerializeEncrypted serialize encrypted privatekey
-//TODO::SerializeEncrypted should merge with Serialize they can't be used in same scenario
-//TODO::no time to add now do it later
 func (pk *PrivateKey) SerializeEncrypted(w io.Writer) error {
 	privateKeyBuf := bytes.NewBuffer(nil)
 	encodedKeyBuf := bytes.NewBuffer(nil)
