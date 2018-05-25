@@ -21,6 +21,10 @@ import (
 // values. Currently, Config is used only by the Serialize function in
 // this package.
 type Config struct {
+	// S2KMode is the mode of s2k function.
+	// It can be 0 (simple), 1(salted), 3(iterated)
+	// 2(reserved) 100-110(private/experimental).
+	S2KMode uint8
 	// Hash is the default hash function to be used. If
 	// nil, SHA1 is used.
 	Hash crypto.Hash
@@ -44,6 +48,11 @@ func (c *Config) hash() crypto.Hash {
 	}
 
 	return c.Hash
+}
+
+// EncodedCount get encoded count
+func (c *Config) EncodedCount() uint8 {
+	return c.encodedCount()
 }
 
 func (c *Config) encodedCount() uint8 {
