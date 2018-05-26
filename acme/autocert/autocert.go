@@ -552,10 +552,10 @@ func (m *Manager) authorizedCert(ctx context.Context, key crypto.Signer, domain 
 }
 
 // revokePending revokes all provided authorizations (passed as a map of URIs)
-func (m *Manager) revokePending(ctx context.Context, pendingAuthzURIs map[string]bool) {
+func (m *Manager) revokePending(ctx context.Context, client *acme.Client, pendingAuthzURIs map[string]bool) {
 	f := func(ctx context.Context) {
 		for uri := range pendingAuthzURIs {
-			m.Client.RevokeAuthorization(ctx, uri)
+			client.RevokeAuthorization(ctx, uri)
 		}
 	}
 	if waitForRevocations {
@@ -579,7 +579,7 @@ func (m *Manager) verify(ctx context.Context, client *acme.Client, domain string
 
 	// we keep track of pending authzs and revoke the ones that did not validate.
 	pendingAuthzs := make(map[string]bool)
-	defer m.revokePending(ctx, pendingAuthzs)
+	defer m.revokePending(ctx, client, pendingAuthzs)
 
 	var nextTyp int // challengeType index of the next challenge type to try
 	for {
