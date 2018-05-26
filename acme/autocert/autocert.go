@@ -551,17 +551,15 @@ func (m *Manager) authorizedCert(ctx context.Context, key crypto.Signer, domain 
 	return der, leaf, nil
 }
 
-// revokePending revokes all provided authorizations (passed as a map of URIs)
-func (m *Manager) revokePending(ctx context.Context, pendingAuthzURIs map[string]bool) {
-	f := func(ctx context.Context) {
-		for uri := range pendingAuthzURIs {
-			m.Client.RevokeAuthorization(ctx, uri)
-		}
+// revokePendingAuthz revokes all authorizations idenfied by the elements of uri slice.
+// It ignores revocation errors.
+func (m *Manager) revokePendingAuthz(ctx context.Context, uri []string) {
+	client, err := m.acmeClient(ctx)
+	if err != nil {
+		return
 	}
-	if waitForRevocations {
-		f(ctx)
-	} else {
-		go f(context.Background())
+	for _, u := range uri {
+		client.RevokeAuthorization(ctx, u)
 	}
 }
 
@@ -577,9 +575,21 @@ func (m *Manager) verify(ctx context.Context, client *acme.Client, domain string
 	}
 	m.tokensMu.RUnlock()
 
-	// we keep track of pending authzs and revoke the ones that did not validate.
+	// Keep track of pending authzs and revoke the ones that did not validate.
 	pendingAuthzs := make(map[string]bool)
-	defer m.revokePending(ctx, pendingAuthzs)
+	defer func() {
+		var uri []string
+		for k, pending := range pendingAuthzs {
+			if pending {
+				uri = append(uri, k)
+			}
+		}
+		if len(uri) > 0 {
+			// Use "detached" background context.
+			// The revocations need not happen in the current verification flow.
+			go m.revokePendingAuthz(context.Background(), uri)
+		}
+	}()
 
 	var nextTyp int // challengeType index of the next challenge type to try
 	for {
@@ -989,7 +999,4 @@ var (
 
 	// Called when a state is removed.
 	testDidRemoveState = func(domain string) {}
-
-	// make testing of revokePending synchronous
-	waitForRevocations = false
 )

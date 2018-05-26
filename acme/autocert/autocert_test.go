@@ -20,12 +20,10 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -532,14 +530,20 @@ func TestVerifyHTTP01(t *testing.T) {
 	}
 }
 
-func TestRevokeFailedAuth(t *testing.T) {
-	var (
-		authzCount int     // num. of created authorizations
-		revoked    [3]bool // there will be three different authorization attempts; see below
-	)
+func TestRevokeFailedAuthz(t *testing.T) {
+	// Prefill authorization URIs expected to be revoked.
+	// The challenges are selected in a specific order,
+	// each tried within a newly created authorization.
+	// This means each authorization URI corresponds to a different challenge type.
+	revokedAuthz := map[string]bool{
+		"/authz/0": false, // tls-sni-02
+		"/authz/1": false, // tls-sni-01
+		"/authz/2": false, // no viable challenge, but authz is created
+	}
 
-	// make cleanup revocations synchronous
-	waitForRevocations = true
+	var authzCount int          // num. of created authorizations
+	var revokeCount int         // num. of revoked authorizations
+	done := make(chan struct{}) // closed when revokeCount is 3
 
 	// ACME CA server stub, only the needed bits.
 	// TODO: Merge this with startACMEServerStub, making it a configurable CA for testing.
@@ -568,38 +572,39 @@ func TestRevokeFailedAuth(t *testing.T) {
 				t.Errorf("authzTmpl: %v", err)
 			}
 			authzCount++
-		// force error on Accept()
+		// tls-sni-02 challenge "accept" request.
 		case "/challenge/2":
+			// Refuse.
 			http.Error(w, "won't accept tls-sni-02 challenge", http.StatusBadRequest)
-		// accept; authorization will be expired (404; see /authz/1 below)
+		// tls-sni-01 challenge "accept" request.
 		case "/challenge/1":
+			// Accept but the authorization will be "expired".
 			w.Write([]byte("{}"))
-		// Authorization statuses.
+		// Authorization requests.
 		case "/authz/0", "/authz/1", "/authz/2":
+			// Revocation requests.
 			if r.Method == "POST" {
-				body, err := ioutil.ReadAll(r.Body)
-				if err != nil {
-					t.Errorf("could not read request body")
+				var req struct{ Status string }
+				if err := decodePayload(&req, r.Body); err != nil {
+					t.Errorf("%s: decodePayload: %v", r.URL, err)
 				}
-				if reflect.DeepEqual(body, []byte(`{"status": "deactivated"}`)) {
-					t.Errorf("unexpected POST to authz: '%s'", body)
+				switch req.Status {
+				case "deactivated":
+					revokedAuthz[r.URL.Path] = true
+					revokeCount++
+					if revokeCount >= 3 {
+						// Last authorization is revoked.
+						defer close(done)
+					}
+				default:
+					t.Errorf("%s: req.Status = %q; want 'deactivated'", r.URL, req.Status)
 				}
-				i, err := strconv.ParseInt(r.URL.Path[len(r.URL.Path)-1:], 10, 64)
-				if err != nil {
-					t.Errorf("could not convert authz ID to int")
-				}
-				revoked[i] = true
 				w.Write([]byte(`{"status": "invalid"}`))
-			} else {
-				switch r.URL.Path {
-				case "/authz/0":
-					// ensure we get a spurious validation if error forcing did not work (see above)
-					w.Write([]byte(`{"status": "valid"}`))
-				case "/authz/1":
-					// force error during WaitAuthorization()
-					w.WriteHeader(http.StatusNotFound)
-				}
+				return
 			}
+			// Authorization status requests.
+			// Simulate abandoned authorization, deleted by the CA.
+			w.WriteHeader(http.StatusNotFound)
 		default:
 			http.NotFound(w, r)
 			t.Errorf("unrecognized r.URL.Path: %s", r.URL.Path)
@@ -607,24 +612,25 @@ func TestRevokeFailedAuth(t *testing.T) {
 	}))
 	defer ca.Close()
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	m := &Manager{
-		Client: &acme.Client{
-			Key:          key,
-			DirectoryURL: ca.URL,
-		},
+		Client: &acme.Client{DirectoryURL: ca.URL},
 	}
-
-	// should fail and revoke tsl-sni-02, tls-sni-01 and the third time after not finding any remaining challenges
-	if err := m.verify(context.Background(), m.Client, "example.org"); err == nil {
-		t.Errorf("m.verify should have failed!")
+	// Should fail and revoke 3 authorizations.
+	// The first 2 are tsl-sni-02 and tls-sni-01 challenges.
+	// The third time an authorization is created but no viable challenge is found.
+	// See revokedAuthz above for more explanation.
+	if _, err := m.createCert(context.Background(), "example.org"); err == nil {
+		t.Errorf("m.createCert returned nil error")
 	}
-	for i := range revoked {
-		if !revoked[i] {
-			t.Errorf("authorization attempt %d not revoked after error", i)
+	select {
+	case <-time.After(3 * time.Second):
+		t.Error("revocations took too long")
+	case <-done:
+		// revokeCount is at least 3.
+	}
+	for uri, ok := range revokedAuthz {
+		if !ok {
+			t.Errorf("%q authorization was not revoked", uri)
 		}
 	}
 }
