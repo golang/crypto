@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"io"
 	"time"
+
 )
 
 // Config collects a number of parameters along with sensible defaults.
@@ -46,6 +47,7 @@ type Config struct {
 	// RSABits is the number of bits in new RSA keys made with NewEntity.
 	// If zero, then 2048 bit keys are created.
 	RSABits int
+	Algorithm PublicKeyAlgorithm
 }
 
 func (c *Config) Random() io.Reader {
