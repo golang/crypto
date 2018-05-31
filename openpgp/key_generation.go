@@ -6,7 +6,9 @@ package openpgp
 
 import (
 	"crypto/rsa"
+	"crypto/rand"
 
+	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/openpgp/errors"
 	"golang.org/x/crypto/openpgp/packet"
 )
@@ -62,8 +64,23 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 
 	} else if (config.Algorithm == packet.PubKeyAlgoEdDSA) {
 
+		pubPrimaryKey, primaryKey, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return nil, err
+		}
 
-		subkeyAlgorithm = packet.PubKeyAlgoECDH
+		privPrimary = packet.NewEdDSAPrivateKey(currentTime, primaryKey)
+		pubPrimary = packet.NewEdDSAPublicKey(currentTime, pubPrimaryKey)
+
+		pubSubkeyRaw, privSubkeyRaw, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return nil, err
+		}
+
+		pubSubkey = packet.NewEdDSAPublicKey(currentTime, pubSubkeyRaw)
+		privSubkey = packet.NewEdDSAPrivateKey(currentTime, privSubkeyRaw)
+
+		subkeyAlgorithm = packet.PubKeyAlgoEdDSA
 
 	} else {
 		return nil, errors.InvalidArgumentError("unsupported public key Algorithm")
