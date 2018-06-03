@@ -344,16 +344,16 @@ func TestSigning(t *testing.T) {
 
 		plaintext, err := ioutil.ReadAll(md.UnverifiedBody)
 		if err != nil {
-			t.Errorf("#%d: error reading contents: %s", i, err)
+			t.Errorf("#%d: error reading contents: %v", i, err)
 			continue
 		}
 
 		if string(plaintext) != message {
-			t.Errorf("#%d: got: %s, want: %s", i, string(plaintext), message)
+			t.Errorf("#%d: got: %q, want: %q", i, plaintext, message)
 		}
 
 		if md.SignatureError != nil {
-			t.Errorf("#%d: signature error: %s", i, md.SignatureError)
+			t.Errorf("#%d: signature error: %q", i, md.SignatureError)
 		}
 		if md.Signature == nil {
 			t.Error("signature missing")

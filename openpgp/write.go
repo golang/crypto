@@ -164,11 +164,11 @@ func hashToHashId(h crypto.Hash) uint8 {
 	return v
 }
 
-// Writes the data as a payload package and, optionally, signs
+// writeAndSign writes the data as a payload package and, optionally, signs
 // it. hints contains optional information, that is also encrypted,
 // that aids the recipients in processing the message. The resulting
 // WriteCloser must be closed after the contents of the file have been
-// written.  If config is nil, sensible defaults will be used.
+// written. If config is nil, sensible defaults will be used.
 func writeAndSign(payload io.WriteCloser, candidateHashes []uint8, signed *Entity, hints *FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
 	var signer *packet.PrivateKey
 	if signed != nil {
@@ -337,7 +337,7 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 	return writeAndSign(payload, candidateHashes, signed, hints, config)
 }
 
-// Sign signs a message The resulting WriteCloser must be closed after the
+// Sign signs a message. The resulting WriteCloser must be closed after the
 // contents of the file have been written.
 // If config is nil, sensible defaults will be used.
 func Sign(ciphertext io.Writer, signed *Entity, hints *FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
