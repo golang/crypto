@@ -579,22 +579,16 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 // If config is nil, sensible defaults will be used.
 // TODO::notes this is a temp function to avoid break other things
 func (e *Entity) SerializePrivateNoSign(w io.Writer, config *packet.Config) (err error) {
-	err = e.PrivateKey.SerializeEncrypted(w)
+	err = e.PrivateKey.Serialize(w)
 	if err != nil {
 		return
 	}
-	for _, ident := range e.Identities {
-		err = ident.UserId.Serialize(w)
-		if err != nil {
-			return
-		}
-		err = ident.SelfSignature.Serialize(w)
-		if err != nil {
-			return
-		}
+	err = e.serializeIdentities(w)
+	if err != nil {
+		return err
 	}
 	for _, subkey := range e.Subkeys {
-		err = subkey.PrivateKey.SerializeEncrypted(w)
+		err = subkey.PrivateKey.Serialize(w)
 		if err != nil {
 			return
 		}
@@ -604,6 +598,26 @@ func (e *Entity) SerializePrivateNoSign(w io.Writer, config *packet.Config) (err
 		}
 	}
 	return nil
+}
+
+func (e *Entity) serializeIdentities(w io.Writer) (err error) {
+	for _, ident := range e.Identities {
+		err = ident.UserId.Serialize(w)
+		if err != nil {
+			return err
+		}
+		err = ident.SelfSignature.Serialize(w)
+		if err != nil {
+			return err
+		}
+		for _, sig := range ident.Signatures {
+			err = sig.Serialize(w)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return
 }
 
 // SelfSign sign an Entity, on both Identities and Subkeys
