@@ -142,7 +142,7 @@ func NewECDHPublicKey(creationTime time.Time, pub *ecdh.PublicKey) *PublicKey {
 }
 
 func NewEdDSAPublicKey(creationTime time.Time, pub ed25519.PublicKey) *PublicKey {
-	curveInfo := ecc.FindByName("Curve25519")
+	curveInfo := ecc.FindByName("Ed25519")
 	pk := &PublicKey{
 		CreationTime: creationTime,
 		PubKeyAlgo:   PubKeyAlgoEdDSA,
@@ -155,6 +155,7 @@ func NewEdDSAPublicKey(creationTime time.Time, pub ed25519.PublicKey) *PublicKey
 	pk.setFingerPrintAndKeyId()
 	return pk
 }
+
 
 func (pk *PublicKey) parse(r io.Reader) (err error) {
 	// RFC 4880, section 5.5.2
