@@ -103,23 +103,21 @@ func TestRenewFromCache(t *testing.T) {
 	}))
 	defer ca.Close()
 
-	// use EC key to run faster on 386
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	man := &Manager{
 		Prompt:      AcceptTOS,
 		Cache:       newMemCache(t),
 		RenewBefore: 24 * time.Hour,
 		Client: &acme.Client{
-			Key:          key,
 			DirectoryURL: ca.URL,
 		},
 	}
 	defer man.stopRenew()
 
 	// cache an almost expired cert
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now()
 	cert, err := dateDummyCert(key.Public(), now.Add(-2*time.Hour), now.Add(time.Minute), exampleDomain)
 	if err != nil {
@@ -189,17 +187,11 @@ func TestRenewFromCache(t *testing.T) {
 }
 
 func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
-	// use EC key to run faster on 386
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	man := &Manager{
 		Prompt:      AcceptTOS,
 		Cache:       newMemCache(t),
 		RenewBefore: 24 * time.Hour,
 		Client: &acme.Client{
-			Key:          key,
 			DirectoryURL: "invalid",
 		},
 	}
@@ -225,6 +217,10 @@ func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
 	}
 
 	// set internal state to an almost expired cert
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
 	oldCert, err := dateDummyCert(key.Public(), now.Add(-2*time.Hour), now.Add(time.Minute), exampleDomain)
 	if err != nil {
 		t.Fatal(err)

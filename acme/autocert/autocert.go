@@ -98,8 +98,9 @@ type Manager struct {
 	// To always accept the terms, the callers can use AcceptTOS.
 	Prompt func(tosURL string) bool
 
-	// Cache optionally stores and retrieves previously-obtained certificates.
-	// If nil, certs will only be cached for the lifetime of the Manager.
+	// Cache optionally stores and retrieves previously-obtained certificates
+	// and other state. If nil, certs will only be cached for the lifetime of
+	// the Manager. Multiple Managers can share the same Cache.
 	//
 	// Using a persistent Cache, such as DirCache, is strongly recommended.
 	Cache Cache
@@ -126,8 +127,10 @@ type Manager struct {
 
 	// Client is used to perform low-level operations, such as account registration
 	// and requesting new certificates.
+	//
 	// If Client is nil, a zero-value acme.Client is used with acme.LetsEncryptURL
-	// directory endpoint and a newly-generated ECDSA P-256 key.
+	// as directory endpoint. If the Client.Key is nil, a new ECDSA P-256 key is
+	// generated and, if Cache is not nil, stored in cache.
 	//
 	// Mutating the field after the first call of GetCertificate method will have no effect.
 	Client *acme.Client

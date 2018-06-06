@@ -232,14 +232,7 @@ func TestGetCertificate_nilPrompt(t *testing.T) {
 	defer man.stopRenew()
 	url, finish := startACMEServerStub(t, getCertificateFromManager(man, true), "example.org")
 	defer finish()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	man.Client = &acme.Client{
-		Key:          key,
-		DirectoryURL: url,
-	}
+	man.Client = &acme.Client{DirectoryURL: url}
 	hello := clientHelloInfo("example.org", true)
 	if _, err := man.GetCertificate(hello); err == nil {
 		t.Error("got certificate for example.org; wanted error")
@@ -299,14 +292,9 @@ func TestGetCertificate_failedAttempt(t *testing.T) {
 		close(done)
 	}
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	man := &Manager{
 		Prompt: AcceptTOS,
 		Client: &acme.Client{
-			Key:          key,
 			DirectoryURL: ts.URL,
 		},
 	}
@@ -346,14 +334,7 @@ func testGetCertificate_tokenCache(t *testing.T, ecdsaSupport bool) {
 	// initiated the authorization, when they share caches.
 	url, finish := startACMEServerStub(t, getCertificateFromManager(man2, ecdsaSupport), "example.org")
 	defer finish()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	man1.Client = &acme.Client{
-		Key:          key,
-		DirectoryURL: url,
-	}
+	man1.Client = &acme.Client{DirectoryURL: url}
 	hello := clientHelloInfo("example.org", true)
 	if _, err := man1.GetCertificate(hello); err != nil {
 		t.Error(err)
@@ -378,14 +359,7 @@ func TestGetCertificate_ecdsaVsRSA(t *testing.T) {
 	defer man.stopRenew()
 	url, finish := startACMEServerStub(t, getCertificateFromManager(man, true), "example.org")
 	defer finish()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	man.Client = &acme.Client{
-		Key:          key,
-		DirectoryURL: url,
-	}
+	man.Client = &acme.Client{DirectoryURL: url}
 
 	cert, err := man.GetCertificate(clientHelloInfo("example.org", true))
 	if err != nil {
@@ -420,14 +394,7 @@ func TestGetCertificate_wrongCacheKeyType(t *testing.T) {
 	defer man.stopRenew()
 	url, finish := startACMEServerStub(t, getCertificateFromManager(man, true), exampleDomain)
 	defer finish()
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	man.Client = &acme.Client{
-		Key:          key,
-		DirectoryURL: url,
-	}
+	man.Client = &acme.Client{DirectoryURL: url}
 
 	// Make an RSA cert and cache it without suffix.
 	pk, err := rsa.GenerateKey(rand.Reader, 512)
@@ -586,19 +553,11 @@ func startACMEServerStub(t *testing.T, getCertificate func(string) error, domain
 func testGetCertificate(t *testing.T, man *Manager, domain string, hello *tls.ClientHelloInfo) {
 	url, finish := startACMEServerStub(t, getCertificateFromManager(man, true), domain)
 	defer finish()
-
-	// use EC key to run faster on 386
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
-	man.Client = &acme.Client{
-		Key:          key,
-		DirectoryURL: url,
-	}
+	man.Client = &acme.Client{DirectoryURL: url}
 
 	// simulate tls.Config.GetCertificate
 	var tlscert *tls.Certificate
+	var err error
 	done := make(chan struct{})
 	go func() {
 		tlscert, err = man.GetCertificate(hello)
@@ -702,18 +661,18 @@ func TestVerifyHTTP01(t *testing.T) {
 	}))
 	defer ca.Close()
 
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	m := &Manager{
 		Client: &acme.Client{
-			Key:          key,
 			DirectoryURL: ca.URL,
 		},
 	}
 	http01 = m.HTTPHandler(nil)
-	if err := m.verify(context.Background(), m.Client, "example.org"); err != nil {
+	ctx := context.Background()
+	client, err := m.acmeClient(ctx)
+	if err != nil {
+		t.Fatalf("m.acmeClient: %v", err)
+	}
+	if err := m.verify(ctx, client, "example.org"); err != nil {
 		t.Errorf("m.verify: %v", err)
 	}
 	// Only tls-sni-01, tls-sni-02 and http-01 must be accepted
