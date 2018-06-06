@@ -276,8 +276,9 @@ func supportsECDSA(hello *tls.ClientHelloInfo) bool {
 		ecdsaOK := false
 	schemeLoop:
 		for _, scheme := range hello.SignatureSchemes {
+			var tlsECDSAWithSHA1 tls.SignatureScheme = 0x0203 // constant added in Go 1.10
 			switch scheme {
-			case tls.ECDSAWithSHA1, tls.ECDSAWithP256AndSHA256,
+			case tlsECDSAWithSHA1, tls.ECDSAWithP256AndSHA256,
 				tls.ECDSAWithP384AndSHA384, tls.ECDSAWithP521AndSHA512:
 				ecdsaOK = true
 				break schemeLoop
