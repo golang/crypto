@@ -360,10 +360,10 @@ func (s signatureWriter) Write(data []byte) (int, error) {
 	s.wrappedHash.Write(data)
 	flag := 0
 	switch s.sigType {
-		case packet.SigTypeBinary:
-			return s.literalData.Write(data)
-		case packet.SigTypeText:
-			return writeCanonical(s.literalData, data, &flag)
+	case packet.SigTypeBinary:
+		return s.literalData.Write(data)
+	case packet.SigTypeText:
+		return writeCanonical(s.literalData, data, &flag)
 	}
 	return 0, errors.UnsupportedError("unsupported signature type: " + strconv.Itoa(int(s.sigType)))
 }

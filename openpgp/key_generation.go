@@ -6,7 +6,6 @@ package openpgp
 
 import (
 	"crypto/rsa"
-	"crypto/rand"
 
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/openpgp/errors"
@@ -14,7 +13,6 @@ import (
 )
 
 const defaultRSAKeyBits = 2048
-
 
 // NewEntity returns an Entity that contains a fresh RSA/RSA keypair with a
 // single identity composed of the given full name, comment and email, any of
@@ -36,7 +34,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 
 	var subkeyAlgorithm packet.PublicKeyAlgorithm
 
-	if (config.Algorithm == packet.PubKeyAlgoRSA) {
+	if config.Algorithm == packet.PubKeyAlgoRSA {
 
 		bits := defaultRSAKeyBits
 		if config != nil && config.RSABits != 0 {
@@ -51,7 +49,6 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		privPrimary = packet.NewRSAPrivateKey(currentTime, primaryKey)
 		pubPrimary = packet.NewRSAPublicKey(currentTime, &primaryKey.PublicKey)
 
-
 		subkey, err := rsa.GenerateKey(config.Random(), bits)
 		if err != nil {
 			return nil, err
@@ -62,9 +59,9 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 
 		subkeyAlgorithm = packet.PubKeyAlgoRSA
 
-	} else if (config.Algorithm == packet.PubKeyAlgoEdDSA) {
+	} else if config.Algorithm == packet.PubKeyAlgoEdDSA {
 
-		pubPrimaryKey, primaryKey, err := ed25519.GenerateKey(rand.Reader)
+		pubPrimaryKey, primaryKey, err := ed25519.GenerateKey(config.Random())
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +69,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		privPrimary = packet.NewEdDSAPrivateKey(currentTime, primaryKey)
 		pubPrimary = packet.NewEdDSAPublicKey(currentTime, pubPrimaryKey)
 
-		pubSubkeyRaw, privSubkeyRaw, err := ed25519.GenerateKey(rand.Reader)
+		pubSubkeyRaw, privSubkeyRaw, err := ed25519.GenerateKey(config.Random())
 		if err != nil {
 			return nil, err
 		}
@@ -85,9 +82,6 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 	} else {
 		return nil, errors.InvalidArgumentError("unsupported public key Algorithm")
 	}
-
-
-
 
 	e := &Entity{
 		PrimaryKey: pubPrimary,

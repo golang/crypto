@@ -5,28 +5,27 @@
 package openpgp
 
 import (
-	"testing"
 	"bytes"
 	"fmt"
 	"golang.org/x/crypto/openpgp/armor"
 	"golang.org/x/crypto/openpgp/packet"
-	"strings"
-	"io/ioutil"
-	"time"
 	"io"
-
+	"io/ioutil"
+	"strings"
+	"testing"
+	"time"
 )
 
 type algorithmSet struct {
-	message string
-	name string
-	privateKey string
-	publicKey string
-	password string
+	message                string
+	name                   string
+	privateKey             string
+	publicKey              string
+	password               string
 	encryptedSignedMessage string
 }
 
-var testSets = []algorithmSet {
+var testSets = []algorithmSet{
 	{
 		test_message,
 		"rsa",
@@ -111,10 +110,10 @@ var testSets = []algorithmSet {
 
 type keySet struct {
 	name string
-	cfg *packet.Config
+	cfg  *packet.Config
 }
 
-var keySets = [] keySet {
+var keySets = []keySet{
 	{
 		"rsa",
 		&packet.Config{RSABits: 2048, Algorithm: packet.PubKeyAlgoRSA},
@@ -229,12 +228,12 @@ func encryptDecryptTest(t *testing.T, testSetFrom algorithmSet, testSetTo algori
 	signed.PrivateKey.Decrypt([]byte(testSetFrom.password))
 
 	buf := new(bytes.Buffer)
-	w, err := Encrypt(buf, publicKeyTo[:1], signed, nil /* no hints */ , nil)
+	w, err := Encrypt(buf, publicKeyTo[:1], signed, nil /* no hints */, nil)
 	if err != nil {
 		t.Fatalf("Error in Encrypt: %s", err)
 	}
 
-	const message= "testing"
+	const message = "testing"
 	_, err = w.Write([]byte(message))
 	if err != nil {
 		t.Fatalf("Error writing plaintext: %s", err)
@@ -244,12 +243,12 @@ func encryptDecryptTest(t *testing.T, testSetFrom algorithmSet, testSetTo algori
 		t.Fatalf("Error closing WriteCloser: %s", err)
 	}
 
-	md, err := ReadMessage(buf, append(privateKeyTo, publicKeyFrom[0]), prompt , nil)
+	md, err := ReadMessage(buf, append(privateKeyTo, publicKeyFrom[0]), prompt, nil)
 	if err != nil {
 		t.Fatalf("Error reading message: %s", err)
 	}
 
-	if (!md.IsEncrypted) {
+	if !md.IsEncrypted {
 		t.Fatal("The message should be encrypted")
 	}
 	signKey, _ := signed.signingKey(time.Now())
@@ -313,7 +312,7 @@ func signVerifyTest(t *testing.T, testSetFrom algorithmSet, privateKeyFrom Entit
 	wronglineendings := bytes.NewReader(bytes.NewBufferString("testing 漢字 \n \r\n \n").Bytes())
 	wronglinesigner, err := CheckArmoredDetachedSignature(publicKeyFrom, wronglineendings, signatureReader, nil)
 
-	if (binary) {
+	if binary {
 		if err == nil || wronglinesigner != nil {
 			t.Fatal("Expected the signature to not verify")
 			return
@@ -349,9 +348,8 @@ func signVerifyTest(t *testing.T, testSetFrom algorithmSet, privateKeyFrom Entit
 		t.Errorf("wrong signer got:%x want:%x", signer.PrimaryKey.KeyId, 0)
 	}
 
-	return;
+	return
 }
-
 
 func algorithmTest(t *testing.T, testSet algorithmSet) {
 	var privateKeyFrom = readArmoredPrivateKey(t, testSet.privateKey, testSet.password)
@@ -891,7 +889,6 @@ KN5U4Rx7ftKgsaTMsEnKk/w8rEqxL8a1YtLe4X1tdecRBTi7qbndYeXp5lVl
 const brainpool_testmessage = `test問量鮮控到案進平
 `
 
-
 const brainpoolp256r1_pass = ""
 
 const brainpoolp256r1_priv = `-----BEGIN PGP PRIVATE KEY BLOCK-----
@@ -1054,4 +1051,3 @@ VkwhyLHSTB5tIq5pKSlNhgkuJDEhVvHsbFRjoioetH7hRkV4yolSWxB5iMT0lD1+
 KEKKTcNt1VHJ1cgSKi+S/fGYvHIPt1C2mXK1EBOqzJhVJxR8GNF3jF2aYG2r
 =zG+7
 -----END PGP MESSAGE-----`
-
