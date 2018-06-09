@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/crypto/openpgp/aes/keywrap"
 	"golang.org/x/crypto/openpgp/internal/algorithm"
+	"golang.org/x/crypto/openpgp/internal/ecc"
 )
 
 type KDF struct {
@@ -22,17 +23,8 @@ type KDF struct {
 	Cipher algorithm.Cipher
 }
 
-type CurveType uint8
-
-const (
-	NISTCurve CurveType = 1
-	Curve25519 CurveType = 2
-	BitCurve CurveType = 3
-	BrainpoolCurve CurveType = 4
-)
-
 type PublicKey struct {
-	CurveType
+	ecc.CurveType
 	elliptic.Curve
 	X, Y *big.Int
 	KDF
@@ -64,7 +56,7 @@ func Encrypt(random io.Reader, pub *PublicKey, msg, curveOID, fingerprint []byte
 	}
 	m := append(msg, padding...)
 
-	if pub.CurveType == Curve25519 {
+	if pub.CurveType == ecc.Curve25519 {
 		return X25519Encrypt(random, pub, m, curveOID, fingerprint)
 	}
 
@@ -90,7 +82,7 @@ func Encrypt(random io.Reader, pub *PublicKey, msg, curveOID, fingerprint []byte
 }
 
 func Decrypt(priv *PrivateKey, vsG, m, curveOID, fingerprint []byte) (msg []byte, err error) {
-	if priv.PublicKey.CurveType == Curve25519 {
+	if priv.PublicKey.CurveType == ecc.Curve25519 {
 		return X25519Decrypt(priv, vsG, m, curveOID, fingerprint)
 	}
 	x, y := elliptic.Unmarshal(priv.Curve, vsG)

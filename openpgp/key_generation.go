@@ -8,7 +8,9 @@ import (
 	"crypto/rsa"
 
 	"golang.org/x/crypto/ed25519"
+	"golang.org/x/crypto/openpgp/ecdh"
 	"golang.org/x/crypto/openpgp/errors"
+	"golang.org/x/crypto/openpgp/internal/algorithm"
 	"golang.org/x/crypto/openpgp/packet"
 )
 
@@ -69,13 +71,18 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		privPrimary = packet.NewEdDSAPrivateKey(currentTime, primaryKey)
 		pubPrimary = packet.NewEdDSAPublicKey(currentTime, pubPrimaryKey)
 
-		pubSubkeyRaw, privSubkeyRaw, err := ed25519.GenerateKey(config.Random())
+		var kdf = ecdh.KDF{
+			Hash:   algorithm.SHA512,
+			Cipher: algorithm.AES256,
+		}
+
+		privSubkeyRaw, err := ecdh.X25519GenerateKey(config.Random(), kdf)
 		if err != nil {
 			return nil, err
 		}
 
-		pubSubkey = packet.NewEdDSAPublicKey(currentTime, pubSubkeyRaw)
-		privSubkey = packet.NewEdDSAPrivateKey(currentTime, privSubkeyRaw)
+		pubSubkey = packet.NewECDHPublicKey(currentTime, &privSubkeyRaw.PublicKey)
+		privSubkey = packet.NewECDHPrivateKey(currentTime, privSubkeyRaw)
 
 		subkeyAlgorithm = packet.PubKeyAlgoEdDSA
 

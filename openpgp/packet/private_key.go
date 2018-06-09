@@ -315,6 +315,13 @@ func serializeEdDSAPrivateKey(w io.Writer, priv ed25519.PrivateKey) error {
 	return err
 }
 
+func serializeECDHPrivateKey(w io.Writer, priv *ecdh.PrivateKey) error {
+	_, err := w.Write(encoding.NewMPI(priv.D).EncodedBytes())
+	return err
+}
+
+
+
 // Decrypt decrypts an encrypted private key using a passphrase.
 func (pk *PrivateKey) Decrypt(passphrase []byte) error {
 	if !pk.Encrypted {
@@ -427,6 +434,8 @@ func (pk *PrivateKey) serializePrivateKey(w io.Writer) (err error) {
 		err = serializeECDSAPrivateKey(w, priv)
 	case ed25519.PrivateKey:
 		err = serializeEdDSAPrivateKey(w, priv)
+	case *ecdh.PrivateKey:
+		err = serializeECDHPrivateKey(w, priv)
 	default:
 		err = errors.InvalidArgumentError("unknown private key type")
 	}
