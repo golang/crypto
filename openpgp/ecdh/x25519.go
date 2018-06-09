@@ -47,7 +47,7 @@ func X25519GenerateKey(rand io.Reader, kdf KDF) (priv *PrivateKey, err error) {
 	ci := ecc.FindByName("Curve25519")
 	priv = new(PrivateKey)
 	priv.PublicKey.Curve = ci.Curve
-	d, ephemeralKey, err := X25519GenerateParams(rand)
+	d, pubKey, err := X25519GenerateParams(rand)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,15 @@ func X25519GenerateKey(rand io.Reader, kdf KDF) (priv *PrivateKey, err error) {
 	copyReversed(priv.D, d[:])
 	priv.PublicKey.CurveType = ci.CurveType
 	priv.PublicKey.Curve = ci.Curve
-	priv.PublicKey.X = new (big.Int).SetBytes(ephemeralKey[:])
+	/*
+	 * Note that ECPoint.point differs from the definition of public keys in [Curve25519] in two ways:
+	 * (1) the byte-ordering is big-endian, which is more uniform with how big integers are represented in TLS, and
+	 * (2) there is an additional length byte (so ECpoint.point is actually 33 bytes), again for uniformity (and extensibility).
+	 */
+	var encodedKey = make([]byte, 33)
+	encodedKey[0] = 0x40
+	copy(encodedKey[1:], pubKey[:])
+	priv.PublicKey.X = new (big.Int).SetBytes(encodedKey[:])
 	priv.PublicKey.Y = new (big.Int)
 	return priv, nil
 }
@@ -71,7 +79,6 @@ func X25519Encrypt(random io.Reader, pub *PublicKey, msg, curveOID, fingerprint 
 	if pub.X.BitLen() > 33 * 264 {
 		return nil, nil, errors.New("ecdh: invalid key")
 	}
-
 	copy(pubKey[:], pub.X.Bytes()[1:])
 
 	var zb [32]byte

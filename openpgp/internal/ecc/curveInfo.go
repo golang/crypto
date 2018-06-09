@@ -7,6 +7,7 @@ import (
 	"golang.org/x/crypto/bitcurves"
 	"golang.org/x/crypto/brainpool"
 )
+
 type SignatureAlgorithm uint8
 
 const (
