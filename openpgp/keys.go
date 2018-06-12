@@ -5,7 +5,6 @@
 package openpgp
 
 import (
-	"crypto/rsa"
 	"io"
 	"time"
 
@@ -450,87 +449,6 @@ func addSubkey(e *Entity, packets *packet.Reader, pub *packet.PublicKey, priv *p
 	}
 	e.Subkeys = append(e.Subkeys, subKey)
 	return nil
-}
-
-const defaultRSAKeyBits = 2048
-
-// NewEntity returns an Entity that contains a fresh RSA/RSA keypair with a
-// single identity composed of the given full name, comment and email, any of
-// which may be empty but must not contain any of "()<>\x00".
-// If config is nil, sensible defaults will be used.
-func NewEntity(name, comment, email string, config *packet.Config) (*Entity, error) {
-	currentTime := config.Now()
-
-	bits := defaultRSAKeyBits
-	if config != nil && config.RSABits != 0 {
-		bits = config.RSABits
-	}
-
-	uid := packet.NewUserId(name, comment, email)
-	if uid == nil {
-		return nil, errors.InvalidArgumentError("user id field contained invalid characters")
-	}
-	signingPriv, err := rsa.GenerateKey(config.Random(), bits)
-	if err != nil {
-		return nil, err
-	}
-	encryptingPriv, err := rsa.GenerateKey(config.Random(), bits)
-	if err != nil {
-		return nil, err
-	}
-
-	e := &Entity{
-		PrimaryKey: packet.NewRSAPublicKey(currentTime, &signingPriv.PublicKey),
-		PrivateKey: packet.NewRSAPrivateKey(currentTime, signingPriv),
-		Identities: make(map[string]*Identity),
-	}
-	isPrimaryId := true
-	e.Identities[uid.Id] = &Identity{
-		Name:   uid.Id,
-		UserId: uid,
-		SelfSignature: &packet.Signature{
-			CreationTime: currentTime,
-			SigType:      packet.SigTypePositiveCert,
-			PubKeyAlgo:   packet.PubKeyAlgoRSA,
-			Hash:         config.Hash(),
-			IsPrimaryId:  &isPrimaryId,
-			FlagsValid:   true,
-			FlagSign:     true,
-			FlagCertify:  true,
-			IssuerKeyId:  &e.PrimaryKey.KeyId,
-		},
-	}
-
-	// If the user passes in a DefaultHash via packet.Config,
-	// set the PreferredHash for the SelfSignature.
-	if config != nil && config.DefaultHash != 0 {
-		e.Identities[uid.Id].SelfSignature.PreferredHash = []uint8{hashToHashId(config.DefaultHash)}
-	}
-
-	// Likewise for DefaultCipher.
-	if config != nil && config.DefaultCipher != 0 {
-		e.Identities[uid.Id].SelfSignature.PreferredSymmetric = []uint8{uint8(config.DefaultCipher)}
-	}
-
-	e.Subkeys = make([]Subkey, 1)
-	e.Subkeys[0] = Subkey{
-		PublicKey:  packet.NewRSAPublicKey(currentTime, &encryptingPriv.PublicKey),
-		PrivateKey: packet.NewRSAPrivateKey(currentTime, encryptingPriv),
-		Sig: &packet.Signature{
-			CreationTime:              currentTime,
-			SigType:                   packet.SigTypeSubkeyBinding,
-			PubKeyAlgo:                packet.PubKeyAlgoRSA,
-			Hash:                      config.Hash(),
-			FlagsValid:                true,
-			FlagEncryptStorage:        true,
-			FlagEncryptCommunications: true,
-			IssuerKeyId:               &e.PrimaryKey.KeyId,
-		},
-	}
-	e.Subkeys[0].PublicKey.IsSubkey = true
-	e.Subkeys[0].PrivateKey.IsSubkey = true
-
-	return e, nil
 }
 
 // SerializePrivate serializes an Entity, including private key material, to

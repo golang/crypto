@@ -124,25 +124,38 @@ func NewECDSAPublicKey(creationTime time.Time, pub *ecdsa.PublicKey) *PublicKey 
 }
 
 func NewECDHPublicKey(creationTime time.Time, pub *ecdh.PublicKey) *PublicKey {
-	pk := &PublicKey{
-		CreationTime: creationTime,
-		PubKeyAlgo:   PubKeyAlgoECDH,
-		PublicKey:    pub,
-		p:            encoding.NewMPI(elliptic.Marshal(pub.Curve, pub.X, pub.Y)),
+	var pk *PublicKey
+	var curveInfo *ecc.CurveInfo
+	var kdf = encoding.NewOID([]byte{ 0x1, pub.Hash.Id(), pub.Cipher.Id() })
+	if pub.CurveType == ecc.Curve25519 {
+		pk = &PublicKey{
+			CreationTime: creationTime,
+			PubKeyAlgo:   PubKeyAlgoECDH,
+			PublicKey:    pub,
+			p:            encoding.NewMPI(pub.X.Bytes()),
+			kdf: kdf,
+		}
+		curveInfo = ecc.FindByName("Curve25519")
+	} else {
+		pk = &PublicKey{
+			CreationTime: creationTime,
+			PubKeyAlgo:   PubKeyAlgoECDH,
+			PublicKey:    pub,
+			p:            encoding.NewMPI(elliptic.Marshal(pub.Curve, pub.X, pub.Y)),
+			kdf: kdf,
+		}
+		curveInfo = ecc.FindByCurve(pub.Curve)
 	}
-
-	curveInfo := ecc.FindByCurve(pub.Curve)
 	if curveInfo == nil {
 		panic("unknown elliptic curve")
 	}
 	pk.oid = curveInfo.Oid
-
 	pk.setFingerPrintAndKeyId()
 	return pk
 }
 
 func NewEdDSAPublicKey(creationTime time.Time, pub ed25519.PublicKey) *PublicKey {
-	curveInfo := ecc.FindByName("Curve25519")
+	curveInfo := ecc.FindByName("Ed25519")
 	pk := &PublicKey{
 		CreationTime: creationTime,
 		PubKeyAlgo:   PubKeyAlgoEdDSA,
@@ -155,6 +168,7 @@ func NewEdDSAPublicKey(creationTime time.Time, pub ed25519.PublicKey) *PublicKey
 	pk.setFingerPrintAndKeyId()
 	return pk
 }
+
 
 func (pk *PublicKey) parse(r io.Reader) (err error) {
 	// RFC 4880, section 5.5.2
@@ -333,7 +347,7 @@ func (pk *PublicKey) parseECDH(r io.Reader) (err error) {
 	cType := curveInfo.CurveType
 
 	var x, y *big.Int;
-	if cType == ecdh.Curve25519 {
+	if cType == ecc.Curve25519 {
 		x = new(big.Int)
 		x.SetBytes(pk.p.Bytes())
 	} else {

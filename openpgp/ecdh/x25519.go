@@ -13,9 +13,10 @@ import (
 
 	"golang.org/x/crypto/openpgp/aes/keywrap"
 	"golang.org/x/crypto/curve25519"
+	"golang.org/x/crypto/openpgp/internal/ecc"
 )
 
-func X25519GenerateKey(rand io.Reader) (priv [32]byte, x [32]byte, err error) {
+func X25519GenerateParams(rand io.Reader) (priv [32]byte, x [32]byte, err error) {
 	var n, helper = new (big.Int), new (big.Int)
 	n.SetUint64(1)
 	n.Lsh(n, 252)
@@ -42,8 +43,34 @@ func X25519GenerateKey(rand io.Reader) (priv [32]byte, x [32]byte, err error) {
 	return
 }
 
+func X25519GenerateKey(rand io.Reader, kdf KDF) (priv *PrivateKey, err error) {
+	ci := ecc.FindByName("Curve25519")
+	priv = new(PrivateKey)
+	priv.PublicKey.Curve = ci.Curve
+	d, pubKey, err := X25519GenerateParams(rand)
+	if err != nil {
+		return nil, err
+	}
+	priv.PublicKey.KDF = kdf
+	priv.D = make([]byte, 32)
+	copyReversed(priv.D, d[:])
+	priv.PublicKey.CurveType = ci.CurveType
+	priv.PublicKey.Curve = ci.Curve
+	/*
+	 * Note that ECPoint.point differs from the definition of public keys in [Curve25519] in two ways:
+	 * (1) the byte-ordering is big-endian, which is more uniform with how big integers are represented in TLS, and
+	 * (2) there is an additional length byte (so ECpoint.point is actually 33 bytes), again for uniformity (and extensibility).
+	 */
+	var encodedKey = make([]byte, 33)
+	encodedKey[0] = 0x40
+	copy(encodedKey[1:], pubKey[:])
+	priv.PublicKey.X = new (big.Int).SetBytes(encodedKey[:])
+	priv.PublicKey.Y = new (big.Int)
+	return priv, nil
+}
+
 func X25519Encrypt(random io.Reader, pub *PublicKey, msg, curveOID, fingerprint []byte) (vsG, c []byte, err error) {
-	d, ephemeralKey, err := X25519GenerateKey(random)
+	d, ephemeralKey, err := X25519GenerateParams(random)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -52,7 +79,6 @@ func X25519Encrypt(random io.Reader, pub *PublicKey, msg, curveOID, fingerprint 
 	if pub.X.BitLen() > 33 * 264 {
 		return nil, nil, errors.New("ecdh: invalid key")
 	}
-
 	copy(pubKey[:], pub.X.Bytes()[1:])
 
 	var zb [32]byte
@@ -79,19 +105,16 @@ func X25519Encrypt(random io.Reader, pub *PublicKey, msg, curveOID, fingerprint 
 
 func X25519Decrypt(priv *PrivateKey, vsG, m, curveOID, fingerprint []byte) (msg []byte, err error) {
 	var zb, d, ephemeralKey[32]byte
-	copy(d[:], priv.D)
 	if len(vsG) != 33 || vsG[0] != 0x40 {
 		return nil,  errors.New("ecdh: invalid key")
 	}
 	copy(ephemeralKey[:], vsG[1:33])
-	
-	for i := 31; i >= 0; i-- {
-		d[31 - i] = priv.D[i]
-	}
+
+	copyReversed(d[:], priv.D)
 	curve25519.ScalarBaseMult(&zb, &d)
 	curve25519.ScalarMult(&zb, &d, &ephemeralKey)
 
-	var bigZb = new (big.Int)
+	var bigZb = new(big.Int)
 	bigZb.SetBytes(zb[:])
 
 	z, err := buildKey(&priv.PublicKey, bigZb, curveOID, fingerprint)
@@ -105,4 +128,10 @@ func X25519Decrypt(priv *PrivateKey, vsG, m, curveOID, fingerprint []byte) (msg 
 	}
 
 	return c[:len(c)-int(c[len(c)-1])], nil
+}
+
+func copyReversed(out []byte, in []byte) {
+	for i := 31; i >= 0; i-- {
+		out[31-i] = in[i]
+	}
 }
