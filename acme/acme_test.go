@@ -1166,7 +1166,7 @@ func TestTLSALPN01ChallengeCert(t *testing.T) {
 		token   = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ-PCt92wr-oA"
 		keyAuth = "evaGxfADs6pSRb2LAv9IZf17Dt3juxGJ-PCt92wr-oA." + testKeyECThumbprint
 		// echo -n <token.testKeyECThumbprint> | shasum -a 256
-		h      = "dbbd5eefe7b4d06eb9d1d9f5acb4c7cda27d320e4b30332f0b6cb441734ad7b0"
+		h      = "0420dbbd5eefe7b4d06eb9d1d9f5acb4c7cda27d320e4b30332f0b6cb441734ad7b0"
 		domain = "example.com"
 	)
 
