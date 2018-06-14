@@ -31,8 +31,8 @@ import (
 	"math"
 	"math/big"
 
-	"golang.org/x/crypto/rand"
 	"golang.org/x/crypto/internal/randutil"
+	"golang.org/x/crypto/rand"
 )
 
 var bigZero = big.NewInt(0)
@@ -296,11 +296,16 @@ NextSetOfPrimes:
 			continue NextSetOfPrimes
 		}
 
+		g := new(big.Int)
 		priv.D = new(big.Int)
 		e := big.NewInt(int64(priv.E))
-		ok := priv.D.ModInverse(e, totient)
 
-		if ok != nil {
+		g.GCD(priv.D, nil, e, totient)
+
+		if g.Cmp(bigOne) == 0 {
+			if priv.D.Sign() < 0 {
+				priv.D.Add(priv.D, totient)
+			}
 			priv.Primes = primes
 			priv.N = n
 			break
