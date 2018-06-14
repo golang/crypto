@@ -11,7 +11,6 @@ import (
 	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha1"
 	"io"
 	"io/ioutil"
@@ -25,6 +24,7 @@ import (
 	"golang.org/x/crypto/openpgp/errors"
 	"golang.org/x/crypto/openpgp/internal/encoding"
 	"golang.org/x/crypto/openpgp/s2k"
+	"golang.org/x/crypto/rsa"
 )
 
 // PrivateKey represents a possibly encrypted private key. See RFC 4880,

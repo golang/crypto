@@ -7,7 +7,6 @@ package packet
 import (
 	"crypto"
 	"crypto/md5"
-	"crypto/rsa"
 	"encoding/binary"
 	"fmt"
 	"hash"
@@ -18,6 +17,7 @@ import (
 
 	"golang.org/x/crypto/openpgp/errors"
 	"golang.org/x/crypto/openpgp/internal/encoding"
+	"golang.org/x/crypto/rsa"
 )
 
 // PublicKeyV3 represents older, version 3 public keys. These keys are less secure and

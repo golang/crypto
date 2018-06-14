@@ -5,13 +5,12 @@
 package openpgp
 
 import (
-	"crypto/rsa"
-
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/openpgp/ecdh"
 	"golang.org/x/crypto/openpgp/errors"
 	"golang.org/x/crypto/openpgp/internal/algorithm"
 	"golang.org/x/crypto/openpgp/packet"
+	"golang.org/x/crypto/rsa"
 )
 
 const defaultRSAKeyBits = 2048

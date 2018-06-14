@@ -6,11 +6,12 @@ package packet
 
 import (
 	"bytes"
-	"crypto/rsa"
 	"encoding/hex"
 	"fmt"
 	"math/big"
 	"testing"
+
+	"golang.org/x/crypto/rsa"
 )
 
 func bigFromBase10(s string) *big.Int {

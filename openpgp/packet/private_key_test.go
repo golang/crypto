@@ -10,7 +10,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/x509"
 	"encoding/hex"
 	"hash"
@@ -19,6 +18,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ed25519"
+	"golang.org/x/crypto/rsa"
 )
 
 var privateKeyTests = []struct {

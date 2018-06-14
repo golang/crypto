@@ -9,7 +9,6 @@ import (
 	"crypto/dsa"
 	"crypto/ecdsa"
 	"crypto/elliptic"
-	"crypto/rsa"
 	"crypto/sha1"
 	_ "crypto/sha256"
 	_ "crypto/sha512"
@@ -28,6 +27,7 @@ import (
 	"golang.org/x/crypto/openpgp/internal/algorithm"
 	"golang.org/x/crypto/openpgp/internal/ecc"
 	"golang.org/x/crypto/openpgp/internal/encoding"
+	"golang.org/x/crypto/rsa"
 )
 
 type kdfHashFunction byte

@@ -5,7 +5,6 @@
 package packet
 
 import (
-	"crypto/rsa"
 	"encoding/binary"
 	"io"
 	"math/big"
@@ -15,6 +14,7 @@ import (
 	"golang.org/x/crypto/openpgp/elgamal"
 	"golang.org/x/crypto/openpgp/errors"
 	"golang.org/x/crypto/openpgp/internal/encoding"
+	"golang.org/x/crypto/rsa"
 )
 
 const encryptedKeyVersion = 3
