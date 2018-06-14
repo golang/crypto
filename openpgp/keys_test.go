@@ -29,16 +29,16 @@ func TestKeyExpiry(t *testing.T) {
 	//
 	// So this should select the newest, non-expired encryption key.
 	key, _ := entity.encryptionKey(time1)
-	if id := key.PublicKey.KeyIdShortString(); id != "96A672F5" {
-		t.Errorf("Expected key 1ABB25A0 at time %s, but got key %s", time1.Format(timeFormat), id)
+	if id, expected := key.PublicKey.KeyIdShortString(), "96A672F5"; id != expected {
+		t.Errorf("Expected key %s at time %s, but got key %s", expected, time1.Format(timeFormat), id)
 	}
 
 	// Once the first encryption subkey has expired, the second should be
 	// selected.
 	time2, _ := time.Parse(timeFormat, "2013-07-09")
 	key, _ = entity.encryptionKey(time2)
-	if id := key.PublicKey.KeyIdShortString(); id != "96A672F5" {
-		t.Errorf("Expected key 96A672F5 at time %s, but got key %s", time2.Format(timeFormat), id)
+	if id, expected := key.PublicKey.KeyIdShortString(), "96A672F5"; id != expected {
+		t.Errorf("Expected key %s at time %s, but got key %s", expected, time2.Format(timeFormat), id)
 	}
 
 	// Once all the keys have expired, nothing should be returned.
