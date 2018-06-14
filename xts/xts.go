@@ -27,12 +27,13 @@ import (
 	"crypto/cipher"
 	"encoding/binary"
 	"errors"
+	"sync"
 
 	"golang.org/x/crypto/internal/subtle"
 )
 
-// Cipher contains an expanded key structure. It doesn't contain mutable state
-// and therefore can be used concurrently.
+// Cipher contains an expanded key structure. It is safe for concurrent use if
+// the underlying block cipher is safe for concurrent use.
 type Cipher struct {
 	k1, k2 cipher.Block
 }
@@ -40,6 +41,12 @@ type Cipher struct {
 // blockSize is the block size that the underlying cipher must have. XTS is
 // only defined for 16-byte ciphers.
 const blockSize = 16
+
+var tweakPool = sync.Pool{
+	New: func() interface{} {
+		return new([blockSize]byte)
+	},
+}
 
 // NewCipher creates a Cipher given a function for creating the underlying
 // block cipher (which must have a block size of 16 bytes). The key must be
@@ -72,7 +79,10 @@ func (c *Cipher) Encrypt(ciphertext, plaintext []byte, sectorNum uint64) {
 		panic("xts: invalid buffer overlap")
 	}
 
-	var tweak [blockSize]byte
+	tweak := tweakPool.Get().(*[blockSize]byte)
+	for i := range tweak {
+		tweak[i] = 0
+	}
 	binary.LittleEndian.PutUint64(tweak[:8], sectorNum)
 
 	c.k2.Encrypt(tweak[:], tweak[:])
@@ -88,8 +98,10 @@ func (c *Cipher) Encrypt(ciphertext, plaintext []byte, sectorNum uint64) {
 		plaintext = plaintext[blockSize:]
 		ciphertext = ciphertext[blockSize:]
 
-		mul2(&tweak)
+		mul2(tweak)
 	}
+
+	tweakPool.Put(tweak)
 }
 
 // Decrypt decrypts a sector of ciphertext and puts the result into plaintext.
@@ -106,7 +118,10 @@ func (c *Cipher) Decrypt(plaintext, ciphertext []byte, sectorNum uint64) {
 		panic("xts: invalid buffer overlap")
 	}
 
-	var tweak [blockSize]byte
+	tweak := tweakPool.Get().(*[blockSize]byte)
+	for i := range tweak {
+		tweak[i] = 0
+	}
 	binary.LittleEndian.PutUint64(tweak[:8], sectorNum)
 
 	c.k2.Encrypt(tweak[:], tweak[:])
@@ -122,8 +137,10 @@ func (c *Cipher) Decrypt(plaintext, ciphertext []byte, sectorNum uint64) {
 		plaintext = plaintext[blockSize:]
 		ciphertext = ciphertext[blockSize:]
 
-		mul2(&tweak)
+		mul2(tweak)
 	}
+
+	tweakPool.Put(tweak)
 }
 
 // mul2 multiplies tweak by 2 in GF(2¹²⁸) with an irreducible polynomial of
