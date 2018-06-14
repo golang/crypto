@@ -30,8 +30,8 @@ import (
 	"golang.org/x/crypto/internal/subtle"
 )
 
-// Cipher contains an expanded key structure. It doesn't contain mutable state
-// and therefore can be used concurrently.
+// Cipher contains an expanded key structure. It is safe for concurrent use if
+// the underlying block cipher is safe for concurrent use.
 type Cipher struct {
 	k1, k2 cipher.Block
 }
