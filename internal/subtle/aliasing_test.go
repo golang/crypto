@@ -27,6 +27,8 @@ var aliasingTests = []struct {
 	{a[:], nil, false, false},
 	{nil, nil, false, false},
 	{a[:], a[:0], false, false},
+	{a[:10], a[:10:20], true, false},
+	{a[:10], a[5:10:20], true, true},
 }
 
 func testAliasing(t *testing.T, i int, x, y []byte, anyOverlap, inexactOverlap bool) {
