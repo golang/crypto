@@ -86,7 +86,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		subkeyAlgorithm = packet.PubKeyAlgoEdDSA
 
 	} else {
-		return nil, errors.InvalidArgumentError("unsupported public key Algorithm")
+		return nil, errors.InvalidArgumentError("unsupported public key algorithm")
 	}
 
 	e := &Entity{

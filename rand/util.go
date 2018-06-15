@@ -120,41 +120,22 @@ func Prime(rand io.Reader, bits int) (p *big.Int, err error) {
 		return
 	}
 
-	b := uint(bits % 8)
-	if b == 0 {
-		b = 8
+	p, err = initializeRandom(rand, bits)
+	if err != nil {
+		return
 	}
-
-	bytes := make([]byte, (bits+7)/8)
-	p = new(big.Int)
 
 	bigMod := new(big.Int)
 
 	for {
-		_, err = io.ReadFull(rand, bytes)
-		if err != nil {
-			return nil, err
-		}
-
-		// Clear bits in the first byte to make sure the candidate has a size <= bits.
-		bytes[0] &= uint8(int(1<<b) - 1)
-		// Don't let the value be too small, i.e, set the most significant two bits.
-		// Setting the top two bits, rather than just the top bit,
-		// means that when two of these values are multiplied together,
-		// the result isn't ever one bit short.
-		if b >= 2 {
-			bytes[0] |= 3 << (b - 2)
-		} else {
-			// Here b==1, because b cannot be zero.
-			bytes[0] |= 1
-			if len(bytes) > 1 {
-				bytes[1] |= 0x80
+		if (p.BitLen() > bits) {
+			p, err = initializeRandom(rand, bits)
+			if err != nil {
+				return
 			}
+		} else {
+			p = p.Add(p, bigTwo)
 		}
-		// Make the value odd since an even number this large certainly isn't prime.
-		bytes[len(bytes)-1] |= 1
-
-		p.SetBytes(bytes)
 
 	DeltaAgain:
 		for {
@@ -238,4 +219,42 @@ func Int(rand io.Reader, max *big.Int) (n *big.Int, err error) {
 			return
 		}
 	}
+}
+
+func initializeRandom(rand io.Reader, bits int) (p *big.Int, err error){
+	p = new(big.Int)
+
+	b := uint(bits % 8)
+	if b == 0 {
+		b = 8
+	}
+
+	bytes := make([]byte, (bits+7)/8)
+
+	_, err = io.ReadFull(rand, bytes)
+	if err != nil {
+		return nil, err
+	}
+
+	// Clear bits in the first byte to make sure the candidate has a size <= bits.
+	bytes[0] &= uint8(int(1<<b) - 1)
+	// Don't let the value be too small, i.e, set the most significant two bits.
+	// Setting the top two bits, rather than just the top bit,
+	// means that when two of these values are multiplied together,
+	// the result isn't ever one bit short.
+	if b >= 2 {
+		bytes[0] |= 3 << (b - 2)
+	} else {
+		// Here b==1, because b cannot be zero.
+		bytes[0] |= 1
+		if len(bytes) > 1 {
+			bytes[1] |= 0x80
+		}
+	}
+	// Make the value odd since an even number this large certainly isn't prime.
+	bytes[len(bytes)-1] |= 1
+
+	p.SetBytes(bytes)
+
+	return
 }
