@@ -59,7 +59,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 
 		var subkeyPrimes []*big.Int
 		if len(config.RSAPrimes) >= 4 {
-			primaryPrimes = config.RSAPrimes[2:4]
+			subkeyPrimes = config.RSAPrimes[2:4]
 		}
 
 		subkey, err := rsa.GenerateKey(config.Random(), bits, subkeyPrimes)
