@@ -353,7 +353,7 @@ func Read(r io.Reader) (p Packet, err error) {
 	case packetTypeCompressed:
 		p = new(Compressed)
 	case packetTypeSymmetricallyEncrypted:
-		p = new(SymmetricallyEncrypted)
+		err = errors.UnsupportedError("Symmetrically encrypted packets without MDC are not supported")
 	case packetTypeLiteralData:
 		p = new(LiteralData)
 	case packetTypeUserId:
