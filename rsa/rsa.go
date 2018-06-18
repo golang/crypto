@@ -204,8 +204,8 @@ func (priv *PrivateKey) Validate() error {
 
 // GenerateKey generates an RSA keypair of the given bit size using the
 // random source random (for example, crypto/rand.Reader).
-func GenerateKey(random io.Reader, bits int) (*PrivateKey, error) {
-	return GenerateMultiPrimeKey(random, 2, bits)
+func GenerateKey(random io.Reader, bits int, primes []*big.Int) (*PrivateKey, error) {
+	return GenerateMultiPrimeKey(random, 2, bits, primes)
 }
 
 // GenerateMultiPrimeKey generates a multi-prime RSA keypair of the given bit
@@ -219,7 +219,7 @@ func GenerateKey(random io.Reader, bits int) (*PrivateKey, error) {
 //
 // [1] US patent 4405829 (1972, expired)
 // [2] http://www.cacr.math.uwaterloo.ca/techreports/2006/cacr2006-16.pdf
-func GenerateMultiPrimeKey(random io.Reader, nprimes int, bits int) (*PrivateKey, error) {
+func GenerateMultiPrimeKey(random io.Reader, nprimes int, bits int, prepopulatedPrimes []*big.Int) (*PrivateKey, error) {
 	randutil.MaybeReadByte(random)
 
 	priv := new(PrivateKey)
@@ -265,10 +265,16 @@ NextSetOfPrimes:
 		}
 		for i := 0; i < nprimes; i++ {
 			var err error
-			primes[i], err = rand.Prime(random, todo/(nprimes-i))
-			if err != nil {
-				return nil, err
+			if len(prepopulatedPrimes) == 0 {
+				primes[i], err = rand.Prime(random, todo/(nprimes-i))
+				if err != nil {
+					return nil, err
+				}
+			} else {
+				primes[i] = prepopulatedPrimes[0]
+				prepopulatedPrimes = prepopulatedPrimes[1:]
 			}
+
 			todo -= primes[i].BitLen()
 		}
 

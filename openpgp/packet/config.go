@@ -7,6 +7,7 @@ package packet
 import (
 	"crypto"
 	"crypto/rand"
+	"math/big"
 	"io"
 	"time"
 
@@ -47,8 +48,10 @@ type Config struct {
 	// RSABits is the number of bits in new RSA keys made with NewEntity.
 	// If zero, then 2048 bit keys are created.
 	RSABits int
-	//The public key algorithm to use - will always create a signing primary key and encryption subkey.
+	// The public key algorithm to use - will always create a signing primary key and encryption subkey.
 	Algorithm PublicKeyAlgorithm
+	// Some known primes that are optionally prepopulated by the caller
+	RSAPrimes []*big.Int
 }
 
 func (c *Config) Random() io.Reader {

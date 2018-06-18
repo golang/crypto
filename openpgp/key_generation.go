@@ -5,6 +5,8 @@
 package openpgp
 
 import (
+	"math/big"
+
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/openpgp/ecdh"
 	"golang.org/x/crypto/openpgp/errors"
@@ -42,7 +44,12 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 			bits = config.RSABits
 		}
 
-		primaryKey, err := rsa.GenerateKey(config.Random(), bits)
+		var primaryPrimes []*big.Int
+		if len(config.RSAPrimes) >= 2 {
+			primaryPrimes = config.RSAPrimes[0:2]
+		}
+
+		primaryKey, err := rsa.GenerateKey(config.Random(), bits, primaryPrimes)
 		if err != nil {
 			return nil, err
 		}
@@ -50,7 +57,12 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		privPrimary = packet.NewRSAPrivateKey(currentTime, primaryKey)
 		pubPrimary = packet.NewRSAPublicKey(currentTime, &primaryKey.PublicKey)
 
-		subkey, err := rsa.GenerateKey(config.Random(), bits)
+		var subkeyPrimes []*big.Int
+		if len(config.RSAPrimes) >= 4 {
+			primaryPrimes = config.RSAPrimes[2:4]
+		}
+
+		subkey, err := rsa.GenerateKey(config.Random(), bits, subkeyPrimes)
 		if err != nil {
 			return nil, err
 		}
