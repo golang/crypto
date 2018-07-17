@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"io"
 	"io/ioutil"
+	"strings"
 	"testing"
 	"time"
 
@@ -267,6 +268,121 @@ func TestEncryption(t *testing.T) {
 			}
 			if md.Signature == nil {
 				t.Error("signature missing")
+			}
+		}
+	}
+}
+
+func TestEncryptionSelectSymkey(t *testing.T) {
+	for i, test := range testEncryptionTests {
+		kring, _ := ReadKeyRing(readerFromHex(test.keyRingHex))
+
+		passphrase := []byte("passphrase")
+		for _, entity := range kring {
+			if entity.PrivateKey != nil && entity.PrivateKey.Encrypted {
+				err := entity.PrivateKey.Decrypt(passphrase)
+				if err != nil {
+					t.Errorf("#%d: failed to decrypt key", i)
+				}
+			}
+			for _, subkey := range entity.Subkeys {
+				if subkey.PrivateKey != nil && subkey.PrivateKey.Encrypted {
+					err := subkey.PrivateKey.Decrypt(passphrase)
+					if err != nil {
+						t.Errorf("#%d: failed to decrypt subkey", i)
+					}
+				}
+			}
+		}
+
+		var signed *Entity
+		if test.isSigned {
+			signed = kring[0]
+		}
+
+		buf := new(bytes.Buffer)
+		keyBytes := []byte(strings.Repeat("#", 16))
+		config := &packet.Config{
+			DefaultCipher: packet.CipherAES128,
+		}
+
+		w, err := EncryptSelectSymkey(buf, kring[:1], signed, nil /* no hints */, config, keyBytes)
+		if err != nil {
+			t.Errorf("#%d: error in Encrypt: %s", i, err)
+			continue
+		}
+
+		const message = "testing"
+		_, err = w.Write([]byte(message))
+		if err != nil {
+			t.Errorf("#%d: error writing plaintext: %s", i, err)
+			continue
+		}
+		err = w.Close()
+		if err != nil {
+			t.Errorf("#%d: error closing WriteCloser: %s", i, err)
+			continue
+		}
+
+		//t.Errorf("buF after: %x", (buf.Bytes()))
+		packets := packet.NewReader(buf)
+
+		// Parse packets and find SymmetricallyEncrypted and check if
+		// it is decryptable by our chosen symmetric key.
+		for {
+			if p, err := packets.Next(); err == nil {
+				switch p := p.(type) {
+				case *packet.SymmetricKeyEncrypted:
+					t.Errorf("Unexpected packet type: packet.SymmetricKeyEncrypted")
+					return
+				case *packet.EncryptedKey:
+					// skip wrapped keys
+					continue
+				case *packet.SymmetricallyEncrypted:
+					// Symmetrically encrypted packet, try to decrypt
+					r, err := p.Decrypt(packet.CipherAES128, keyBytes)
+					if err != nil {
+						t.Errorf("%v", err)
+						return
+					}
+
+					compared := false
+					for {
+						ld, err := packet.Read(r)
+						if err != nil {
+							break
+						}
+						switch ld := ld.(type) {
+						case *packet.LiteralData:
+							// Look and compare decrypted literal data
+							pbuf := new(bytes.Buffer)
+							pbuf.ReadFrom(ld.Body)
+
+							if string(pbuf.Bytes()) != message {
+								t.Errorf("Expected decrypted content: %v, got %v", message, string(pbuf.Bytes()))
+							}
+							compared = true
+							break
+
+						default:
+							// Skip all the other packets
+							continue
+						}
+					}
+
+					if !compared {
+						t.Errorf("Did not find plaintext in packet")
+					}
+
+				case *packet.Compressed, *packet.LiteralData, *packet.OnePassSignature:
+					t.Errorf("Unexpected packet type: *packet.Compressed, *packet.LiteralData, *packet.OnePassSignature")
+					return
+				default:
+					t.Errorf("Unexpected packet type")
+					return
+				}
+			} else {
+				break
 			}
 		}
 	}
