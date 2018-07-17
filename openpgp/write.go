@@ -170,6 +170,13 @@ func hashToHashId(h crypto.Hash) uint8 {
 // be closed after the contents of the file have been written.
 // If config is nil, sensible defaults will be used.
 func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
+	return EncryptSelectSymkey(ciphertext, to, signed, hints, config, nil)
+}
+
+// EncryptSelectSymkey performs the same function as Encrypt, but allows the
+// selection of a symmetric for encryption of plaintext content. It takes the
+// first X bytes of the symKey input as the key.
+func EncryptSelectSymkey(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHints, config *packet.Config, symKey []byte) (plaintext io.WriteCloser, err error) {
 	var signer *packet.PrivateKey
 	if signed != nil {
 		signKey, ok := signed.signingKey(config.Now())
@@ -268,9 +275,16 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 		return nil, errors.InvalidArgumentError("cannot encrypt because no candidate hash functions are compiled in. (Wanted " + name + " in this case.)")
 	}
 
-	symKey := make([]byte, cipher.KeySize())
-	if _, err := io.ReadFull(config.Random(), symKey); err != nil {
-		return nil, err
+	if symKey == nil {
+		symKey = make([]byte, cipher.KeySize())
+		if _, err := io.ReadFull(config.Random(), symKey); err != nil {
+			return nil, err
+		}
+	} else {
+		if len(symKey) < cipher.KeySize() {
+			return nil, errors.InvalidArgumentError("select symkey is not long enough")
+		}
+		symKey = symKey[:cipher.KeySize()]
 	}
 
 	for _, key := range encryptKeys {
