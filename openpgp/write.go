@@ -338,9 +338,10 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 }
 
 // Sign signs a message. The resulting WriteCloser must be closed after the
-// contents of the file have been written.
+// contents of the file have been written.  hints contains optional information
+// that aids the recipients in processing the message.
 // If config is nil, sensible defaults will be used.
-func Sign(ciphertext io.Writer, signed *Entity, hints *FileHints, config *packet.Config) (plaintext io.WriteCloser, err error) {
+func Sign(output io.Writer, signed *Entity, hints *FileHints, config *packet.Config) (input io.WriteCloser, err error) {
 	if signed == nil {
 		return nil, errors.InvalidArgumentError("no signer provided")
 	}
@@ -358,7 +359,7 @@ func Sign(ciphertext io.Writer, signed *Entity, hints *FileHints, config *packet
 		preferredHashes = defaultHashes
 	}
 	candidateHashes = intersectPreferences(candidateHashes, preferredHashes)
-	return writeAndSign(noOpCloser{ciphertext}, candidateHashes, signed, hints, config)
+	return writeAndSign(noOpCloser{output}, candidateHashes, signed, hints, config)
 }
 
 // signatureWriter hashes the contents of a message while passing it along to
