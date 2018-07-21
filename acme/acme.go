@@ -645,8 +645,9 @@ func (c *Client) doReg(ctx context.Context, url string, typ string, acct *Accoun
 		req.Agreement = acct.AgreedTerms
 	}
 	res, err := c.post(ctx, c.Key, url, req, wantStatus(
-		http.StatusOK,      // updates and deletes
-		http.StatusCreated, // new account creation
+		http.StatusOK,       // updates and deletes
+		http.StatusCreated,  // new account creation
+		http.StatusAccepted, // Let's Encrypt divergent implementation
 	))
 	if err != nil {
 		return nil, err
