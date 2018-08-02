@@ -223,6 +223,11 @@ func (m *Manager) TLSConfig() *tls.Config {
 // a new cert. A non-nil error returned from m.HostPolicy halts TLS negotiation.
 // The error is propagated back to the caller of GetCertificate and is user-visible.
 // This does not affect cached certs. See HostPolicy field description for more details.
+//
+// If GetCertificate is used directly, instead of via Manager.TLSConfig, package users will
+// also have to add acme.ALPNProto to NextProtos for tls-alpn-01, or use HTTPHandler
+// for http-01. (The tls-sni-* challenges have been deprecated by popular ACME providers
+// due to security issues in the ecosystem.)
 func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	if m.Prompt == nil {
 		return nil, errors.New("acme/autocert: Manager.Prompt not set")
@@ -356,8 +361,8 @@ func supportsECDSA(hello *tls.ClientHelloInfo) bool {
 // Because the fallback handler is run with unencrypted port 80 requests,
 // the fallback should not serve TLS-only requests.
 //
-// If HTTPHandler is never called, the Manager will only use TLS SNI
-// challenges for domain verification.
+// If HTTPHandler is never called, the Manager will only use the "tls-alpn-01"
+// challenge for domain verification.
 func (m *Manager) HTTPHandler(fallback http.Handler) http.Handler {
 	m.tokensMu.Lock()
 	defer m.tokensMu.Unlock()
