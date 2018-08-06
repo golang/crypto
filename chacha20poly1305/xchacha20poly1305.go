@@ -12,12 +12,6 @@ import (
 	"golang.org/x/crypto/internal/chacha20"
 )
 
-const (
-	// NonceSizeX is the size of the nonce used with the XChaCha20-Poly1305
-	// variant of this AEAD, in bytes.
-	NonceSizeX = 24
-)
-
 type xchacha20poly1305 struct {
 	key [8]uint32
 }
