@@ -23,6 +23,15 @@ import (
 	"golang.org/x/crypto/openpgp/s2k"
 )
 
+// https://tools.ietf.org/html/rfc4880#section-5.5.3
+const (
+	S2KUsageConventionUnencrypted = 0
+
+	S2KUsageConventionPlaintextChecksum = 255
+
+	S2KUsageConventionEncryptedSha1 = 254
+)
+
 // PrivateKey represents a possibly encrypted private key. See RFC 4880,
 // section 5.5.3.
 type PrivateKey struct {
@@ -95,10 +104,10 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 	s2kType := buf[0]
 
 	switch s2kType {
-	case 0:
+	case S2KUsageConventionUnencrypted:
 		pk.s2k = nil
 		pk.Encrypted = false
-	case 254, 255:
+	case S2KUsageConventionEncryptedSha1, S2KUsageConventionPlaintextChecksum:
 		_, err = readFull(r, buf[:])
 		if err != nil {
 			return
@@ -109,7 +118,7 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 		if err != nil {
 			return
 		}
-		if s2kType == 254 {
+		if s2kType == S2KUsageConventionEncryptedSha1 {
 			pk.sha1Checksum = true
 		}
 	default:
