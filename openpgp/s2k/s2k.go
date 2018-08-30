@@ -65,11 +65,14 @@ func (c *Config) hash() crypto.Hash {
 }
 
 func (c *Config) encodedCount() uint8 {
+	var i int
+
 	if c == nil || c.S2KCount == 0 {
-		return 96 // The common case. Correspoding to 65536
+		i = S2KCountDefault
+	} else {
+		i = c.S2KCount
 	}
 
-	i := c.S2KCount
 	switch {
 	// Behave like GPG. Should we make 65536 the lowest value used?
 	case i < S2KCountMin:
