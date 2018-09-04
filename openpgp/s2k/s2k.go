@@ -16,9 +16,23 @@ import (
 )
 
 const (
-	S2KCountMin     = 1024
+	// When symmetrically encrypting with a passphrase, S2KCountMin is the
+	// minimum allowable parameter for the iterated and salted string to
+	// key (S2K) key derivation function.
+	// It provides the least protection against dictionary attacks. A
+	// higher value should be chosen instead.
+	S2KCountMin = 1024
+
+	// When symmetrically encrypting with a passphrase, S2KCountDefault is
+	// the default parameter used for the iterated and salted string to key
+	// (S2K) key derivation function.
 	S2KCountDefault = 65536
-	S2KCountMax     = 65011712
+
+	// When symmetrically encrypting with a passphrase, S2KCountMax is the
+	// maximum allowable parameter for the iterated and salted string to
+	// key (S2K) key derivation function. It provides the highest security
+	// by requiring the most amount of work to perform a dictionary attack.
+	S2KCountMax = 65011712
 )
 
 type stringToKeySpecifier = uint8
