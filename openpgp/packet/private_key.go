@@ -29,7 +29,7 @@ const (
 
 	S2KUsageConventionPlaintextChecksum = 255
 
-	S2KUsageConventionEncryptedSha1 = 254
+	S2KUsageConventionEncryptedSHA1 = 254
 )
 
 // PrivateKey represents a possibly encrypted private key. See RFC 4880,
@@ -107,7 +107,7 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 	case S2KUsageConventionUnencrypted:
 		pk.s2k = nil
 		pk.Encrypted = false
-	case S2KUsageConventionEncryptedSha1, S2KUsageConventionPlaintextChecksum:
+	case S2KUsageConventionEncryptedSHA1, S2KUsageConventionPlaintextChecksum:
 		_, err = readFull(r, buf[:])
 		if err != nil {
 			return
@@ -118,7 +118,7 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 		if err != nil {
 			return
 		}
-		if s2kType == S2KUsageConventionEncryptedSha1 {
+		if s2kType == S2KUsageConventionEncryptedSHA1 {
 			pk.sha1Checksum = true
 		}
 	default:
