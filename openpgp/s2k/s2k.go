@@ -15,23 +15,30 @@ import (
 	"golang.org/x/crypto/openpgp/errors"
 )
 
-type stringToKeySpecifier = uint8
-
 const (
 	S2KCountMin     = 1024
 	S2KCountDefault = 65536
 	S2KCountMax     = 65011712
 )
 
+type stringToKeySpecifier = uint8
+
 const (
-	// https://tools.ietf.org/html/rfc4880#section-3.7.1.1
-	SimpleS2K stringToKeySpecifier = 0
+	// The simple string-to-key directly hashes the password string to
+	// produce the key. It should not be used (section 3.7.2)
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.1
+	simpleS2K stringToKeySpecifier = 0
 
-	// https://tools.ietf.org/html/rfc4880#section-3.7.1.2
-	SaltedS2K stringToKeySpecifier = 1
+	// The salted string-to-key method hashes the password along with a
+	// random salt. It should not be used (section 3.7.2)
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.2
+	saltedS2K stringToKeySpecifier = 1
 
-	// https://tools.ietf.org/html/rfc4880#section-3.7.1.3
-	IteratedAndSaltedS2K stringToKeySpecifier = 3
+	// The Iterated and salted string to key method hashes the passphrase
+	// and random salt multiple times. The total number of octets to be
+	// hashed is specified via the S2KCount config parameter.
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.3
+	iteratedAndSaltedS2K stringToKeySpecifier = 3
 )
 
 // Config collects configuration parameters for s2k key-stretching
@@ -193,12 +200,12 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	h := hash.New()
 
 	switch buf[0] {
-	case SimpleS2K:
+	case simpleS2K:
 		f := func(out, in []byte) {
 			Simple(out, h, in)
 		}
 		return f, nil
-	case SaltedS2K:
+	case saltedS2K:
 		_, err = io.ReadFull(r, buf[:8])
 		if err != nil {
 			return
@@ -207,7 +214,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 			Salted(out, h, in, buf[:8])
 		}
 		return f, nil
-	case IteratedAndSaltedS2K:
+	case iteratedAndSaltedS2K:
 		_, err = io.ReadFull(r, buf[:9])
 		if err != nil {
 			return
@@ -228,7 +235,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 // nil. In that case, sensible defaults will be used.
 func Serialize(w io.Writer, key []byte, rand io.Reader, passphrase []byte, c *Config) error {
 	var buf [11]byte
-	buf[0] = IteratedAndSaltedS2K
+	buf[0] = iteratedAndSaltedS2K
 	buf[1], _ = HashToHashId(c.hash())
 	salt := buf[2:10]
 	if _, err := io.ReadFull(rand, salt); err != nil {
