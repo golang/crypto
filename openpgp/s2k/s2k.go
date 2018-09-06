@@ -16,22 +16,26 @@ import (
 )
 
 const (
-	// When symmetrically encrypting with a passphrase, S2KCountMin is the
-	// minimum allowable parameter for the iterated and salted string to
-	// key (S2K) key derivation function.
+	// S2KCountMin is the minimum allowable parameter for the iterated and salted
+	// string to key (S2K) key derivation function for symmetrically encrypting
+	// with a passphrase.
 	// It provides the least protection against dictionary attacks. A
 	// higher value should be chosen instead.
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.3
 	S2KCountMin = 1024
 
-	// When symmetrically encrypting with a passphrase, S2KCountDefault is
-	// the default parameter used for the iterated and salted string to key
-	// (S2K) key derivation function.
+	// S2KCountDefault is the default parameter used for the iterated and salted
+	// string to key (S2K) key derivation function for symmetrically encrypting
+	// with a passphrase.
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.3
 	S2KCountDefault = 65536
 
-	// When symmetrically encrypting with a passphrase, S2KCountMax is the
-	// maximum allowable parameter for the iterated and salted string to
-	// key (S2K) key derivation function. It provides the highest security
-	// by requiring the most amount of work to perform a dictionary attack.
+	// S2KCountMax is the maximum allowable parameter for the iterated and salted
+	// string to key (S2K) key derivation function for symmetrically encrypting
+	// with a passphrase.
+	// It provides the highest security by requiring the most amount of work to
+	// perform a dictionary attack.
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.3
 	S2KCountMax = 65011712
 )
 
