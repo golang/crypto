@@ -465,7 +465,8 @@ func addSubkey(e *Entity, packets *packet.Reader, pub *packet.PublicKey, priv *p
 		case packet.SigTypeSubkeyRevocation:
 			subKey.Sig = sig
 		case packet.SigTypeSubkeyBinding:
-			if subKey.Sig == nil {
+
+			if shouldReplaceSubkeySig(subKey.Sig, sig) {
 				subKey.Sig = sig
 			}
 		}
@@ -478,6 +479,22 @@ func addSubkey(e *Entity, packets *packet.Reader, pub *packet.PublicKey, priv *p
 	e.Subkeys = append(e.Subkeys, subKey)
 
 	return nil
+}
+
+func shouldReplaceSubkeySig(existingSig, potentialNewSig *packet.Signature) bool {
+	if potentialNewSig == nil {
+		return false
+	}
+
+	if existingSig == nil {
+		return true
+	}
+
+	if existingSig.SigType == packet.SigTypeSubkeyRevocation {
+		return false // never override a revocation signature
+	}
+
+	return potentialNewSig.CreationTime.After(existingSig.CreationTime)
 }
 
 const defaultRSAKeyBits = 2048
