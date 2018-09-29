@@ -30,8 +30,11 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+// SignatureFlags represent additional flags that can be passed to the signature
+// requests an defined in [PROTOCOL.agent] section 4.5.1.
 type SignatureFlags uint32
 
+// SignatureFlag values as defined in [PROTOCOL.agent] section 5.3.
 const (
 	SignatureFlagReserved SignatureFlags = 1 << iota
 	SignatureFlagRsaSha256
@@ -69,13 +72,20 @@ type Agent interface {
 type ExtendedAgent interface {
 	Agent
 
-	// The same as Sign, but allows for additional flags to be sent/received
+	// SignWithFlags signs like Sign, but allows for additional flags to be sent/received
 	SignWithFlags(key ssh.PublicKey, data []byte, flags SignatureFlags) (*ssh.Signature, error)
 
-	// A custom extension request. Standard compliant agents do not need to implement this
-	// method (they may just return an error), but it allows agents to implement
+	// Extension processes a custom extension request. Standard-compliant agents are not
+	// required to support any extensions, but this method allows agents to implement
 	// vendor-specific methods or add experimental features. See [PROTOCOL.agent] section 4.7.
-	// The output of this call will be the response, including the "type" byte.
+	// If agent extensions are unsupported entirely this method MUST return an
+	// ErrAgentExtensionUnsupported error. Similarly, if just the specific extensionType in
+	// the request is unsupported by the agent then ErrAgentExtensionUnsupported MUST be
+	// returned.
+	//
+	// Since [PROTOCOL.agent] section 4.7 specifies that the contents of a successful request
+	// are unspecified (including the type of the message), the complete response will be
+	// returned as a []byte slice, including the "type" byte of the message.
 	Extension(extensionType string, contents []byte) ([]byte, error)
 }
 
@@ -204,6 +214,13 @@ type constrainExtensionAgentMsg struct {
 // See [PROTOCOL.agent], section 4.7
 const agentExtension = 27
 const agentExtensionFailure = 28
+// ErrAgentExtensionUnsupported indicates that an extension defined in
+// [PROTOCOL.agent] section 4.7 is unsupported by the agent. Specifically this
+// error indicates that the agent returned a standard SSH_AGENT_FAILURE message
+// as the result of a SSH_AGENTC_EXTENSION request. Note that the protocol
+// specification (and therefore this error) does not distinguish between a
+// specific extension being unsupported and extensions being unsupported entirely.
+var ErrAgentExtensionUnsupported = errors.New("Agent extension unsupported")
 
 type extensionAgentMsg struct {
 	ExtensionType string `sshtype:"27"`
@@ -755,8 +772,16 @@ func (c *client) Extension(extensionType string, contents []byte) ([]byte, error
 	if err != nil {
 		return nil, err
 	}
-	if len(buf) == 0 || buf[0] == agentFailure || buf[0] == agentExtensionFailure {
-		return nil, errors.New("agent: failure")
+	if len(buf) == 0 {
+		return nil, errors.New("agent: failure; empty response")
+	}
+	// [PROTOCOL.agent] section 4.7 indicates that an SSH_AGENT_FAILURE message
+	// represents an agent that does not support the extension
+	if buf[0] == agentFailure {
+		return nil, ErrAgentExtensionUnsupported
+	}
+	if buf[0] == agentExtensionFailure {
+		return nil, errors.New("agent: generic extension failure")
 	}
 
 	return buf, nil
