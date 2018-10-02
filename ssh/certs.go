@@ -6,7 +6,6 @@ package ssh
 
 import (
 	"bytes"
-	"crypto"
 	"errors"
 	"fmt"
 	"io"
@@ -223,9 +222,9 @@ type openSSHCertSigner struct {
 	signer Signer
 }
 
-type parameterizedOpenSSHCertSigner struct {
+type algorithmOpenSSHCertSigner struct {
 	*openSSHCertSigner
-	parameterizedSigner ParameterizedSigner
+	algorgitmSigner AlgorithmSigner
 }
 
 // NewCertSigner returns a Signer that signs with the given Certificate, whose
@@ -236,9 +235,9 @@ func NewCertSigner(cert *Certificate, signer Signer) (Signer, error) {
 		return nil, errors.New("ssh: signer and cert have different public key")
 	}
 
-	if parameterizedSigner, ok := signer.(ParameterizedSigner); ok {
-		return &parameterizedOpenSSHCertSigner{
-			&openSSHCertSigner{cert, signer}, parameterizedSigner}, nil
+	if algorithmSigner, ok := signer.(AlgorithmSigner); ok {
+		return &algorithmOpenSSHCertSigner{
+			&openSSHCertSigner{cert, signer}, algorithmSigner}, nil
 	} else {
 		return &openSSHCertSigner{cert, signer}, nil
 	}
@@ -252,8 +251,8 @@ func (s *openSSHCertSigner) PublicKey() PublicKey {
 	return s.pub
 }
 
-func (s *parameterizedOpenSSHCertSigner) SignWithOpts(rand io.Reader, data []byte, opts crypto.SignerOpts) (*Signature, error) {
-	return s.parameterizedSigner.SignWithOpts(rand, data, opts)
+func (s *algorithmOpenSSHCertSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error) {
+	return s.algorgitmSigner.SignWithAlgorithm(rand, data, algorithm)
 }
 
 const sourceAddressCriticalOption = "source-address"

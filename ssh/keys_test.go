@@ -109,6 +109,52 @@ func TestKeySignVerify(t *testing.T) {
 	}
 }
 
+func TestKeySignWithAlgorithmVerify(t *testing.T) {
+	for _, priv := range testSigners {
+		if algorithmSigner, ok := priv.(AlgorithmSigner); !ok {
+			t.Errorf("Signers constructed by ssh package should always implement the AlgorithmSigner interface: %T", priv)
+		} else {
+			pub := priv.PublicKey()
+			data := []byte("sign me")
+
+			// Using the empty string as the algorithm name should result in the same signature format as the algorithm-free Sign method.
+			defaultSig, err := priv.Sign(rand.Reader, data)
+			if err != nil {
+				t.Fatalf("Sign(%T): %v", priv, err)
+			}
+			sigWithoutAlg, err := algorithmSigner.SignWithAlgorithm(rand.Reader, data, "")
+			if err != nil {
+				t.Fatalf("SignWithAlgorithm(%T): %v", algorithmSigner, err)
+			}
+			if defaultSig.Format != sigWithoutAlg.Format {
+				t.Errorf("Signature format without algorithm doesn't match default algorithm signature format: %s != %s",
+					defaultSig.Format, sigWithoutAlg.Format)
+			}
+
+			// RSA keys are the only ones which currently support more than one signing algorithm
+			if pub.Type() == KeyAlgoRSA {
+				for _, algorithm := range []string{"", SigAlgoRSA, SigAlgoRSASHA2256, SigAlgoRSASHA2512} {
+					sig, err := algorithmSigner.SignWithAlgorithm(rand.Reader, data, algorithm)
+					if err != nil {
+						t.Fatalf("Sign(%T): %v", priv, err)
+					}
+					if (algorithm == "" && sig.Format != SigAlgoRSA) || (algorithm != "" && sig.Format != algorithm) {
+						t.Errorf("signature format did not match requested signature algorithm: %s != %s", sig.Format, algorithm)
+					}
+
+					if err := pub.Verify(data, sig); err != nil {
+						t.Errorf("publicKey.Verify(%T): %v", priv, err)
+					}
+					sig.Blob[5]++
+					if err := pub.Verify(data, sig); err == nil {
+						t.Errorf("publicKey.Verify on broken sig did not fail")
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestParseRSAPrivateKey(t *testing.T) {
 	key := testPrivateKeys["rsa"]
 

@@ -214,6 +214,7 @@ type constrainExtensionAgentMsg struct {
 // See [PROTOCOL.agent], section 4.7
 const agentExtension = 27
 const agentExtensionFailure = 28
+
 // ErrAgentExtensionUnsupported indicates that an extension defined in
 // [PROTOCOL.agent] section 4.7 is unsupported by the agent. Specifically this
 // error indicates that the agent returned a standard SSH_AGENT_FAILURE message

@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"crypto"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -197,21 +196,23 @@ func (r *keyring) SignWithFlags(key ssh.PublicKey, data []byte, flags SignatureF
 	wanted := key.Marshal()
 	for _, k := range r.keys {
 		if bytes.Equal(k.signer.PublicKey().Marshal(), wanted) {
-
-			// If the key supports signer opts, translate the flag to the appropriate option
-			if parameterizedSigner, ok := k.signer.(ssh.ParameterizedSigner); ok {
-				var opts crypto.SignerOpts
-				switch flags {
-				case SignatureFlagRsaSha256:
-					opts = crypto.SHA256
-				case SignatureFlagRsaSha512:
-					opts = crypto.SHA512
-				default:
-					opts = nil
-				}
-				return parameterizedSigner.SignWithOpts(rand.Reader, data, opts)
-			} else {
+			if flags == 0 {
 				return k.signer.Sign(rand.Reader, data)
+			} else {
+				if algorithmSigner, ok := k.signer.(ssh.AlgorithmSigner); !ok {
+					return nil, fmt.Errorf("agent: signature does not support non-default signature algorithm: %T", k.signer)
+				} else {
+					var algorithm string
+					switch flags {
+					case SignatureFlagRsaSha256:
+						algorithm = ssh.SigAlgoRSASHA2256
+					case SignatureFlagRsaSha512:
+						algorithm = ssh.SigAlgoRSASHA2512
+					default:
+						return nil, fmt.Errorf("agent: unsupported signature flags: %d", flags)
+					}
+					return algorithmSigner.SignWithAlgorithm(rand.Reader, data, algorithm)
+				}
 			}
 		}
 	}
