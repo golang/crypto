@@ -284,7 +284,7 @@ func (c *client) call(req []byte) (reply interface{}, err error) {
 	}
 	respSize := binary.BigEndian.Uint32(respSizeBuf[:])
 	if respSize > maxAgentResponseBytes {
-		return nil, clientErr(err)
+		return nil, clientErr(errors.New("response too large"))
 	}
 
 	buf := make([]byte, respSize)
