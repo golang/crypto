@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -232,7 +233,15 @@ func TestServerResponseTooLarge(t *testing.T) {
 	response.Keys = make([]byte, maxAgentResponseBytes+1)
 
 	agent := NewClient(a)
-	go b.Write(ssh.Marshal(response))
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		n, _ := b.Write(ssh.Marshal(response))
+		if n < 4 {
+			t.Fatalf("At least 4 bytes (the response size) should have been successfully written: %d < 4", n)
+		}
+	}()
 	_, err = agent.List()
 	if err == nil {
 		t.Fatal("Did not get error result")
@@ -240,6 +249,10 @@ func TestServerResponseTooLarge(t *testing.T) {
 	if err.Error() != "agent: client error: response too large" {
 		t.Fatal("Did not get expected error result")
 	}
+	// We need to explicitly close the client connection or else the server-side write call might block waiting for
+	// the client to consume the entire message (which it shouldn't)
+	a.Close()
+	wg.Wait()
 }
 
 func TestAuth(t *testing.T) {
