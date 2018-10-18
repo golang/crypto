@@ -83,9 +83,9 @@ type ExtendedAgent interface {
 	// the request is unsupported by the agent then ErrAgentExtensionUnsupported MUST be
 	// returned.
 	//
-	// Since [PROTOCOL.agent] section 4.7 specifies that the contents of a successful request
-	// are unspecified (including the type of the message), the complete response will be
-	// returned as a []byte slice, including the "type" byte of the message.
+	// In the case of success, since [PROTOCOL.agent] section 4.7 specifies that the contents
+	// of the response are unspecified (including the type of the message), the complete
+	// response will be returned as a []byte slice, including the "type" byte of the message.
 	Extension(extensionType string, contents []byte) ([]byte, error)
 }
 
@@ -221,7 +221,7 @@ const agentExtensionFailure = 28
 // as the result of a SSH_AGENTC_EXTENSION request. Note that the protocol
 // specification (and therefore this error) does not distinguish between a
 // specific extension being unsupported and extensions being unsupported entirely.
-var ErrAgentExtensionUnsupported = errors.New("Agent extension unsupported")
+var ErrAgentExtensionUnsupported = errors.New("agent: agent extension unsupported")
 
 type extensionAgentMsg struct {
 	ExtensionType string `sshtype:"27"`
@@ -331,28 +331,28 @@ func (c *client) call(req []byte) (reply interface{}, err error) {
 // callRaw sends an RPC to the agent. On success, the raw
 // bytes of the response are returned; no unmarshalling is
 // performed on the response.
-func (c *client) callRaw(req []byte) ([]byte, error) {
+func (c *client) callRaw(req []byte) (reply []byte, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	msg := make([]byte, 4+len(req))
 	binary.BigEndian.PutUint32(msg, uint32(len(req)))
 	copy(msg[4:], req)
-	if _, err := c.conn.Write(msg); err != nil {
+	if _, err = c.conn.Write(msg); err != nil {
 		return nil, clientErr(err)
 	}
 
 	var respSizeBuf [4]byte
-	if _, err := io.ReadFull(c.conn, respSizeBuf[:]); err != nil {
+	if _, err = io.ReadFull(c.conn, respSizeBuf[:]); err != nil {
 		return nil, clientErr(err)
 	}
 	respSize := binary.BigEndian.Uint32(respSizeBuf[:])
 	if respSize > maxAgentResponseBytes {
-		return nil, clientErr(errors.New("response too big"))
+		return nil, clientErr(err)
 	}
 
 	buf := make([]byte, respSize)
-	if _, err := io.ReadFull(c.conn, buf); err != nil {
+	if _, err = io.ReadFull(c.conn, buf); err != nil {
 		return nil, clientErr(err)
 	}
 	return buf, nil
@@ -760,10 +760,10 @@ func (s *agentKeyringSigner) SignWithOpts(rand io.Reader, data []byte, opts cryp
 	return s.agent.SignWithFlags(s.pub, data, flags)
 }
 
-// Calls a extension method. It is up to the agent implementation as to whether or not
+// Calls an extension method. It is up to the agent implementation as to whether or not
 // any particular extension is supported and may always return an error. Because the
 // type of the response is up to the implementation, this returns the bytes of the
-// response and does not attempt any time of unmarshalling.
+// response and does not attempt any type of unmarshalling.
 func (c *client) Extension(extensionType string, contents []byte) ([]byte, error) {
 	req := ssh.Marshal(extensionAgentMsg{
 		ExtensionType: extensionType,

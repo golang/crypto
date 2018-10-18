@@ -39,7 +39,9 @@ const (
 )
 
 // These constants represent non-default signature algorithms that are supported
-// as algorithm parameters to AlgorithmSigner.SignWithAlgorithm methods
+// as algorithm parameters to AlgorithmSigner.SignWithAlgorithm methods. See
+// [PROTOCOL.agent] section 4.5.1 and
+// https://tools.ietf.org/html/draft-ietf-curdle-rsa-sha2-10
 const (
 	SigAlgoRSA        = "ssh-rsa"
 	SigAlgoRSASHA2256 = "rsa-sha2-256"

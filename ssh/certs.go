@@ -224,7 +224,7 @@ type openSSHCertSigner struct {
 
 type algorithmOpenSSHCertSigner struct {
 	*openSSHCertSigner
-	algorgitmSigner AlgorithmSigner
+	algorithmSigner AlgorithmSigner
 }
 
 // NewCertSigner returns a Signer that signs with the given Certificate, whose
@@ -252,7 +252,7 @@ func (s *openSSHCertSigner) PublicKey() PublicKey {
 }
 
 func (s *algorithmOpenSSHCertSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error) {
-	return s.algorgitmSigner.SignWithAlgorithm(rand, data, algorithm)
+	return s.algorithmSigner.SignWithAlgorithm(rand, data, algorithm)
 }
 
 const sourceAddressCriticalOption = "source-address"
