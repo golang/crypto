@@ -1,0 +1,264 @@
+// Copyright 2018 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+package ccm
+
+import (
+	"bytes"
+	"crypto/aes"
+	"encoding/hex"
+	"testing"
+)
+
+var aesCCMTests = []struct {
+	key, nonce, plaintext, ad, result string
+}{
+	{
+		"11754cd72aec309bf52f7687212e8957",
+		"3c819d9a9bed087615030b65",
+		"",
+		"",
+		"e982cec4f3336c4fe4a9a98f3fd18ade",
+	},
+	{
+		"ca47248ac0b6f8372a97ac43508308ed",
+		"ffd2b598feabc9019262d2be",
+		"",
+		"",
+		"3414e34d9cba57d986f47bef064aa444",
+	},
+	{
+		"fbe3467cc254f81be8e78d765a2e6333",
+		"c6697351ff4aec29cdbaabf2",
+		"",
+		"67",
+		"bf73d066f639dce6dd3f12b01a1ec8ae",
+	},
+	{
+		"8a7f9d80d08ad0bd5a20fb689c88f9fc",
+		"88b7b27d800937fda4f47301",
+		"",
+		"50edd0503e0d7b8c91608eb5a1",
+		"b821d24204538b5ad2d15fcaf247346d",
+	},
+	{
+		"051758e95ed4abb2cdc69bb454110e82",
+		"c99a66320db73158a35a255d",
+		"",
+		"67c6697351ff4aec29cdbaabf2fbe3467cc254f81be8e78d765a2e63339f",
+		"17585566a00f929edaea27f509902d9f",
+	},
+	{
+		"77be63708971c4e240d1cb79e8d77feb",
+		"e0e00f19fed7ba0136a797f3",
+		"",
+		"7a43ec1d9c0a5a78a0b16533a6213cab",
+		"386c06d83a139cd8dd2479c3e93af965",
+	},
+	{
+		"7680c5d3ca6154758e510f4d25b98820",
+		"f8f105f9c3df4965780321f8",
+		"",
+		"c94c410194c765e3dcc7964379758ed3",
+		"d8113105f371dafc2029151d540902b0",
+	},
+	{
+		"7fddb57453c241d03efbed3ac44e371c",
+		"ee283a3fc75575e33efd4887",
+		"d5de42b461646c255c87bd2962d3b9a2",
+		"",
+		"3f8028679dbe2b6c386e7eb3c8ac3b33f51c4946672a6be9beafda496aedfdc1",
+	},
+	{
+		"ab72c77b97cb5fe9a382d9fe81ffdbed",
+		"54cc7dc2c37ec006bcc6d1da",
+		"007c5e5b3e59df24a7c355584fc1518d",
+		"",
+		"4ac5eeba5f96cdefbc8c982172fa42bd12f8d7ec2a37e8ebd1c95380cfc87aff",
+	},
+	{
+		"fe47fcce5fc32665d2ae399e4eec72ba",
+		"5adb9609dbaeb58cbd6e7275",
+		"7c0e88c88899a779228465074797cd4c2e1498d259b54390b85e3eef1c02df60e743f1b840382c4bccaf3bafb4ca8429bea063",
+		"88319d6e1d3ffa5f987199166c8a9b56c2aeba5a",
+		"af28de1ac01606c882b9a83fc973c20bf7b34d56c3fdae104943dce5fa3bddba831d39e6305d530e45979d352ed2bc99fd55925caa5e6621cc8caccdab92a46baaf313",
+	},
+	{
+		"ec0c2ba17aa95cd6afffe949da9cc3a8",
+		"296bce5b50b7d66096d627ef",
+		"b85b3753535b825cbe5f632c0b843c741351f18aa484281aebec2f45bb9eea2d79d987b764b9611f6c0f8641843d5d58f3a242",
+		"f8d00f05d22bf68599bcdeb131292ad6e2df5d14",
+		"f7e6ac211884a3f9cba44b5febb562d199b71d107e289260f011c455a21c4d5d0c21bea43b3236bf6af791e8b653bfd66095b508c6155e2d42da1a2842af06ee975a7e",
+	},
+	{
+		"2c1f21cf0f6fb3661943155c3e3d8492",
+		"23cb5ff362e22426984d1907",
+		"42f758836986954db44bf37c6ef5e4ac0adaf38f27252a1b82d02ea949c8a1a2dbc0d68b5615ba7c1220ff6510e259f06655d8",
+		"5d3624879d35e46849953e45a32a624d6a6c536ed9857c613b572b0333e701557a713e3f010ecdf9a6bd6c9e3e44b065208645aff4aabee611b391528514170084ccf587177f4488f33cfb5e979e42b6e1cfc0a60238982a7aec",
+		"c7d53ff0b5d749d9587e637bf4ded9cb0d92b65255590b13791a11315e84e7ac57b7c32003fadfe2d4887822c97fb6818d5e25e3e8510b1244d09d8bac79500714af7e",
+	},
+	{
+		"d9f7d2411091f947b4d6f1e2d1f0fb2e",
+		"e1934f5db57cc983e6b180e7",
+		"73ed042327f70fe9c572a61545eda8b2a0c6e1d6c291ef19248e973aee6c312012f490c2c6f6166f4a59431e182663fcaea05a",
+		"0a8a18a7150e940c3d87b38e73baee9a5c049ee21795663e264b694a949822b639092d0e67015e86363583fcf0ca645af9f43375f05fdb4ce84f411dcbca73c2220dea03a20115d2e51398344b16bee1ed7c499b353d6c597af8",
+		"918a52bd666bfc882403b281dd69d5aa2e32d8d67e7cab22a2abb410f559e388eed17bbefba426cba81cb04896d108c5ff9d750d872baab6ff9a9a06f791a5c74d7dd4",
+	},
+	{
+		"fe9bb47deb3a61e423c2231841cfd1fb",
+		"4d328eb776f500a2f7fb47aa",
+		"f1cc3818e421876bb6b8bbd6c9",
+		"",
+		"5d41a8b29834b8b999cea82468a411176d58ba233df370475451f45c10",
+	},
+	{
+		"6703df3701a7f54911ca72e24dca046a",
+		"12823ab601c350ea4bc2488c",
+		"793cd125b0b84a043e3ac67717",
+		"",
+		"51a1c1540a7d72a304e2fdeb0868014e70d297f81bc0787d339812325e",
+	},
+	// These cases test non-standard nonce sizes.
+	{
+		"1672c3537afa82004c6b8a46f6f0d026",
+		"dd845ad5165a45",
+		"",
+		"",
+		"57c47d33288f37fee099389b2e0573bd",
+	},
+	{
+		"9a4fea86a621a91ab371e492457796c0",
+		"f090bc0ebc770223",
+		"ca6131faf0ff210e4e693d6c31c109fc5b6f54224eb120f37de31dc59ec669b6",
+		"4f6e2585c161f05a9ae1f2f894e9f0ab52b45d0f",
+		"d743619a1ca64beee1c44e6ccac90e6f0cabf95249736e207e81e24c2c948e56757521eb7eff5d593a2aa758e71f27f3",
+	},
+	{
+		"d0f1f4defa1e8c08b4b26d576392027c",
+		"dcc93b2f8173f7c7b6",
+		"",
+		"",
+		"4676a0368cdda2d3d220095fb06d6cee",
+	},
+	{
+		"4a0c00a3d284dea9d4bf8b8dde86685e",
+		"832a44c84c7b31363984",
+		"6d4bf87640a6a48a50d28797b7",
+		"8d8c7ffc55086d539b5a8f0d1232654c",
+		"1e5b8782f17c3f8a7e16251c4ac49368aadb23a0c7106510a0f99921b0",
+	},
+	{
+		"0e18a844ac5bf38e4cd72d9b0942e506",
+		"c18e4ce340838144201cf3",
+		"67c6697351ff4aec29cdbaabf2fbe3467cc254f81be8e78d765a2e63339fc99a66320db73158a35a255d051758e95ed4abb2cdc69bb454110e827441213ddc8770e93ea141e1fc673e017e97eadc6b968f385c2aecb03bfb32af3c54ec18db5c021afe43fbfaaa3afb29d1e6053c7c9475d8be6189f95cbba8990f95b1ebf1b3",
+		"05eff700e9a13ae5ca0bcbd0484764bd1f231ea81c7b64c514735ac55e4b79633b706424119e09dcaad4acf21b10af3b33cde3504847155cbb6f2219ba9b7df50be11a1c7f23f829f8a41b13b5ca4ee8983238e0794d3d34bc5f4e77facb6c05ac86212baa1a55a2be70b5733b045cd33694b3afe2f0e49e4f321549fd824ea9",
+		"9a3560f9d142b149240e622bff0e9bfca43855d47cbac88d62ba7cb74da3b699fde60f4a18a2637a86da16b081a84c62ae9549aab91162ee5a0c6404e8edba8d6f7ffd434f5ce55288ff98c887d5a15e5f3c1d8e26757aedfebce635abf8a32373052f9e040949a4ded0bf10ce3e18e1a40071408903b6df085e828eb17128fda1a0ed26a30ea25308800b3478737044",
+	},
+	{
+		"1f6c3a3bc0542aabba4ef8f6c7169e73",
+		"66ecbabcd03129a97cda4ae3f8",
+		"67c6697351ff4aec29cdbaabf2fbe3467cc254f81be8e78d765a2e63339fc99a66320db73158a35a255d051758e95ed4abb2cdc69bb454110e827441213ddc8770e93ea141e1fc673e017e97eadc6b968f385c2aecb03bfb32af3c54ec18db5c021afe43fbfaaa3afb29d1e6053c7c9475d8be6189f95cbba8990f95b1ebf1b305eff700e9a13ae5ca0bcbd0484764bd1f231ea81c7b64c514735ac55e4b79633b706424119e09dcaad4acf21b10af3b33cde3504847155cbb6f2219ba9b7df50be11a1c7f23f829f8a41b13b5ca4ee8983238e0794d3d34bc5f4e77facb6c05ac86212baa1a55a2be70b5733b045cd33694b3afe2f0e49e4f321549fd824ea90870d4b28a2954489a0abcd50e18a844ac5bf38e4cd72d9b0942e506c433afcda3847f2dadd47647de321cec4ac430f62023856cfbb20704f4ec0bb920ba86c33e05f1ecd96733b79950a3e314d3d934f75ea0f210a8f6059401beb4bc4478fa4969e623d01ada696a7e4c7e5125b34884533a94fb319990325744ee9bbce9e525cf08f5e9e25e5360aad2b2d085fa54d835e8d466826498d9a8877565705a8a3f62802944de7ca5894e5759d351adac869580ec17e485f18c0c66f17cc07cbb22fce466da610b63af62bc83b4692f3affaf271693ac071fb86d11342d8def4f89d4b66335c1c7e4248367d8ed9612ec453902d8e50af89d7709d1a596c1f41f",
+		"95aa82ca6c49ae90cd1668baac7aa6f2b4a8ca99b2c2372acb08cf61c9c3805e6e0328da4cd76a19edd2d3994c798b0022569ad418d1fee4d9cd45a391c601ffc92ad91501432fee150287617c13629e69fc7281cd7165a63eab49cf714bce3a75a74f76ea7e64ff81eb61fdfec39b67bf0de98c7e4e32bdf97c8c6ac75ba43c02f4b2ed7216ecf3014df000108b67cf99505b179f8ed4980a6103d1bca70dbe9bbfab0ed59801d6e5f2d6f67d3ec5168e212e2daf02c6b963c98a1f7097de0c56891a2b211b01070dd8fd8b16c2a1a4e3cfd292d2984b3561d555d16c33ddc2bcf7edde13efe520c7e2abdda44d81881c531aeeeb66244c3b791ea8acfb6a68",
+		"0dd266d4d96bdb35ca0f799a9a88e10dee45b3cd8f22f4676d2458bed3ed464b46aa6b4b720580970d1085806e03ce7665497c9ff35b2fb0e921671db27e761b87a8739761fb312cf22254b4d7353f551d4d395e2c298d45ece3626acfa32656c6f8722f884365eda4cdbfccca3643f2d3161da2aad0dfcfbf13b230e98e98e8c1fe779a2e36fa9d3921ee0449a49e6bb02073fd710a87a4810beee2a09cfa501ee025853db48262749960e1f9f7c7a59cd027b4ce85df6979d5fbdd0331f8ffd8ee38f1cacc1ff2434dcb18d15f5d9dd66c5390bce636faf6594eea410fd9919acd5526300ba2528c03f6d55b12885991f7a28956c90534f3f847817d2e0206336895de8b9f6a0b523351e433b86547e8c340227ccae91ec2070e02915ab210cd46edbfaf1e5fc641b72b9d75a47ba64c01c941d0bacedd87a23eba0852bea94b15206001149a33c52da9b6cebbe5c8d7c3f64a787fc3beadb030312c2795086d167d58140cceb1d8ee348fcc5a3dc6e96644aac559e108afbed2c307b44b34e5ea924abb804e6945a51de29642335f44acfc9a37e957b0aeadf4f9cc5004a727822d9551ca93b4e51552d21545122034fda4233128febf82113f6e09fef281c867d4c3fd534fdcffc880d27d291f572fc88a5c6086232b17c8281570a0fd8c8d2dc03674315c4991b0a3d5def0372712f739e8dfe509d6c187a1340a13b48648aeeb40d8a8b8a969bb0ba63c4326f6",
+	},
+	// These cases test non-standard tag sizes.
+	{
+		"89c54b0d3bc3c397d5039058c220685f",
+		"bc7f45c00868758d62d4bb4d",
+		"582670b0baf5540a3775b6615605bd05",
+		"48d16cda0337105a50e2ed76fd18e114",
+		"3d58b1c0aedbc4ae66dc848ec8590eadc7b154c915c971f4ad65868fe9a0",
+	},
+	{
+		"bad6049678bf75c9087b3e3ae7e72c13",
+		"a0a017b83a67d8f1b883e561",
+		"a1be93012f05a1958440f74a5311f4a1",
+		"f7c27b51d5367161dc2ff1e9e3edc6f2",
+		"ad3c11613e063c090a628743949c3bb4facb3bbc189b911e3f9e1bd9",
+	},
+	{
+		"66a3c722ccf9709525650973ecc100a9",
+		"1621d42d3a6d42a2d2bf9494",
+		"61fa9dbbed2190fbc2ffabf5d2ea4ff8",
+		"d7a9b6523b8827068a6354a6d166c6b9",
+		"51431faf5025432bd3df54568fb4634d18db04f8f9b70375487e",
+	},
+	{
+		"562ae8aadb8d23e0f271a99a7d1bd4d1",
+		"f7a5e2399413b89b6ad31aff",
+		"bbdc3504d803682aa08a773cde5f231a",
+		"2b9680b886b3efb7c6354b38c63b5373",
+		"869bd36a27091c21b5f7d13503c6699de4c06338abb71be1",
+	},
+	{
+		"4ad93f5731c78e95a4202fc51b42745d",
+		"863a1895cb0b1ac0e08c5326",
+		"6b2985b4e7455585797ec4fa3d7da264",
+		"2c4bdd08bd2c647d5a70b70c70e40b56",
+		"8ba3e39f700a078f4b03ea832e8f63dc90d7d12eb504",
+	},
+	{
+		"72a169805da12a645607fdf33cd7dfa9",
+		"4e45571ef4219a6a2ee39469",
+		"cd15ffffff52fbab0d37214f10eaa24a",
+		"5388c027c9ab8e79397ea1da3e6e0f86",
+		"ae75fcdb4ff8a9191313ee6dd92f616309c9961b",
+	},
+}
+
+func TestAESCCM(t *testing.T) {
+	for i, test := range aesCCMTests {
+		key, _ := hex.DecodeString(test.key)
+		aes, err := aes.NewCipher(key)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		nonce, _ := hex.DecodeString(test.nonce)
+		plaintext, _ := hex.DecodeString(test.plaintext)
+		ad, _ := hex.DecodeString(test.ad)
+		tagSize := (len(test.result) - len(test.plaintext)) / 2
+
+		aesccm, err := ccm.New(aes, tagSize, len(nonce))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ct := aesccm.Seal(nil, nonce, plaintext, ad)
+		if ctHex := hex.EncodeToString(ct); ctHex != test.result {
+			t.Errorf("#%d: got %s, want %s", i, ctHex, test.result)
+			continue
+		}
+
+		plaintext2, err := aesccm.Open(nil, nonce, ct, ad)
+		if err != nil {
+			t.Errorf("#%d: Open failed", i)
+			continue
+		}
+
+		if !bytes.Equal(plaintext, plaintext2) {
+			t.Errorf("#%d: plaintext's don't match: got %x vs %x", i, plaintext2, plaintext)
+			continue
+		}
+
+		if len(ad) > 0 {
+			ad[0] ^= 0x80
+			if _, err := aesccm.Open(nil, nonce, ct, ad); err == nil {
+				t.Errorf("#%d: Open was successful after altering additional data", i)
+			}
+			ad[0] ^= 0x80
+		}
+
+		nonce[0] ^= 0x80
+		if _, err := aesccm.Open(nil, nonce, ct, ad); err == nil {
+			t.Errorf("#%d: Open was successful after altering nonce", i)
+		}
+		nonce[0] ^= 0x80
+
+		ct[0] ^= 0x80
+		if _, err := aesccm.Open(nil, nonce, ct, ad); err == nil {
+			t.Errorf("#%d: Open was successful after altering ciphertext", i)
+		}
+		ct[0] ^= 0x80
+	}
+}
