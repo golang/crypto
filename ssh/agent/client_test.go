@@ -241,6 +241,35 @@ func netPipe() (net.Conn, net.Conn, error) {
 	return c1, c2, nil
 }
 
+func TestServerResponseTooLarge(t *testing.T) {
+	a, b, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+
+	defer a.Close()
+	defer b.Close()
+
+	var response identitiesAnswerAgentMsg
+	response.NumKeys = 1
+	response.Keys = make([]byte, maxAgentResponseBytes+1)
+
+	agent := NewClient(a)
+	go func() {
+		n, _ := b.Write(ssh.Marshal(response))
+		if n < 4 {
+			t.Fatalf("At least 4 bytes (the response size) should have been successfully written: %d < 4", n)
+		}
+	}()
+	_, err = agent.List()
+	if err == nil {
+		t.Fatal("Did not get error result")
+	}
+	if err.Error() != "agent: client error: response too large" {
+		t.Fatal("Did not get expected error result")
+	}
+}
+
 func TestAuth(t *testing.T) {
 	agent, _, cleanup := startOpenSSHAgent(t)
 	defer cleanup()
