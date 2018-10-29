@@ -79,8 +79,8 @@ type ExtendedAgent interface {
 	// required to support any extensions, but this method allows agents to implement
 	// vendor-specific methods or add experimental features. See [PROTOCOL.agent] section 4.7.
 	// If agent extensions are unsupported entirely this method MUST return an
-	// ErrAgentExtensionUnsupported error. Similarly, if just the specific extensionType in
-	// the request is unsupported by the agent then ErrAgentExtensionUnsupported MUST be
+	// ErrExtensionUnsupported error. Similarly, if just the specific extensionType in
+	// the request is unsupported by the agent then ErrExtensionUnsupported MUST be
 	// returned.
 	//
 	// In the case of success, since [PROTOCOL.agent] section 4.7 specifies that the contents
@@ -215,13 +215,13 @@ type constrainExtensionAgentMsg struct {
 const agentExtension = 27
 const agentExtensionFailure = 28
 
-// ErrAgentExtensionUnsupported indicates that an extension defined in
+// ErrExtensionUnsupported indicates that an extension defined in
 // [PROTOCOL.agent] section 4.7 is unsupported by the agent. Specifically this
 // error indicates that the agent returned a standard SSH_AGENT_FAILURE message
 // as the result of a SSH_AGENTC_EXTENSION request. Note that the protocol
 // specification (and therefore this error) does not distinguish between a
 // specific extension being unsupported and extensions being unsupported entirely.
-var ErrAgentExtensionUnsupported = errors.New("agent: agent extension unsupported")
+var ErrExtensionUnsupported = errors.New("agent: extension unsupported")
 
 type extensionAgentMsg struct {
 	ExtensionType string `sshtype:"27"`
@@ -779,7 +779,7 @@ func (c *client) Extension(extensionType string, contents []byte) ([]byte, error
 	// [PROTOCOL.agent] section 4.7 indicates that an SSH_AGENT_FAILURE message
 	// represents an agent that does not support the extension
 	if buf[0] == agentFailure {
-		return nil, ErrAgentExtensionUnsupported
+		return nil, ErrExtensionUnsupported
 	}
 	if buf[0] == agentExtensionFailure {
 		return nil, errors.New("agent: generic extension failure")

@@ -177,7 +177,7 @@ func (s *server) processRequest(data []byte) (interface{}, error) {
 			if err != nil {
 				// If agent extensions are unsupported, return a standard SSH_AGENT_FAILURE
 				// message as required by [PROTOCOL.agent] section 4.7.
-				if err == ErrAgentExtensionUnsupported {
+				if err == ErrExtensionUnsupported {
 					responseStub.Rest = []byte{agentFailure}
 				} else {
 					// As the result of any other error processing an extension request,

@@ -237,5 +237,5 @@ func (r *keyring) Signers() ([]ssh.Signer, error) {
 
 // The keyring does not support any extensions
 func (r *keyring) Extension(extensionType string, contents []byte) ([]byte, error) {
-	return nil, ErrAgentExtensionUnsupported
+	return nil, ErrExtensionUnsupported
 }
