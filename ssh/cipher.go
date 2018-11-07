@@ -8,7 +8,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/des"
-	"crypto/rc4"
 	"crypto/subtle"
 	"encoding/binary"
 	"errors"
@@ -53,9 +52,6 @@ func newAESCTR(key, iv []byte) (cipher.Stream, error) {
 	return cipher.NewCTR(c, iv), nil
 }
 
-func newRC4(key, iv []byte) (cipher.Stream, error) {
-	return rc4.NewCipher(key)
-}
 
 type cipherMode struct {
 	keySize int
@@ -103,17 +99,6 @@ var cipherModes = map[string]*cipherMode{
 	"aes128-ctr": {16, aes.BlockSize, streamCipherMode(0, newAESCTR)},
 	"aes192-ctr": {24, aes.BlockSize, streamCipherMode(0, newAESCTR)},
 	"aes256-ctr": {32, aes.BlockSize, streamCipherMode(0, newAESCTR)},
-
-	// Ciphers from RFC4345, which introduces security-improved arcfour ciphers.
-	// They are defined in the order specified in the RFC.
-	"arcfour128": {16, 0, streamCipherMode(1536, newRC4)},
-	"arcfour256": {32, 0, streamCipherMode(1536, newRC4)},
-
-	// Cipher defined in RFC 4253, which describes SSH Transport Layer Protocol.
-	// Note that this cipher is not safe, as stated in RFC 4253: "Arcfour (and
-	// RC4) has problems with weak keys, and should be used with caution."
-	// RFC4345 introduces improved versions of Arcfour.
-	"arcfour": {16, 0, streamCipherMode(0, newRC4)},
 
 	// AEAD ciphers
 	gcmCipherID:        {16, 12, newGCMCipher},
