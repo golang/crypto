@@ -39,7 +39,7 @@ const (
 	S2KCountMax = 65011712
 )
 
-type stringToKeySpecifier = uint8
+type stringToKeySpecifier uint8
 
 const (
 	// The simple string-to-key directly hashes the password string to
@@ -217,7 +217,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	}
 	h := hash.New()
 
-	switch buf[0] {
+	switch stringToKeySpecifier(buf[0]) {
 	case simpleS2K:
 		f := func(out, in []byte) {
 			Simple(out, h, in)
@@ -253,7 +253,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 // nil. In that case, sensible defaults will be used.
 func Serialize(w io.Writer, key []byte, rand io.Reader, passphrase []byte, c *Config) error {
 	var buf [11]byte
-	buf[0] = iteratedAndSaltedS2K
+	buf[0] = byte(iteratedAndSaltedS2K)
 	buf[1], _ = HashToHashId(c.hash())
 	salt := buf[2:10]
 	if _, err := io.ReadFull(rand, salt); err != nil {
