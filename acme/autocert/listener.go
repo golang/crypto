@@ -58,6 +58,15 @@ func NewListener(domains ...string) net.Listener {
 	return m.Listener()
 }
 
+func (m *Manager) listener(address string) net.Listener {
+	ln := &listener{
+		m:    m,
+		conf: m.TLSConfig(),
+	}
+	ln.tcpListener, ln.tcpListenErr = net.Listen("tcp", address)
+	return ln
+}
+
 // Listener listens on the standard TLS port (443) on all interfaces
 // and returns a net.Listener returning *tls.Conn connections.
 //
@@ -71,12 +80,30 @@ func NewListener(domains ...string) net.Listener {
 // Unlike NewListener, it is the caller's responsibility to initialize
 // the Manager m's Prompt, Cache, HostPolicy, and other desired options.
 func (m *Manager) Listener() net.Listener {
-	ln := &listener{
-		m:    m,
-		conf: m.TLSConfig(),
-	}
-	ln.tcpListener, ln.tcpListenErr = net.Listen("tcp", ":443")
-	return ln
+	return m.listener(":443")
+}
+
+// ListenerCustomAddress listens on the given address
+// and returns a net.Listener returning *tls.Conn connections.
+//
+// Your service must be reacheable on port 443 from the public internet.
+//
+// ListenerCustomAddress("<IP>:443") binds your service to a specific IP address
+// ListenerCustomAddress(":<port>") binds your service to the given port. This will
+// not work without something like NAT to make your service reachable on
+// port 443 from the public internet.
+//
+// The returned listener uses a *tls.Config that enables HTTP/2, and
+// should only be used with servers that support HTTP/2.
+//
+// The returned Listener also enables TCP keep-alives on the accepted
+// connections. The returned *tls.Conn are returned before their TLS
+// handshake has completed.
+//
+// Unlike NewListener, it is the caller's responsibility to initialize
+// the Manager m's Prompt, Cache, HostPolicy, and other desired options.
+func (m *Manager) ListenerCustomAddress(address string) net.Listener {
+	return m.listener(address)
 }
 
 type listener struct {
