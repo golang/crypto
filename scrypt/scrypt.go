@@ -240,5 +240,7 @@ func Key(password, salt []byte, N, r, p, keyLen int) ([]byte, error) {
 		smix(b[i*128*r:], r, N, v, xy)
 	}
 
+	v = nil
+
 	return pbkdf2.Key(password, b, 1, keyLen, sha256.New), nil
 }
