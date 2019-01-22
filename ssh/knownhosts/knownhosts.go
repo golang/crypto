@@ -124,6 +124,13 @@ func (l *keyDBLine) match(a addr) bool {
 	return l.matcher.match(a)
 }
 
+type KnownHostDB interface {
+	// HostKeyCallback is knownhosts.New without the DB initialization.
+	HostKeyCallback() ssh.HostKeyCallback
+	// HostKeyAlgorithms takes an address and returns a list of matching key types.
+	HostKeyAlgorithms(address string) ([]string, error)
+}
+
 type hostKeyDB struct {
 	// Serialized version of revoked keys
 	revoked map[string]*KnownKey
@@ -350,6 +357,30 @@ func (db *hostKeyDB) check(address string, remote net.Addr, remoteKey ssh.Public
 	return db.checkAddr(hostToCheck, remoteKey)
 }
 
+// HostKeyAlgorithms returns a list of host key algorithms associated
+// with the given address to ensure we try to match keys we have
+func (db *hostKeyDB) HostKeyAlgorithms(address string) ([]string, error) {
+	// This can be refactored but illustrating that the code is
+	// from check().
+	// Give preference to the hostname if available.
+	knownTypes := []string{}
+
+	host, port, err := net.SplitHostPort(address)
+	if err != nil {
+		return knownTypes, fmt.Errorf("knownhosts: SplitHostPort(%s): %v", address, err)
+	}
+
+	a := addr{host, port}
+
+	// a used here to illustrate similarity to checkAddr
+	for _, l := range db.lines {
+		if l.match(a) {
+			knownTypes = append(knownTypes, l.knownKey.Key.Type())
+		}
+	}
+	return knownTypes, nil
+}
+
 // checkAddrs checks if we can find the given public key for any of
 // the given addresses.  If we only find an entry for the IP address,
 // or only the hostname, then this still succeeds.
@@ -408,6 +439,23 @@ func (db *hostKeyDB) Read(r io.Reader, filename string) error {
 	return scanner.Err()
 }
 
+// NewDB creates a new Host Key database from the files given and returns it.
+// New could be composed from this and db.HostKeyCallback()
+func NewDB(files ...string) (KnownHostDB, error) {
+	db := newHostKeyDB()
+	for _, fn := range files {
+		f, err := os.Open(fn)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		if err := db.Read(f, fn); err != nil {
+			return nil, err
+		}
+	}
+	return db, nil
+}
+
 // New creates a host key callback from the given OpenSSH host key
 // files. The returned callback is for use in
 // ssh.ClientConfig.HostKeyCallback. By preference, the key check
@@ -433,6 +481,16 @@ func New(files ...string) (ssh.HostKeyCallback, error) {
 	certChecker.HostKeyFallback = db.check
 
 	return certChecker.CheckHostKey, nil
+}
+
+// HostKeyCallback is the way to get the ssh.HostKeyCallback if you have used NewDB
+func (db *hostKeyDB) HostKeyCallback() ssh.HostKeyCallback {
+	var certChecker ssh.CertChecker
+	certChecker.IsHostAuthority = db.IsHostAuthority
+	certChecker.IsRevoked = db.IsRevoked
+	certChecker.HostKeyFallback = db.check
+
+	return certChecker.CheckHostKey
 }
 
 // Normalize normalizes an address into the form used in known_hosts
