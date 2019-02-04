@@ -86,7 +86,7 @@ func X25519Encrypt(random io.Reader, pub *PublicKey, msg, curveOID, fingerprint 
 	curve25519.ScalarMult(&zb, &d, &pubKey)
 	var bigZb = new (big.Int)
 	bigZb.SetBytes(zb[:])
-	z, err := buildKey(pub, bigZb, curveOID, fingerprint)
+	z, err := buildKey(pub, bigZb, curveOID, fingerprint, false)
 
 	if err != nil {
 		return nil, nil, err
@@ -117,14 +117,25 @@ func X25519Decrypt(priv *PrivateKey, vsG, m, curveOID, fingerprint []byte) (msg 
 	var bigZb = new(big.Int)
 	bigZb.SetBytes(zb[:])
 
-	z, err := buildKey(&priv.PublicKey, bigZb, curveOID, fingerprint)
-	if err != nil {
-		return nil, err
-	}
+	var c []byte
 
-	c, err := keywrap.Unwrap(z, m)
-	if err != nil {
-		return nil, err
+	for i := 0; i <= 1; i++ {
+		compat := i == 1
+
+		// Try buildKey twice; once with compat=false and once with compat=true
+		// (for compatibility with old OpenPGP.js, see comment in buildKey).
+		z, err := buildKey(&priv.PublicKey, bigZb, curveOID, fingerprint, compat)
+		if err != nil {
+			return nil, err
+		}
+
+		res, err := keywrap.Unwrap(z, m)
+		if compat && err != nil {
+			// Only return an error if we've tried both compat and non-compat buildKey.
+			return nil, err
+		}
+
+		c = res
 	}
 
 	return c[:len(c)-int(c[len(c)-1])], nil
