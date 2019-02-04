@@ -68,7 +68,7 @@ func Encrypt(random io.Reader, pub *PublicKey, msg, curveOID, fingerprint []byte
 	vsG = elliptic.Marshal(pub.Curve, x, y)
 	zb, _ := pub.Curve.ScalarMult(pub.X, pub.Y, d)
 
-	z, err := buildKey(pub, zb, curveOID, fingerprint)
+	z, err := buildKey(pub, zb, curveOID, fingerprint, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -88,7 +88,7 @@ func Decrypt(priv *PrivateKey, vsG, m, curveOID, fingerprint []byte) (msg []byte
 	x, y := elliptic.Unmarshal(priv.Curve, vsG)
 	zb, _ := priv.Curve.ScalarMult(x, y, priv.D)
 
-	z, err := buildKey(&priv.PublicKey, zb, curveOID, fingerprint)
+	z, err := buildKey(&priv.PublicKey, zb, curveOID, fingerprint, false)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func Decrypt(priv *PrivateKey, vsG, m, curveOID, fingerprint []byte) (msg []byte
 	return c[:len(c)-int(c[len(c)-1])], nil
 }
 
-func buildKey(pub *PublicKey, zb *big.Int, curveOID, fingerprint []byte) ([]byte, error) {
+func buildKey(pub *PublicKey, zb *big.Int, curveOID, fingerprint []byte, compat bool) ([]byte, error) {
 	// Param = curve_OID_len || curve_OID || public_key_alg_ID || 03
 	//         || 01 || KDF_hash_ID || KEK_alg_ID for AESKeyWrap
 	//         || "Anonymous Sender    " || recipient_fingerprint;
@@ -128,7 +128,16 @@ func buildKey(pub *PublicKey, zb *big.Int, curveOID, fingerprint []byte) ([]byte
 	if _, err := h.Write([]byte{0x0, 0x0, 0x0, 0x1}); err != nil {
 		return nil, err
 	}
-	if _, err := h.Write(zb.Bytes()); err != nil {
+	zbBytes := zb.Bytes()
+	if compat {
+		// Work around old OpenPGP.js bug where insignificant trailing zeros in
+		// this little-endian number are missing.
+		// (See https://github.com/openpgpjs/openpgpjs/pull/853.)
+		i := len(zbBytes)-1
+		for ; i >= 0 && zbBytes[i] == 0; i-- {}
+		zbBytes = zbBytes[:i+1]
+	}
+	if _, err := h.Write(zbBytes); err != nil {
 		return nil, err
 	}
 	if _, err := h.Write(param.Bytes()); err != nil {
