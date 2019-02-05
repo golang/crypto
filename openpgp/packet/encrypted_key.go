@@ -84,6 +84,13 @@ func checksumKeyMaterial(key []byte) uint16 {
 // private key must have been decrypted first.
 // If config is nil, sensible defaults will be used.
 func (e *EncryptedKey) Decrypt(priv *PrivateKey, config *Config) error {
+	if e.KeyId != 0 && e.KeyId != priv.KeyId {
+		return errors.InvalidArgumentError("cannot decrypt encrypted session key for key id " + strconv.FormatUint(e.KeyId, 16) + " with private key id " + strconv.FormatUint(priv.KeyId, 16))
+	}
+	if e.Algo != priv.PubKeyAlgo {
+		return errors.InvalidArgumentError("cannot decrypt encrypted session key of type " + strconv.Itoa(int(e.Algo)) + " with private key of type " + strconv.Itoa(int(priv.PubKeyAlgo)))
+	}
+
 	var err error
 	var b []byte
 
@@ -102,7 +109,7 @@ func (e *EncryptedKey) Decrypt(priv *PrivateKey, config *Config) error {
 		oid := priv.PublicKey.oid.EncodedBytes()
 		b, err = ecdh.Decrypt(priv.PrivateKey.(*ecdh.PrivateKey), vsG, m, oid, priv.PublicKey.Fingerprint[:])
 	default:
-		err = errors.InvalidArgumentError("cannot decrypted encrypted session key with private key of type " + strconv.Itoa(int(priv.PubKeyAlgo)))
+		err = errors.InvalidArgumentError("cannot decrypt encrypted session key with private key of type " + strconv.Itoa(int(priv.PubKeyAlgo)))
 	}
 
 	if err != nil {
