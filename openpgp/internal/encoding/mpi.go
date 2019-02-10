@@ -66,13 +66,13 @@ func (m *MPI) ReadFrom(r io.Reader) (int64, error) {
 
 	// remove leading zero bytes from malformed GnuPG encoded MPIs:
 	// https://bugs.gnupg.org/gnupg/issue1853
-	for _, b := range m.bytes {
-		if b != 0 {
-			break
-		}
-		m.bytes = m.bytes[1:]
-		m.bitLength -= 8
-	}
+	// for _, b := range m.bytes {
+	// 	if b != 0 {
+	// 		break
+	// 	}
+	// 	m.bytes = m.bytes[1:]
+	// 	m.bitLength -= 8
+	// }
 
 	return int64(n) + int64(nn), err
 }
