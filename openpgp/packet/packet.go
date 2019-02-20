@@ -7,6 +7,7 @@
 package packet // import "golang.org/x/crypto/openpgp/packet"
 
 import (
+	"bytes"
 	"bufio"
 	"crypto/cipher"
 	"io"
@@ -95,36 +96,43 @@ func (r *partialLengthReader) Read(p []byte) (n int, err error) {
 // See RFC 4880, section 4.2.2.4.
 type partialLengthWriter struct {
 	w          io.WriteCloser
+	buf        bytes.Buffer
 	lengthByte [1]byte
 }
 
 func (w *partialLengthWriter) Write(p []byte) (n int, err error) {
-	for len(p) > 0 {
+	bufLen := w.buf.Len()
+	if bufLen > 512 {
 		for power := uint(14); power < 32; power-- {
 			l := 1 << power
-			if len(p) >= l {
+			if bufLen >= l {
 				w.lengthByte[0] = 224 + uint8(power)
 				_, err = w.w.Write(w.lengthByte[:])
 				if err != nil {
 					return
 				}
 				var m int
-				m, err = w.w.Write(p[:l])
-				n += m
+				m, err = w.w.Write(w.buf.Next(l))
 				if err != nil {
 					return
 				}
-				p = p[l:]
+				if m != l {
+					return 0, io.ErrShortWrite
+				}
 				break
 			}
 		}
 	}
-	return
+	return w.buf.Write(p)
 }
 
-func (w *partialLengthWriter) Close() error {
-	w.lengthByte[0] = 0
-	_, err := w.w.Write(w.lengthByte[:])
+func (w *partialLengthWriter) Close() (err error) {
+	len := w.buf.Len()
+	err = serializeLength(w.w, len)
+	if err != nil {
+		return err
+	}
+	_, err = w.buf.WriteTo(w.w)
 	if err != nil {
 		return err
 	}
@@ -209,25 +217,43 @@ func readHeader(r io.Reader) (tag packetType, length int64, contents io.Reader, 
 // serializeHeader writes an OpenPGP packet header to w. See RFC 4880, section
 // 4.2.
 func serializeHeader(w io.Writer, ptype packetType, length int) (err error) {
-	var buf [6]byte
+	err = serializeType(w, ptype)
+	if err != nil {
+		return
+	}
+	return serializeLength(w, length)
+}
+
+// serializeType writes an OpenPGP packet type to w. See RFC 4880, section
+// 4.2.
+func serializeType(w io.Writer, ptype packetType) (err error) {
+	var buf [1]byte
+	buf[0] = 0x80 | 0x40 | byte(ptype)
+	_, err = w.Write(buf[:])
+	return
+}
+
+// serializeLength writes an OpenPGP packet length to w. See RFC 4880, section
+// 4.2.2.
+func serializeLength(w io.Writer, length int) (err error) {
+	var buf [5]byte
 	var n int
 
-	buf[0] = 0x80 | 0x40 | byte(ptype)
 	if length < 192 {
-		buf[1] = byte(length)
-		n = 2
+		buf[0] = byte(length)
+		n = 1
 	} else if length < 8384 {
 		length -= 192
-		buf[1] = 192 + byte(length>>8)
-		buf[2] = byte(length)
-		n = 3
+		buf[0] = 192 + byte(length>>8)
+		buf[1] = byte(length)
+		n = 2
 	} else {
-		buf[1] = 255
-		buf[2] = byte(length >> 24)
-		buf[3] = byte(length >> 16)
-		buf[4] = byte(length >> 8)
-		buf[5] = byte(length)
-		n = 6
+		buf[0] = 255
+		buf[1] = byte(length >> 24)
+		buf[2] = byte(length >> 16)
+		buf[3] = byte(length >> 8)
+		buf[4] = byte(length)
+		n = 5
 	}
 
 	_, err = w.Write(buf[:n])
@@ -238,9 +264,7 @@ func serializeHeader(w io.Writer, ptype packetType, length int) (err error) {
 // length of the packet is unknown. It returns a io.WriteCloser which can be
 // used to write the contents of the packet. See RFC 4880, section 4.2.
 func serializeStreamHeader(w io.WriteCloser, ptype packetType) (out io.WriteCloser, err error) {
-	var buf [1]byte
-	buf[0] = 0x80 | 0x40 | byte(ptype)
-	_, err = w.Write(buf[:])
+	err = serializeType(w, ptype)
 	if err != nil {
 		return
 	}
