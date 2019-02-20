@@ -55,7 +55,7 @@ func RandomG1(r io.Reader) (*big.Int, *G1, error) {
 
 func (e *G1) String() string {
 	if e.p == nil {
-		e.p = newCurvePoint(nil)
+		return "bn256.G1" + newCurvePoint(nil).String()
 	}
 	return "bn256.G1" + e.p.String()
 }
@@ -179,7 +179,7 @@ func RandomG2(r io.Reader) (*big.Int, *G2, error) {
 
 func (e *G2) String() string {
 	if e.p == nil {
-		e.p = newTwistPoint(nil)
+		return "bn256.G2" + newTwistPoint(nil).String()
 	}
 	return "bn256.G2" + e.p.String()
 }
@@ -285,7 +285,7 @@ type GT struct {
 
 func (e *GT) String() string {
 	if e.p == nil {
-		e.p = newGFp12(nil)
+		return "bn256.GT" + newGFp12(nil).String()
 	}
 	return "bn256.GT" + e.p.String()
 }
