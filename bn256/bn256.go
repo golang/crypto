@@ -15,9 +15,14 @@
 // http://cryptojedi.org/papers/dclxvi-20100714.pdf. Its output is compatible
 // with the implementation described in that paper.
 //
-// (This package previously claimed to operate at a 128-bit security level.
+// This package previously claimed to operate at a 128-bit security level.
 // However, recent improvements in attacks mean that is no longer true. See
-// https://moderncrypto.org/mail-archive/curves/2016/000740.html.)
+// https://moderncrypto.org/mail-archive/curves/2016/000740.html.
+//
+// Deprecated: due to its weakened security, new systems should not rely on this
+// elliptic curve. This package is frozen, and not implemented in constant time.
+// There is a more complete implementation at github.com/cloudflare/bn256, but
+// note that it suffers from the same security issues of the underlying curve.
 package bn256 // import "golang.org/x/crypto/bn256"
 
 import (
@@ -25,9 +30,6 @@ import (
 	"io"
 	"math/big"
 )
-
-// BUG(agl): this implementation is not constant time.
-// TODO(agl): keep GF(p²) elements in Mongomery form.
 
 // G1 is an abstract cyclic group. The zero value is suitable for use as the
 // output of an operation, but cannot be used as an input.
@@ -77,7 +79,8 @@ func (e *G1) ScalarMult(a *G1, k *big.Int) *G1 {
 }
 
 // Add sets e to a+b and then returns e.
-// BUG(agl): this function is not complete: a==b fails.
+//
+// Warning: this function is not complete, it fails for a equal to b.
 func (e *G1) Add(a, b *G1) *G1 {
 	if e.p == nil {
 		e.p = newCurvePoint(nil)
@@ -198,7 +201,8 @@ func (e *G2) ScalarMult(a *G2, k *big.Int) *G2 {
 }
 
 // Add sets e to a+b and then returns e.
-// BUG(agl): this function is not complete: a==b fails.
+//
+// Warning: this function is not complete, it fails for a equal to b.
 func (e *G2) Add(a, b *G2) *G2 {
 	if e.p == nil {
 		e.p = newTwistPoint(nil)

@@ -15,10 +15,12 @@
 // effectively create a unique key for each sector.
 //
 // XTS does not provide any authentication. An attacker can manipulate the
-// ciphertext and randomise a block (16 bytes) of the plaintext.
+// ciphertext and randomise a block (16 bytes) of the plaintext. This package
+// does not implement ciphertext-stealing so sectors must be a multiple of 16
+// bytes.
 //
-// (Note: this package does not implement ciphertext-stealing so sectors must
-// be a multiple of 16 bytes.)
+// Note that XTS is usually not appropriate for any use besides disk encryption.
+// Most users should use an AEAD mode like GCM (from crypto/cipher.NewGCM) instead.
 package xts // import "golang.org/x/crypto/xts"
 
 import (
