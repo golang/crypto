@@ -11,27 +11,30 @@ import (
 	"net"
 )
 
+// controlMasterMessage covers multiple CM packets that have no data
 type controlMasterMessage struct {
 	PacketType uint32 // MUX_C_ALIVE_CHECK|MUX_C_PROXY|MUX_S_PROXY|MUX_S_OK
 	RequestID  uint32
 }
 
+// controlMasterAliveMessage is a response to a MUX_C_ALIVE_CHECK request
 type controlMasterAliveMessage struct {
 	PacketType uint32 // MUX_S_ALIVE
 	RequestID  uint32
 	ServerPID  uint32
 }
 
+// controlMasterHelloMessage is used to ask/send the protocol version
 type controlMasterHelloMessage struct {
 	PacketType      uint32 // MUX_MSG_HELLO
 	ProtocolVersion uint32
 }
 
-// Dial starts a client connection to the given SSH server. It is a
-// convenience function that connects to the given unix socket,
-// initiates the SSH handshake, and then sets up a Client.  For access
-// to incoming channels and requests, use net.Dial with NewControlMasterClientConn
-// instead.
+// DialControlMaster starts a client connection to the given SSH server.
+// It is a convenience function that connects to the given unix socket,
+// initiates the ControlMaster proxy prottocol, and then sets up a Client.
+// For access to incoming channels and requests, use net.Dial with
+// NewControlMasterClientConn instead.
 func DialControlMaster(path string) (*Client, error) {
 	conn, err := net.Dial("unix", path)
 	if err != nil {
@@ -44,23 +47,23 @@ func DialControlMaster(path string) (*Client, error) {
 	return NewClient(c, chans, reqs), nil
 }
 
-// NewControlMasterClientConn establishes a ControlMaster connection using c
-// as the underlying transport.  The Request and NewChannel channels
-// must be serviced or the connection will hang.
+// NewControlMasterClientConn establishes a ControlMaster connection
+// using c as the underlying transport. The Request and NewChannel
+// channels must be serviced or the connection will hang.
 func NewControlMasterClientConn(c net.Conn) (Conn, <-chan NewChannel, <-chan *Request, error) {
 	// We never populate transport, just mux since there is no handshake needed
 	conn := &connection{
 		sshConn: sshConn{conn: c},
 	}
 
-	// Instead of calling clientHandshake, call our own to exchange packets
+	// Instead of calling clientHandshake, call our own setup function
 	if err := setupControlMaster(&controlMasterConnection{
 		rw: c,
 	}); err != nil {
 		return nil, nil, nil, err
 	}
 
-	// Instead of using transport we use the proxy packetConn instead
+	// Instead of using transport we use our own impl packetConn instead
 	conn.mux = newMux(&controlMasterProxyConnection{
 		rwc: c,
 	})
@@ -72,7 +75,7 @@ type controlMasterConnection struct {
 	rw io.ReadWriter
 }
 
-// writePacket adds the length then the
+// writePacket prefixes the length to the packet and writes it
 func (c *controlMasterConnection) writePacket(packet interface{}) error {
 	// Marshal the packet as standard SSH packets
 	msg := Marshal(packet)
@@ -90,7 +93,7 @@ func (c *controlMasterConnection) writePacket(packet interface{}) error {
 	return nil
 }
 
-// readPacket reads a packet
+// readPacket reads a packet based on an initial length value
 func (c *controlMasterConnection) readPacket(packet interface{}) error {
 	// Read the response length
 	respLenBuf := make([]byte, 4)
@@ -111,14 +114,13 @@ func (c *controlMasterConnection) readPacket(packet interface{}) error {
 	if uint32(n2) != respLen {
 		return errors.New("Unable to read entire response packet")
 	}
-	// Unmarshal
 	if err := Unmarshal(resp, packet); err != nil {
 		return err
 	}
 	return nil
 }
 
-// setupControlMaster gets a controlmaster session setup
+// setupControlMaster gets a CM session setup and switches to proxy mode
 func setupControlMaster(c *controlMasterConnection) error {
 	// Write our own hello with version
 	if err := c.writePacket(&controlMasterHelloMessage{
@@ -158,7 +160,7 @@ func setupControlMaster(c *controlMasterConnection) error {
 	if alive.PacketType != 0x80000005 {
 		return errors.New("Unknown PacketType, expecting MUX_C_ALIVE_CHECK")
 	}
-	// Request that we move to proxy mode
+	// Request that we move to proxy mode with request id 2
 	if err := c.writePacket(&controlMasterMessage{
 		// MUX_C_PROXY
 		PacketType: 0x1000000F,
@@ -166,7 +168,7 @@ func setupControlMaster(c *controlMasterConnection) error {
 	}); err != nil {
 		return err
 	}
-	// Confirm we are now in proxy mode
+	// Wait for confirmation we are now in proxy mode
 	var proxy controlMasterMessage
 	if err := c.readPacket(&proxy); err != nil {
 		return err
@@ -183,7 +185,7 @@ type controlMasterProxyConnection struct {
 	rwc io.ReadWriteCloser
 }
 
-// writePacket
+// writePacket prefixes the length and a 0 byte of padding
 func (c *controlMasterProxyConnection) writePacket(packet []byte) error {
 	// Packet length is the length of data plus 1 byte of padding
 	packetLen := uint32(len(packet) + 1)
@@ -200,7 +202,7 @@ func (c *controlMasterProxyConnection) writePacket(packet []byte) error {
 	return nil
 }
 
-// readPacket
+// readPacket reads a packet based on an initial length value minus padding
 func (c *controlMasterProxyConnection) readPacket() ([]byte, error) {
 	// 4 bytes of length
 	header := make([]byte, 4)
@@ -225,7 +227,7 @@ func (c *controlMasterProxyConnection) readPacket() ([]byte, error) {
 	return resp[1:], nil
 }
 
-// Close just passes through to the io.ReadWriteCloser
+// Close just passes through to the underlying io.ReadWriteCloser
 func (c *controlMasterProxyConnection) Close() error {
 	return c.rwc.Close()
 }
