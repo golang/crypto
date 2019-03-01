@@ -20,22 +20,27 @@ type buffer struct {
 	tail *element // the buffer that will be read last
 
 	closed bool
+
+	bufPool *sync.Pool
 }
 
 // An element represents a single link in a linked list.
 type element struct {
-	buf  []byte
+	pkt  *packetBuf
 	next *element
 }
 
 // newBuffer returns an empty buffer that is not closed.
 func newBuffer() *buffer {
-	e := new(element)
 	b := &buffer{
 		Cond: newCond(),
-		head: e,
-		tail: e,
+		bufPool: &sync.Pool{New: func() interface{} {
+			return &packetBuf{buf: make([]byte, 1024*8)}
+		}},
 	}
+	e := &element{pkt:b.bufPool.Get().(*packetBuf)}
+	b.head = e
+	b.tail = e
 	return b
 }
 
@@ -43,7 +48,9 @@ func newBuffer() *buffer {
 // buf must not be modified after the call to write.
 func (b *buffer) write(buf []byte) {
 	b.Cond.L.Lock()
-	e := &element{buf: buf}
+	pktBuf := b.bufPool.Get().(*packetBuf)
+	pktBuf.size = copy(pktBuf.buf, buf)
+	e := &element{pkt: pktBuf}
 	b.tail.next = e
 	b.tail = e
 	b.Cond.Signal()
@@ -66,23 +73,28 @@ func (b *buffer) Read(buf []byte) (n int, err error) {
 	defer b.Cond.L.Unlock()
 
 	for len(buf) > 0 {
-		// if there is data in b.head, copy it
-		if len(b.head.buf) > 0 {
-			r := copy(buf, b.head.buf)
-			buf, b.head.buf = buf[r:], b.head.buf[r:]
-			n += r
-			continue
-		}
-		// if there is a next buffer, make it the head
-		if len(b.head.buf) == 0 && b.head != b.tail {
-			b.head = b.head.next
-			continue
-		}
+		// if b.head.pkt != nil {
+			// if there is data in b.head, copy it
+			if b.head.pkt.size > 0 {
+				r := copy(buf, b.head.pkt.buf)
+				buf, b.head.pkt.buf = buf[r:], b.head.pkt.buf[r:]
+				n += r
+				b.head.pkt.size -= r
+				continue
+			}
 
-		// if at least one byte has been copied, return
-		if n > 0 {
-			break
-		}
+			// if there is a next buffer, make it the head
+			if b.head.pkt.size == 0 && b.head != b.tail {
+				b.bufPool.Put(b.head.pkt)
+				b.head = b.head.next
+				continue
+			}
+
+			// if at least one byte has been copied, return
+			if n > 0 {
+				break
+			}
+		// }
 
 		// if nothing was read, and there is nothing outstanding
 		// check to see if the buffer is closed.

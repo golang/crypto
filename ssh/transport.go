@@ -159,10 +159,10 @@ func (s *connectionState) readPacket(r *bufio.Reader) ([]byte, error) {
 
 	// The packet may point to an internal buffer, so copy the
 	// packet out here.
-	fresh := make([]byte, len(packet))
-	copy(fresh, packet)
+	// fresh := make([]byte, len(packet))
+	// copy(fresh, packet)
 
-	return fresh, err
+	return packet, err
 }
 
 func (t *transport) writePacket(packet []byte) error {

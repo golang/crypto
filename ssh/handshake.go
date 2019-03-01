@@ -55,7 +55,7 @@ type handshakeTransport struct {
 	hostKeyAlgorithms []string
 
 	// On read error, incoming is closed, and readError is set.
-	incoming  chan []byte
+	incoming  chan *packetBuf
 	readError error
 
 	mu             sync.Mutex
@@ -94,6 +94,10 @@ type handshakeTransport struct {
 
 	// The session ID or nil if first kex did not complete yet.
 	sessionID []byte
+
+	bufPool *sync.Pool
+
+	rbuf []byte
 }
 
 type pendingKex struct {
@@ -106,11 +110,14 @@ func newHandshakeTransport(conn keyingTransport, config *Config, clientVersion, 
 		conn:          conn,
 		serverVersion: serverVersion,
 		clientVersion: clientVersion,
-		incoming:      make(chan []byte, chanSize),
+		incoming:      make(chan *packetBuf, chanSize),
 		requestKex:    make(chan struct{}, 1),
 		startKex:      make(chan *pendingKex, 1),
 
 		config: config,
+		bufPool: &sync.Pool{New: func() interface{} {
+			return &packetBuf{buf: make([]byte, 1024*8)}
+		}},
 	}
 	t.resetReadThresholds()
 	t.resetWriteThresholds()
@@ -183,12 +190,26 @@ func (t *handshakeTransport) printPacket(p []byte, write bool) {
 	}
 }
 
+type packetBuf struct {
+	buf  []byte
+	size int
+}
+
 func (t *handshakeTransport) readPacket() ([]byte, error) {
 	p, ok := <-t.incoming
 	if !ok {
+		t.bufPool.Put(p)
 		return nil, t.readError
 	}
-	return p, nil
+
+	if p.size > len(t.rbuf) {
+		t.rbuf = make([]byte, p.size)
+	}
+	// b := make([]byte, p.size)
+	copy(t.rbuf, p.buf[:p.size])
+	t.bufPool.Put(p)
+
+	return t.rbuf[:p.size], nil
 }
 
 func (t *handshakeTransport) readLoop() {
@@ -204,7 +225,10 @@ func (t *handshakeTransport) readLoop() {
 		if p[0] == msgIgnore || p[0] == msgDebug {
 			continue
 		}
-		t.incoming <- p
+
+		pb := t.bufPool.Get().(*packetBuf)
+		pb.size = copy(pb.buf, p)
+		t.incoming <- pb
 	}
 
 	// Stop writers too.
@@ -402,9 +426,11 @@ func (t *handshakeTransport) readOnePacket(first bool) ([]byte, error) {
 
 	firstKex := t.sessionID == nil
 
+	keyInitData := make([]byte, len(p))
+	copy(keyInitData, p)
 	kex := pendingKex{
 		done:      make(chan error, 1),
-		otherInit: p,
+		otherInit: keyInitData,
 	}
 	t.startKex <- &kex
 	err = <-kex.done
