@@ -66,9 +66,14 @@ func Encrypt(random io.Reader, pub *PublicKey, msg, curveOID, fingerprint []byte
 	}
 
 	vsG = elliptic.Marshal(pub.Curve, x, y)
-	zb, _ := pub.Curve.ScalarMult(pub.X, pub.Y, d)
+	zbBig, _ := pub.Curve.ScalarMult(pub.X, pub.Y, d)
 
-	z, err := buildKey(pub, zb, curveOID, fingerprint, false)
+	byteLen := (pub.Curve.Params().BitSize + 7) >> 3
+	zb := make([]byte, byteLen)
+	zbBytes := zbBig.Bytes()
+	copy(zb[byteLen-len(zbBytes):], zbBytes)
+
+	z, err := buildKey(pub, zb, curveOID, fingerprint, false, false)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -86,9 +91,14 @@ func Decrypt(priv *PrivateKey, vsG, m, curveOID, fingerprint []byte) (msg []byte
 		return X25519Decrypt(priv, vsG, m, curveOID, fingerprint)
 	}
 	x, y := elliptic.Unmarshal(priv.Curve, vsG)
-	zb, _ := priv.Curve.ScalarMult(x, y, priv.D)
+	zbBig, _ := priv.Curve.ScalarMult(x, y, priv.D)
 
-	z, err := buildKey(&priv.PublicKey, zb, curveOID, fingerprint, false)
+	byteLen := (priv.Curve.Params().BitSize + 7) >> 3
+	zb := make([]byte, byteLen)
+	zbBytes := zbBig.Bytes()
+	copy(zb[byteLen-len(zbBytes):], zbBytes)
+
+	z, err := buildKey(&priv.PublicKey, zb, curveOID, fingerprint, false, false)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +111,7 @@ func Decrypt(priv *PrivateKey, vsG, m, curveOID, fingerprint []byte) (msg []byte
 	return c[:len(c)-int(c[len(c)-1])], nil
 }
 
-func buildKey(pub *PublicKey, zb *big.Int, curveOID, fingerprint []byte, compat bool) ([]byte, error) {
+func buildKey(pub *PublicKey, zb []byte, curveOID, fingerprint []byte, stripLeading, stripTrailing bool) ([]byte, error) {
 	// Param = curve_OID_len || curve_OID || public_key_alg_ID || 03
 	//         || 01 || KDF_hash_ID || KEK_alg_ID for AESKeyWrap
 	//         || "Anonymous Sender    " || recipient_fingerprint;
@@ -128,16 +138,20 @@ func buildKey(pub *PublicKey, zb *big.Int, curveOID, fingerprint []byte, compat 
 	if _, err := h.Write([]byte{0x0, 0x0, 0x0, 0x1}); err != nil {
 		return nil, err
 	}
-	zbBytes := zb.Bytes()
-	if compat {
+	zbLen := len(zb)
+	i := 0
+	j := zbLen - 1
+	if stripLeading {
+		// Work around old go crypto bug where the leading zeros are missing.
+		for ; i < zbLen && zb[i] == 0; i++ {}
+	}
+	if stripTrailing {
 		// Work around old OpenPGP.js bug where insignificant trailing zeros in
 		// this little-endian number are missing.
 		// (See https://github.com/openpgpjs/openpgpjs/pull/853.)
-		i := len(zbBytes)-1
-		for ; i >= 0 && zbBytes[i] == 0; i-- {}
-		zbBytes = zbBytes[:i+1]
+		for ; j >= 0 && zb[j] == 0; j-- {}
 	}
-	if _, err := h.Write(zbBytes); err != nil {
+	if _, err := h.Write(zb[i:j+1]); err != nil {
 		return nil, err
 	}
 	if _, err := h.Write(param.Bytes()); err != nil {
