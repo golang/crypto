@@ -90,7 +90,7 @@ type connection struct {
 	sshConn
 
 	// The connection protocol.
-	*mux
+	*Mux
 }
 
 func (c *connection) Close() error {

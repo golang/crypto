@@ -184,7 +184,7 @@ func NewServerConn(c net.Conn, config *ServerConfig) (*ServerConn, <-chan NewCha
 		c.Close()
 		return nil, nil, nil, err
 	}
-	return &ServerConn{s, perms}, s.mux.incomingChannels, s.mux.incomingRequests, nil
+	return &ServerConn{s, perms}, s.Mux.incomingChannels, s.Mux.incomingRequests, nil
 }
 
 // signAndMarshal signs the data with the appropriate algorithm,
@@ -252,7 +252,7 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	if err != nil {
 		return nil, err
 	}
-	s.mux = newMux(s.transport)
+	s.Mux = newMux(s.transport)
 	return perms, err
 }
 

@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func muxPair() (*mux, *mux) {
+func muxPair() (*Mux, *Mux) {
 	a, b := memPipe()
 
 	s := newMux(a)
@@ -22,7 +22,7 @@ func muxPair() (*mux, *mux) {
 
 // Returns both ends of a channel, and the mux for the 2nd
 // channel.
-func channelPair(t *testing.T) (*channel, *channel, *mux) {
+func channelPair(t *testing.T) (*channel, *channel, *Mux) {
 	c, s := muxPair()
 
 	res := make(chan *channel, 1)

@@ -83,9 +83,11 @@ func (c *chanList) dropAll() []*channel {
 	return r
 }
 
-// mux represents the state for the SSH connection protocol, which
+// Mux represents the state for the SSH connection protocol, which
 // multiplexes many channels onto a single packet transport.
-type mux struct {
+// This is an ssh internal struct, it can be created using NewMux
+// It is most often used with a custom PacketConn
+type Mux struct {
 	conn     PacketConn
 	chanList chanList
 
@@ -103,7 +105,7 @@ type mux struct {
 // offset.
 var globalOff uint32
 
-func (m *mux) Wait() error {
+func (m *Mux) Wait() error {
 	m.errCond.L.Lock()
 	defer m.errCond.L.Unlock()
 	for m.err == nil {
@@ -112,9 +114,9 @@ func (m *mux) Wait() error {
 	return m.err
 }
 
-// newMux returns a mux that runs over the given connection.
-func newMux(p PacketConn) *mux {
-	m := &mux{
+// newMux returns a Mux that runs over the given connection.
+func newMux(p PacketConn) *Mux {
+	m := &Mux{
 		conn:             p,
 		incomingChannels: make(chan NewChannel, chanSize),
 		globalResponses:  make(chan interface{}, 1),
@@ -129,7 +131,13 @@ func newMux(p PacketConn) *mux {
 	return m
 }
 
-func (m *mux) sendMessage(msg interface{}) error {
+// NewMux returns a Mux for a given PacketConn along with the incoming channels
+func NewMux(p PacketConn) (*Mux, <-chan NewChannel, <-chan *Request) {
+	m := newMux(p)
+	return m, m.incomingChannels, m.incomingRequests
+}
+
+func (m *Mux) sendMessage(msg interface{}) error {
 	p := Marshal(msg)
 	if debugMux {
 		log.Printf("send global(%d): %#v", m.chanList.offset, msg)
@@ -137,7 +145,7 @@ func (m *mux) sendMessage(msg interface{}) error {
 	return m.conn.WritePacket(p)
 }
 
-func (m *mux) SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error) {
+func (m *Mux) SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error) {
 	if wantReply {
 		m.globalSentMu.Lock()
 		defer m.globalSentMu.Unlock()
@@ -171,20 +179,20 @@ func (m *mux) SendRequest(name string, wantReply bool, payload []byte) (bool, []
 
 // ackRequest must be called after processing a global request that
 // has WantReply set.
-func (m *mux) ackRequest(ok bool, data []byte) error {
+func (m *Mux) ackRequest(ok bool, data []byte) error {
 	if ok {
 		return m.sendMessage(globalRequestSuccessMsg{Data: data})
 	}
 	return m.sendMessage(globalRequestFailureMsg{Data: data})
 }
 
-func (m *mux) Close() error {
+func (m *Mux) Close() error {
 	return m.conn.Close()
 }
 
 // loop runs the connection machine. It will process packets until an
-// error is encountered. To synchronize on loop exit, use mux.Wait.
-func (m *mux) loop() {
+// error is encountered. To synchronize on loop exit, use Mux.Wait.
+func (m *Mux) loop() {
 	var err error
 	for err == nil {
 		err = m.onePacket()
@@ -211,7 +219,7 @@ func (m *mux) loop() {
 }
 
 // onePacket reads and processes one packet.
-func (m *mux) onePacket() error {
+func (m *Mux) onePacket() error {
 	packet, err := m.conn.ReadPacket()
 	if err != nil {
 		return err
@@ -246,7 +254,7 @@ func (m *mux) onePacket() error {
 	return ch.handlePacket(packet)
 }
 
-func (m *mux) handleGlobalPacket(packet []byte) error {
+func (m *Mux) handleGlobalPacket(packet []byte) error {
 	msg, err := decode(packet)
 	if err != nil {
 		return err
@@ -270,7 +278,7 @@ func (m *mux) handleGlobalPacket(packet []byte) error {
 }
 
 // handleChannelOpen schedules a channel to be Accept()ed.
-func (m *mux) handleChannelOpen(packet []byte) error {
+func (m *Mux) handleChannelOpen(packet []byte) error {
 	var msg channelOpenMsg
 	if err := Unmarshal(packet, &msg); err != nil {
 		return err
@@ -294,7 +302,7 @@ func (m *mux) handleChannelOpen(packet []byte) error {
 	return nil
 }
 
-func (m *mux) OpenChannel(chanType string, extra []byte) (Channel, <-chan *Request, error) {
+func (m *Mux) OpenChannel(chanType string, extra []byte) (Channel, <-chan *Request, error) {
 	ch, err := m.openChannel(chanType, extra)
 	if err != nil {
 		return nil, nil, err
@@ -303,7 +311,7 @@ func (m *mux) OpenChannel(chanType string, extra []byte) (Channel, <-chan *Reque
 	return ch, ch.incomingRequests, nil
 }
 
-func (m *mux) openChannel(chanType string, extra []byte) (*channel, error) {
+func (m *Mux) openChannel(chanType string, extra []byte) (*channel, error) {
 	ch := m.newChannel(chanType, channelOutbound, extra)
 
 	ch.maxIncomingPayload = channelMaxPacket
