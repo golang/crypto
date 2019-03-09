@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-// An in-memory packetConn. It is safe to call Close and writePacket
+// An in-memory PacketConn. It is safe to call Close and WritePacket
 // from different goroutines.
 type memTransport struct {
 	eof     bool
@@ -20,7 +20,7 @@ type memTransport struct {
 	*sync.Cond
 }
 
-func (t *memTransport) readPacket() ([]byte, error) {
+func (t *memTransport) ReadPacket() ([]byte, error) {
 	t.Lock()
 	defer t.Unlock()
 	for {
@@ -53,7 +53,7 @@ func (t *memTransport) Close() error {
 	return err
 }
 
-func (t *memTransport) writePacket(p []byte) error {
+func (t *memTransport) WritePacket(p []byte) error {
 	t.write.Lock()
 	defer t.write.Unlock()
 	if t.write.eof {
@@ -66,7 +66,7 @@ func (t *memTransport) writePacket(p []byte) error {
 	return nil
 }
 
-func memPipe() (a, b packetConn) {
+func memPipe() (a, b PacketConn) {
 	t1 := memTransport{}
 	t2 := memTransport{}
 	t1.write = &t2
@@ -78,20 +78,20 @@ func memPipe() (a, b packetConn) {
 
 func TestMemPipe(t *testing.T) {
 	a, b := memPipe()
-	if err := a.writePacket([]byte{42}); err != nil {
-		t.Fatalf("writePacket: %v", err)
+	if err := a.WritePacket([]byte{42}); err != nil {
+		t.Fatalf("WritePacket: %v", err)
 	}
 	if err := a.Close(); err != nil {
 		t.Fatal("Close: ", err)
 	}
-	p, err := b.readPacket()
+	p, err := b.ReadPacket()
 	if err != nil {
-		t.Fatal("readPacket: ", err)
+		t.Fatal("ReadPacket: ", err)
 	}
 	if len(p) != 1 || p[0] != 42 {
 		t.Fatalf("got %v, want {42}", p)
 	}
-	p, err = b.readPacket()
+	p, err = b.ReadPacket()
 	if err != io.EOF {
 		t.Fatalf("got %v, %v, want EOF", p, err)
 	}

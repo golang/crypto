@@ -154,7 +154,7 @@ func TestMuxChannelOverflow(t *testing.T) {
 	marshalUint32(packet[5:], uint32(1))
 	packet[9] = 42
 
-	if err := writer.mux.conn.writePacket(packet); err != nil {
+	if err := writer.mux.conn.WritePacket(packet); err != nil {
 		t.Errorf("could not send packet")
 	}
 	if _, err := reader.SendRequest("hello", true, nil); err == nil {
@@ -432,7 +432,7 @@ func TestMuxInvalidRecord(t *testing.T) {
 	marshalUint32(packet[5:], 1)
 	packet[9] = 42
 
-	a.conn.writePacket(packet)
+	a.conn.WritePacket(packet)
 	go a.SendRequest("hello", false, nil)
 	// 'a' wrote an invalid packet, so 'b' has exited.
 	req, ok := <-b.incomingRequests
@@ -475,7 +475,7 @@ func TestMuxMaxPacketSize(t *testing.T) {
 	marshalUint32(packet[5:], uint32(len(large)))
 	packet[9] = 42
 
-	if err := a.mux.conn.writePacket(packet); err != nil {
+	if err := a.mux.conn.WritePacket(packet); err != nil {
 		t.Errorf("could not send packet")
 	}
 

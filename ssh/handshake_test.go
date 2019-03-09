@@ -68,17 +68,17 @@ type noiseTransport struct {
 	keyingTransport
 }
 
-func (t *noiseTransport) writePacket(p []byte) error {
+func (t *noiseTransport) WritePacket(p []byte) error {
 	ignore := []byte{msgIgnore}
-	if err := t.keyingTransport.writePacket(ignore); err != nil {
+	if err := t.keyingTransport.WritePacket(ignore); err != nil {
 		return err
 	}
 	debug := []byte{msgDebug, 1, 2, 3}
-	if err := t.keyingTransport.writePacket(debug); err != nil {
+	if err := t.keyingTransport.WritePacket(debug); err != nil {
 		return err
 	}
 
-	return t.keyingTransport.writePacket(p)
+	return t.keyingTransport.WritePacket(p)
 }
 
 func addNoiseTransport(t keyingTransport) keyingTransport {
@@ -157,7 +157,7 @@ func TestHandshakeBasic(t *testing.T) {
 		// that the packet buffer is reset correctly.
 		for i := 0; i < N; i++ {
 			p := []byte{msgRequestSuccess, byte(i)}
-			if err := trC.writePacket(p); err != nil {
+			if err := trC.WritePacket(p); err != nil {
 				t.Fatalf("sendPacket: %v", err)
 			}
 			if (i % 10) == 5 {
@@ -184,7 +184,7 @@ func TestHandshakeBasic(t *testing.T) {
 	err = nil
 	for ; i < N; i++ {
 		var p []byte
-		p, err = trS.readPacket()
+		p, err = trS.ReadPacket()
 		if err != nil {
 			break
 		}
@@ -228,7 +228,7 @@ func TestForceFirstKex(t *testing.T) {
 	trC = newTransport(a, rand.Reader, true)
 
 	// This is the disallowed packet:
-	trC.writePacket(Marshal(&serviceRequestMsg{serviceUserAuth}))
+	trC.WritePacket(Marshal(&serviceRequestMsg{serviceUserAuth}))
 
 	// Rest of the setup.
 	trS = newTransport(b, rand.Reader, false)
@@ -278,7 +278,7 @@ func TestHandshakeAutoRekeyWrite(t *testing.T) {
 		defer close(done)
 		j := 0
 		for ; j < numPacket; j++ {
-			if p, err := trS.readPacket(); err != nil {
+			if p, err := trS.ReadPacket(); err != nil {
 				break
 			} else if !bytes.Equal(input, p) {
 				t.Errorf("got packet type %d, want %d", p[0], input[0])
@@ -295,8 +295,8 @@ func TestHandshakeAutoRekeyWrite(t *testing.T) {
 	for i := 0; i < numPacket; i++ {
 		p := make([]byte, len(input))
 		copy(p, input)
-		if err := trC.writePacket(p); err != nil {
-			t.Errorf("writePacket: %v", err)
+		if err := trC.WritePacket(p); err != nil {
+			t.Errorf("WritePacket: %v", err)
 		}
 		if i == 2 {
 			// Make sure the kex is in progress.
@@ -339,8 +339,8 @@ func TestHandshakeAutoRekeyRead(t *testing.T) {
 
 	packet := make([]byte, 501)
 	packet[0] = msgRequestSuccess
-	if err := trS.writePacket(packet); err != nil {
-		t.Fatalf("writePacket: %v", err)
+	if err := trS.WritePacket(packet); err != nil {
+		t.Fatalf("WritePacket: %v", err)
 	}
 
 	// While we read out the packet, a key change will be
@@ -348,8 +348,8 @@ func TestHandshakeAutoRekeyRead(t *testing.T) {
 	done := make(chan int, 1)
 	go func() {
 		defer close(done)
-		if _, err := trC.readPacket(); err != nil {
-			t.Fatalf("readPacket(client): %v", err)
+		if _, err := trC.ReadPacket(); err != nil {
+			t.Fatalf("ReadPacket(client): %v", err)
 		}
 
 	}()
@@ -361,7 +361,7 @@ func TestHandshakeAutoRekeyRead(t *testing.T) {
 // errorKeyingTransport generates errors after a given number of
 // read/write operations.
 type errorKeyingTransport struct {
-	packetConn
+	PacketConn
 	readLeft, writeLeft int
 }
 
@@ -373,24 +373,24 @@ func (n *errorKeyingTransport) getSessionID() []byte {
 	return nil
 }
 
-func (n *errorKeyingTransport) writePacket(packet []byte) error {
+func (n *errorKeyingTransport) WritePacket(packet []byte) error {
 	if n.writeLeft == 0 {
 		n.Close()
 		return errors.New("barf")
 	}
 
 	n.writeLeft--
-	return n.packetConn.writePacket(packet)
+	return n.PacketConn.WritePacket(packet)
 }
 
-func (n *errorKeyingTransport) readPacket() ([]byte, error) {
+func (n *errorKeyingTransport) ReadPacket() ([]byte, error) {
 	if n.readLeft == 0 {
 		n.Close()
 		return nil, errors.New("barf")
 	}
 
 	n.readLeft--
-	return n.packetConn.readPacket()
+	return n.PacketConn.ReadPacket()
 }
 
 func TestHandshakeErrorHandlingRead(t *testing.T) {
@@ -445,13 +445,13 @@ func testHandshakeErrorHandlingN(t *testing.T, readLimit, writeLimit int, couple
 
 	var wg sync.WaitGroup
 
-	for _, hs := range []packetConn{serverConn, clientConn} {
+	for _, hs := range []PacketConn{serverConn, clientConn} {
 		if !coupled {
 			wg.Add(2)
-			go func(c packetConn) {
+			go func(c PacketConn) {
 				for i := 0; ; i++ {
 					str := fmt.Sprintf("%08x", i) + strings.Repeat("x", int(minRekeyThreshold)/4-8)
-					err := c.writePacket(Marshal(&serviceRequestMsg{str}))
+					err := c.WritePacket(Marshal(&serviceRequestMsg{str}))
 					if err != nil {
 						break
 					}
@@ -459,9 +459,9 @@ func testHandshakeErrorHandlingN(t *testing.T, readLimit, writeLimit int, couple
 				wg.Done()
 				c.Close()
 			}(hs)
-			go func(c packetConn) {
+			go func(c PacketConn) {
 				for {
-					_, err := c.readPacket()
+					_, err := c.ReadPacket()
 					if err != nil {
 						break
 					}
@@ -470,13 +470,13 @@ func testHandshakeErrorHandlingN(t *testing.T, readLimit, writeLimit int, couple
 			}(hs)
 		} else {
 			wg.Add(1)
-			go func(c packetConn) {
+			go func(c PacketConn) {
 				for {
-					_, err := c.readPacket()
+					_, err := c.ReadPacket()
 					if err != nil {
 						break
 					}
-					if err := c.writePacket(msg); err != nil {
+					if err := c.WritePacket(msg); err != nil {
 						break
 					}
 
@@ -501,32 +501,32 @@ func TestDisconnect(t *testing.T) {
 	defer trC.Close()
 	defer trS.Close()
 
-	trC.writePacket([]byte{msgRequestSuccess, 0, 0})
+	trC.WritePacket([]byte{msgRequestSuccess, 0, 0})
 	errMsg := &disconnectMsg{
 		Reason:  42,
 		Message: "such is life",
 	}
-	trC.writePacket(Marshal(errMsg))
-	trC.writePacket([]byte{msgRequestSuccess, 0, 0})
+	trC.WritePacket(Marshal(errMsg))
+	trC.WritePacket([]byte{msgRequestSuccess, 0, 0})
 
-	packet, err := trS.readPacket()
+	packet, err := trS.ReadPacket()
 	if err != nil {
-		t.Fatalf("readPacket 1: %v", err)
+		t.Fatalf("ReadPacket 1: %v", err)
 	}
 	if packet[0] != msgRequestSuccess {
 		t.Errorf("got packet %v, want packet type %d", packet, msgRequestSuccess)
 	}
 
-	_, err = trS.readPacket()
+	_, err = trS.ReadPacket()
 	if err == nil {
-		t.Errorf("readPacket 2 succeeded")
+		t.Errorf("ReadPacket 2 succeeded")
 	} else if !reflect.DeepEqual(err, errMsg) {
 		t.Errorf("got error %#v, want %#v", err, errMsg)
 	}
 
-	_, err = trS.readPacket()
+	_, err = trS.ReadPacket()
 	if err == nil {
-		t.Errorf("readPacket 3 succeeded")
+		t.Errorf("ReadPacket 3 succeeded")
 	}
 }
 
@@ -544,7 +544,7 @@ func TestHandshakeRekeyDefault(t *testing.T) {
 	defer trC.Close()
 	defer trS.Close()
 
-	trC.writePacket([]byte{msgRequestSuccess, 0, 0})
+	trC.WritePacket([]byte{msgRequestSuccess, 0, 0})
 	trC.Close()
 
 	rgb := (1024 + trC.readBytesLeft) >> 30

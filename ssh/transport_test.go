@@ -86,7 +86,7 @@ func TestTransportMaxPacketWrite(t *testing.T) {
 	buf := &closerBuffer{}
 	tr := newTransport(buf, rand.Reader, true)
 	huge := make([]byte, maxPacket+1)
-	err := tr.writePacket(huge)
+	err := tr.WritePacket(huge)
 	if err == nil {
 		t.Errorf("transport accepted write for a huge packet.")
 	}
@@ -104,7 +104,7 @@ func TestTransportMaxPacketReader(t *testing.T) {
 	buf.Write(huge)
 
 	tr := newTransport(buf, rand.Reader, true)
-	_, err := tr.readPacket()
+	_, err := tr.ReadPacket()
 	if err == nil {
 		t.Errorf("transport succeeded reading huge packet.")
 	} else if !strings.Contains(err.Error(), "large") {

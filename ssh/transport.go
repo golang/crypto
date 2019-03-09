@@ -22,16 +22,16 @@ const (
 	tripledescbcID = "3des-cbc"
 )
 
-// packetConn represents a transport that implements packet based
+// PacketConn represents a transport that implements packet based
 // operations.
-type packetConn interface {
+type PacketConn interface {
 	// Encrypt and send a packet of data to the remote peer.
-	writePacket(packet []byte) error
+	WritePacket(packet []byte) error
 
 	// Read a packet from the connection. The read is blocking,
 	// i.e. if error is nil, then the returned byte slice is
 	// always non-empty.
-	readPacket() ([]byte, error)
+	ReadPacket() ([]byte, error)
 
 	// Close closes the write-side of the connection.
 	Close() error
@@ -109,7 +109,7 @@ func (t *transport) printPacket(p []byte, write bool) {
 }
 
 // Read and decrypt next packet.
-func (t *transport) readPacket() (p []byte, err error) {
+func (t *transport) ReadPacket() (p []byte, err error) {
 	for {
 		p, err = t.reader.readPacket(t.bufReader)
 		if err != nil {
@@ -165,7 +165,7 @@ func (s *connectionState) readPacket(r *bufio.Reader) ([]byte, error) {
 	return fresh, err
 }
 
-func (t *transport) writePacket(packet []byte) error {
+func (t *transport) WritePacket(packet []byte) error {
 	if debugTransport {
 		t.printPacket(packet, true)
 	}

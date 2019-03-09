@@ -191,7 +191,7 @@ type channel struct {
 	windowMu sync.Mutex
 	myWindow uint32
 
-	// writeMu serializes calls to mux.conn.writePacket() and
+	// writeMu serializes calls to mux.conn.WritePacket() and
 	// protects sentClose and packetPool. This mutex must be
 	// different from windowMu, as writePacket can block if there
 	// is a key exchange pending.
@@ -212,7 +212,7 @@ func (ch *channel) writePacket(packet []byte) error {
 		return io.EOF
 	}
 	ch.sentClose = (packet[0] == msgChannelClose)
-	err := ch.mux.conn.writePacket(packet)
+	err := ch.mux.conn.WritePacket(packet)
 	ch.writeMu.Unlock()
 	return err
 }

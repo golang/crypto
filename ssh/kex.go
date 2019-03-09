@@ -68,11 +68,11 @@ func (m *handshakeMagics) write(w io.Writer) {
 type kexAlgorithm interface {
 	// Server runs server-side key agreement, signing the result
 	// with a hostkey.
-	Server(p packetConn, rand io.Reader, magics *handshakeMagics, s Signer) (*kexResult, error)
+	Server(p PacketConn, rand io.Reader, magics *handshakeMagics, s Signer) (*kexResult, error)
 
 	// Client runs the client-side key agreement. Caller is
 	// responsible for verifying the host key signature.
-	Client(p packetConn, rand io.Reader, magics *handshakeMagics) (*kexResult, error)
+	Client(p PacketConn, rand io.Reader, magics *handshakeMagics) (*kexResult, error)
 }
 
 // dhGroup is a multiplicative group suitable for implementing Diffie-Hellman key agreement.
@@ -87,7 +87,7 @@ func (group *dhGroup) diffieHellman(theirPublic, myPrivate *big.Int) (*big.Int, 
 	return new(big.Int).Exp(theirPublic, myPrivate, group.p), nil
 }
 
-func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handshakeMagics) (*kexResult, error) {
+func (group *dhGroup) Client(c PacketConn, randSource io.Reader, magics *handshakeMagics) (*kexResult, error) {
 	hashFunc := crypto.SHA1
 
 	var x *big.Int
@@ -105,11 +105,11 @@ func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handsha
 	kexDHInit := kexDHInitMsg{
 		X: X,
 	}
-	if err := c.writePacket(Marshal(&kexDHInit)); err != nil {
+	if err := c.WritePacket(Marshal(&kexDHInit)); err != nil {
 		return nil, err
 	}
 
-	packet, err := c.readPacket()
+	packet, err := c.ReadPacket()
 	if err != nil {
 		return nil, err
 	}
@@ -142,9 +142,9 @@ func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handsha
 	}, nil
 }
 
-func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
+func (group *dhGroup) Server(c PacketConn, randSource io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
 	hashFunc := crypto.SHA1
-	packet, err := c.readPacket()
+	packet, err := c.ReadPacket()
 	if err != nil {
 		return
 	}
@@ -197,7 +197,7 @@ func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handsha
 	}
 	packet = Marshal(&kexDHReply)
 
-	err = c.writePacket(packet)
+	err = c.WritePacket(packet)
 	return &kexResult{
 		H:         H,
 		K:         K,
@@ -213,7 +213,7 @@ type ecdh struct {
 	curve elliptic.Curve
 }
 
-func (kex *ecdh) Client(c packetConn, rand io.Reader, magics *handshakeMagics) (*kexResult, error) {
+func (kex *ecdh) Client(c PacketConn, rand io.Reader, magics *handshakeMagics) (*kexResult, error) {
 	ephKey, err := ecdsa.GenerateKey(kex.curve, rand)
 	if err != nil {
 		return nil, err
@@ -224,11 +224,11 @@ func (kex *ecdh) Client(c packetConn, rand io.Reader, magics *handshakeMagics) (
 	}
 
 	serialized := Marshal(&kexInit)
-	if err := c.writePacket(serialized); err != nil {
+	if err := c.WritePacket(serialized); err != nil {
 		return nil, err
 	}
 
-	packet, err := c.readPacket()
+	packet, err := c.ReadPacket()
 	if err != nil {
 		return nil, err
 	}
@@ -306,8 +306,8 @@ func validateECPublicKey(curve elliptic.Curve, x, y *big.Int) bool {
 	return true
 }
 
-func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
-	packet, err := c.readPacket()
+func (kex *ecdh) Server(c PacketConn, rand io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
+	packet, err := c.ReadPacket()
 	if err != nil {
 		return nil, err
 	}
@@ -363,7 +363,7 @@ func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, p
 	}
 
 	serialized := Marshal(&reply)
-	if err := c.writePacket(serialized); err != nil {
+	if err := c.WritePacket(serialized); err != nil {
 		return nil, err
 	}
 
@@ -427,16 +427,16 @@ func (kp *curve25519KeyPair) generate(rand io.Reader) error {
 // wrong order.
 var curve25519Zeros [32]byte
 
-func (kex *curve25519sha256) Client(c packetConn, rand io.Reader, magics *handshakeMagics) (*kexResult, error) {
+func (kex *curve25519sha256) Client(c PacketConn, rand io.Reader, magics *handshakeMagics) (*kexResult, error) {
 	var kp curve25519KeyPair
 	if err := kp.generate(rand); err != nil {
 		return nil, err
 	}
-	if err := c.writePacket(Marshal(&kexECDHInitMsg{kp.pub[:]})); err != nil {
+	if err := c.WritePacket(Marshal(&kexECDHInitMsg{kp.pub[:]})); err != nil {
 		return nil, err
 	}
 
-	packet, err := c.readPacket()
+	packet, err := c.ReadPacket()
 	if err != nil {
 		return nil, err
 	}
@@ -476,8 +476,8 @@ func (kex *curve25519sha256) Client(c packetConn, rand io.Reader, magics *handsh
 	}, nil
 }
 
-func (kex *curve25519sha256) Server(c packetConn, rand io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
-	packet, err := c.readPacket()
+func (kex *curve25519sha256) Server(c PacketConn, rand io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
+	packet, err := c.ReadPacket()
 	if err != nil {
 		return
 	}
@@ -527,7 +527,7 @@ func (kex *curve25519sha256) Server(c packetConn, rand io.Reader, magics *handsh
 		HostKey:         hostKeyBytes,
 		Signature:       sig,
 	}
-	if err := c.writePacket(Marshal(&reply)); err != nil {
+	if err := c.WritePacket(Marshal(&reply)); err != nil {
 		return nil, err
 	}
 	return &kexResult{

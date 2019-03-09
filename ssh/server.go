@@ -230,7 +230,7 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	s.sessionID = s.transport.getSessionID()
 
 	var packet []byte
-	if packet, err = s.transport.readPacket(); err != nil {
+	if packet, err = s.transport.ReadPacket(); err != nil {
 		return nil, err
 	}
 
@@ -244,7 +244,7 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	serviceAccept := serviceAcceptMsg{
 		Service: serviceUserAuth,
 	}
-	if err := s.transport.writePacket(Marshal(&serviceAccept)); err != nil {
+	if err := s.transport.WritePacket(Marshal(&serviceAccept)); err != nil {
 		return nil, err
 	}
 
@@ -337,7 +337,7 @@ userAuthLoop:
 				Message: "too many authentication failures",
 			}
 
-			if err := s.transport.writePacket(Marshal(discMsg)); err != nil {
+			if err := s.transport.WritePacket(Marshal(discMsg)); err != nil {
 				return nil, err
 			}
 
@@ -345,7 +345,7 @@ userAuthLoop:
 		}
 
 		var userAuthReq userAuthRequestMsg
-		if packet, err := s.transport.readPacket(); err != nil {
+		if packet, err := s.transport.ReadPacket(); err != nil {
 			if err == io.EOF {
 				return nil, &ServerAuthError{Errors: authErrs}
 			}
@@ -367,7 +367,7 @@ userAuthLoop:
 				bannerMsg := &userAuthBannerMsg{
 					Message: msg,
 				}
-				if err := s.transport.writePacket(Marshal(bannerMsg)); err != nil {
+				if err := s.transport.WritePacket(Marshal(bannerMsg)); err != nil {
 					return nil, err
 				}
 			}
@@ -467,7 +467,7 @@ userAuthLoop:
 						Algo:   algo,
 						PubKey: pubKeyData,
 					}
-					if err = s.transport.writePacket(Marshal(&okMsg)); err != nil {
+					if err = s.transport.WritePacket(Marshal(&okMsg)); err != nil {
 						return nil, err
 					}
 					continue userAuthLoop
@@ -527,12 +527,12 @@ userAuthLoop:
 			return nil, errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
 		}
 
-		if err := s.transport.writePacket(Marshal(&failureMsg)); err != nil {
+		if err := s.transport.WritePacket(Marshal(&failureMsg)); err != nil {
 			return nil, err
 		}
 	}
 
-	if err := s.transport.writePacket([]byte{msgUserAuthSuccess}); err != nil {
+	if err := s.transport.WritePacket([]byte{msgUserAuthSuccess}); err != nil {
 		return nil, err
 	}
 	return perms, nil
@@ -555,7 +555,7 @@ func (c *sshClientKeyboardInteractive) Challenge(user, instruction string, quest
 		prompts = appendBool(prompts, echos[i])
 	}
 
-	if err := c.transport.writePacket(Marshal(&userAuthInfoRequestMsg{
+	if err := c.transport.WritePacket(Marshal(&userAuthInfoRequestMsg{
 		Instruction: instruction,
 		NumPrompts:  uint32(len(questions)),
 		Prompts:     prompts,
@@ -563,7 +563,7 @@ func (c *sshClientKeyboardInteractive) Challenge(user, instruction string, quest
 		return nil, err
 	}
 
-	packet, err := c.transport.readPacket()
+	packet, err := c.transport.ReadPacket()
 	if err != nil {
 		return nil, err
 	}

@@ -28,7 +28,7 @@ const chanSize = 16
 // changes. It need not be thread-safe. It should pass through
 // msgNewKeys in both directions.
 type keyingTransport interface {
-	packetConn
+	PacketConn
 
 	// prepareKeyChange sets up a key change. The key change for a
 	// direction will be effected if a msgNewKeys message is sent
@@ -151,7 +151,7 @@ func (t *handshakeTransport) getSessionID() []byte {
 // waitSession waits for the session to be established. This should be
 // the first thing to call after instantiating handshakeTransport.
 func (t *handshakeTransport) waitSession() error {
-	p, err := t.readPacket()
+	p, err := t.ReadPacket()
 	if err != nil {
 		return err
 	}
@@ -183,7 +183,7 @@ func (t *handshakeTransport) printPacket(p []byte, write bool) {
 	}
 }
 
-func (t *handshakeTransport) readPacket() ([]byte, error) {
+func (t *handshakeTransport) ReadPacket() ([]byte, error) {
 	p, ok := <-t.incoming
 	if !ok {
 		return nil, t.readError
@@ -220,7 +220,7 @@ func (t *handshakeTransport) pushPacket(p []byte) error {
 	if debugHandshake {
 		t.printPacket(p, true)
 	}
-	return t.conn.writePacket(p)
+	return t.conn.WritePacket(p)
 }
 
 func (t *handshakeTransport) getWriteError() error {
@@ -371,7 +371,7 @@ func (t *handshakeTransport) resetReadThresholds() {
 }
 
 func (t *handshakeTransport) readOnePacket(first bool) ([]byte, error) {
-	p, err := t.conn.readPacket()
+	p, err := t.conn.ReadPacket()
 	if err != nil {
 		return nil, err
 	}
@@ -479,7 +479,7 @@ func (t *handshakeTransport) sendKexInit() error {
 	return nil
 }
 
-func (t *handshakeTransport) writePacket(p []byte) error {
+func (t *handshakeTransport) WritePacket(p []byte) error {
 	switch p[0] {
 	case msgKexInit:
 		return errors.New("ssh: only handshakeTransport can send kexInit")
@@ -569,7 +569,7 @@ func (t *handshakeTransport) enterKeyExchange(otherInitPacket []byte) error {
 	if otherInit.FirstKexFollows && (clientInit.KexAlgos[0] != serverInit.KexAlgos[0] || clientInit.ServerHostKeyAlgos[0] != serverInit.ServerHostKeyAlgos[0]) {
 		// other side sent a kex message for the wrong algorithm,
 		// which we have to ignore.
-		if _, err := t.conn.readPacket(); err != nil {
+		if _, err := t.conn.ReadPacket(); err != nil {
 			return err
 		}
 	}
@@ -598,10 +598,10 @@ func (t *handshakeTransport) enterKeyExchange(otherInitPacket []byte) error {
 	if err := t.conn.prepareKeyChange(t.algorithms, result); err != nil {
 		return err
 	}
-	if err = t.conn.writePacket([]byte{msgNewKeys}); err != nil {
+	if err = t.conn.WritePacket([]byte{msgNewKeys}); err != nil {
 		return err
 	}
-	if packet, err := t.conn.readPacket(); err != nil {
+	if packet, err := t.conn.ReadPacket(); err != nil {
 		return err
 	} else if packet[0] != msgNewKeys {
 		return unexpectedMessageError(msgNewKeys, packet[0])
