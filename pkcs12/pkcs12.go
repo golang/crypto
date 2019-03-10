@@ -27,9 +27,10 @@ var (
 	oidDataContentType          = asn1.ObjectIdentifier([]int{1, 2, 840, 113549, 1, 7, 1})
 	oidEncryptedDataContentType = asn1.ObjectIdentifier([]int{1, 2, 840, 113549, 1, 7, 6})
 
-	oidFriendlyName     = asn1.ObjectIdentifier([]int{1, 2, 840, 113549, 1, 9, 20})
-	oidLocalKeyID       = asn1.ObjectIdentifier([]int{1, 2, 840, 113549, 1, 9, 21})
-	oidMicrosoftCSPName = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 4, 1, 311, 17, 1})
+	oidFriendlyName         = asn1.ObjectIdentifier([]int{1, 2, 840, 113549, 1, 9, 20})
+	oidLocalKeyID           = asn1.ObjectIdentifier([]int{1, 2, 840, 113549, 1, 9, 21})
+	oidMicrosoftCSPName     = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 4, 1, 311, 17, 1})
+	oidMicrosoftLocalKeySet = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 4, 1, 311, 17, 2})
 )
 
 type pfxPdu struct {
@@ -187,6 +188,11 @@ func convertAttribute(attribute *pkcs12Attribute) (key, value string, err error)
 		// This key is chosen to match OpenSSL.
 		key = "Microsoft CSP Name"
 		isString = true
+	case attribute.Id.Equal(oidMicrosoftLocalKeySet):
+		// This key is chosen to match OpenSSL.
+		// Using in Windows IAS PEAP & LDAPS certificates.
+		// The value is always empty.
+		return "Microsoft Local Key set", "", nil
 	default:
 		return "", "", errors.New("pkcs12: unknown attribute with OID " + attribute.Id.String())
 	}
