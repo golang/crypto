@@ -9,7 +9,7 @@
 //
 // Putting a terminal into raw mode is the most common requirement:
 //
-// 	oldState, err := terminal.MakeRaw(0)
+// 	oldState, err := terminal.MakeRaw(int(os.Stdin.Fd()))
 // 	if err != nil {
 // 	        panic(err)
 // 	}
