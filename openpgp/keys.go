@@ -350,28 +350,18 @@ EachPacket:
 			current.UserId = pkt
 			e.Identities[pkt.Id] = current
 
-			for {
-				p, err = packets.Next()
-				if err == io.EOF {
-					return nil, io.ErrUnexpectedEOF
-				} else if err != nil {
-					return nil, err
-				}
-
-				sig, ok := p.(*packet.Signature)
-				if !ok {
-					return nil, errors.StructuralError("user ID packet not followed by self-signature")
-				}
-
-				if (sig.SigType == packet.SigTypePositiveCert || sig.SigType == packet.SigTypeGenericCert) && sig.IssuerKeyId != nil && *sig.IssuerKeyId == e.PrimaryKey.KeyId {
-					if err = e.PrimaryKey.VerifyUserIdSignature(pkt.Id, e.PrimaryKey, sig); err != nil {
-						return nil, errors.StructuralError("user ID self-signature invalid: " + err.Error())
-					}
-					current.SelfSignature = sig
-					break
-				}
-				current.Signatures = append(current.Signatures, sig)
+			p, err = packets.Next()
+			if err == io.EOF {
+				return nil, io.ErrUnexpectedEOF
+			} else if err != nil {
+				return nil, err
 			}
+
+			_, ok := p.(*packet.Signature)
+			if !ok {
+				return nil, errors.StructuralError("user ID packet not followed by self-signature")
+			}
+			packets.Unread(p)
 		case *packet.Signature:
 			if pkt.SigType == packet.SigTypeKeyRevocation {
 				revocations = append(revocations, pkt)
@@ -381,6 +371,15 @@ EachPacket:
 				// revocation keys).
 			} else if current == nil {
 				return nil, errors.StructuralError("signature packet found before user id packet")
+			} else if (pkt.SigType == packet.SigTypePositiveCert || pkt.SigType == packet.SigTypeGenericCert) && pkt.IssuerKeyId != nil && *pkt.IssuerKeyId == e.PrimaryKey.KeyId {
+				if err = e.PrimaryKey.VerifyUserIdSignature(current.UserId.Id, e.PrimaryKey, pkt); err != nil {
+					if current.SelfSignature == nil {
+						return nil, errors.StructuralError("user ID self-signature invalid: " + err.Error())
+					}
+				} else if current.SelfSignature == nil || pkt.CreationTime.After(current.SelfSignature.CreationTime) {
+					current.SelfSignature = pkt
+				}
+				current.Signatures = append(current.Signatures, pkt)
 			} else {
 				current.Signatures = append(current.Signatures, pkt)
 			}
@@ -524,10 +523,6 @@ func (e *Entity) serializeIdentities(w io.Writer) (err error) {
 		if err != nil {
 			return err
 		}
-		err = ident.SelfSignature.Serialize(w)
-		if err != nil {
-			return err
-		}
 		for _, sig := range ident.Signatures {
 			err = sig.Serialize(w)
 			if err != nil {
@@ -565,10 +560,6 @@ func (e *Entity) Serialize(w io.Writer) error {
 	}
 	for _, ident := range e.Identities {
 		err = ident.UserId.Serialize(w)
-		if err != nil {
-			return err
-		}
-		err = ident.SelfSignature.Serialize(w)
 		if err != nil {
 			return err
 		}
