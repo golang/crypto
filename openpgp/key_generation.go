@@ -122,6 +122,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 			IssuerKeyId:  &e.PrimaryKey.KeyId,
 		},
 	}
+	e.Identities[uid.Id].Signatures = append(e.Identities[uid.Id].Signatures, e.Identities[uid.Id].SelfSignature)
 
 	// If the user passes in a DefaultHash via packet.Config,
 	// set the PreferredHash for the SelfSignature.
