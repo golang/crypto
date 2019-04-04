@@ -93,6 +93,11 @@ type Terminal struct {
 	// the incomplete, initial line. That value is stored in
 	// historyPending.
 	historyPending string
+
+	// enterClear will clear the input line on enter, instead of printing a
+	// new line after the input. It's useful for replacing the input with
+	// something else without echoing it.
+	enterClear bool
 }
 
 // NewTerminal runs a VT100 terminal on the given ReadWriter. If the ReadWriter is
@@ -517,14 +522,31 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 			}
 		}
 	case keyEnter:
-		t.moveCursorToPos(len(t.line))
-		t.queue([]rune("\r\n"))
 		line = string(t.line)
+		if t.enterClear {
+			// Clear line on enter instead of starting a new line.
+			reset := []rune{
+				// Clear whole line
+				keyEscape, '[', '2', 'K',
+				// Clear screen below (for any wrapped lines)
+				keyEscape, '[', 'J',
+			}
+			t.queue(reset)
+			// We're still technically on the same line. If we don't offset the
+			// cursorX, then the fresh prompt could be rendered in the wrong
+			// position.
+			t.cursorX += len(reset)
+		} else {
+			// Pushing the line up resets the cursor to 0,0 and we render a
+			// fresh prompt.
+			t.moveCursorToPos(len(t.line))
+			t.queue([]rune("\r\n"))
+			t.cursorX = 0
+			t.cursorY = 0
+		}
 		ok = true
 		t.line = t.line[:0]
 		t.pos = 0
-		t.cursorX = 0
-		t.cursorY = 0
 		t.maxLine = 0
 	case keyDeleteWord:
 		// Delete zero or more spaces and then one or more characters.
@@ -869,6 +891,17 @@ func (t *Terminal) SetSize(width, height int) error {
 	_, err := t.c.Write(t.outBuf)
 	t.outBuf = t.outBuf[:0]
 	return err
+}
+
+// SetEnterClear controls whether the input line should be cleared upon
+// pressing Enter. When false (the default), the input line is pushed up with a
+// new-line and the prompt is repainted. When true, the input line is cleared
+// without any new lines.
+func (t *Terminal) SetEnterClear(on bool) {
+	t.lock.Lock()
+	defer t.lock.Unlock()
+
+	t.enterClear = on
 }
 
 type pasteIndicatorError struct{}

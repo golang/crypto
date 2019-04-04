@@ -238,9 +238,10 @@ func TestKeyPresses(t *testing.T) {
 }
 
 var renderTests = []struct {
-	in       string
-	received string
-	err      error
+	in            string
+	received      string
+	err           error
+	setEnterClear bool
 }{
 	{
 		// Cursor move after keyHome (left 4) then enter (right 4, newline)
@@ -257,6 +258,17 @@ var renderTests = []struct {
 			"\x1b[4D" + // Put cursor back in position to insert again
 			"\x1b[4C\r\n", // Put cursor at the end of the line and newline.
 	},
+	{
+		// Write a plain line, enter
+		in:       "abcd\r\n",
+		received: "> abcd\r\n",
+	},
+	{
+		// Write a plain line, enter with setEnterClear enabled
+		in:            "abcd\r\n",
+		received:      "> abcd\x1b[2K\x1b[J",
+		setEnterClear: true,
+	},
 }
 
 func TestRender(t *testing.T) {
@@ -267,6 +279,9 @@ func TestRender(t *testing.T) {
 				bytesPerRead: j,
 			}
 			ss := NewTerminal(c, "> ")
+			if test.setEnterClear {
+				ss.SetEnterClear(true)
+			}
 			_, err := ss.ReadLine()
 			if err != test.err {
 				t.Errorf("Error resulting from test %d (%d bytes per read) was '%v', expected '%v'", i, j, err, test.err)
