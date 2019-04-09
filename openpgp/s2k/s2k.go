@@ -26,25 +26,22 @@ type Config struct {
 	// 2(reserved) 100-110(private/experimental).
 	S2KMode uint8
 	// Hash is the default hash function to be used. If
-	// nil, SHA1 is used.
+	// nil, SHA256 is used.
 	Hash crypto.Hash
 	// S2KCount is only used for symmetric encryption. It
 	// determines the strength of the passphrase stretching when
 	// the said passphrase is hashed to produce a key. S2KCount
-	// should be between 1024 and 65011712, inclusive. If Config
-	// is nil or S2KCount is 0, the value 65536 used. Not all
+	// should be between 65536 and 65011712, inclusive. If Config
+	// is nil or S2KCount is 0, the value 16777216 used. Not all
 	// values in the above range can be represented. S2KCount will
 	// be rounded up to the next representable value if it cannot
-	// be encoded exactly. When set, it is strongly encrouraged to
-	// use a value that is at least 65536. See RFC 4880 Section
-	// 3.7.1.3.
+	// be encoded exactly. See RFC 4880 Section 3.7.1.3.
 	S2KCount int
 }
 
 func (c *Config) hash() crypto.Hash {
 	if c == nil || uint(c.Hash) == 0 {
-		// SHA1 is the historical default in this package.
-		return crypto.SHA1
+		return crypto.SHA256
 	}
 
 	return c.Hash
@@ -57,14 +54,13 @@ func (c *Config) EncodedCount() uint8 {
 
 func (c *Config) encodedCount() uint8 {
 	if c == nil || c.S2KCount == 0 {
-		return 96 // The common case. Correspoding to 65536
+		return 224 // The common case. Correspoding to 16777216
 	}
 
 	i := c.S2KCount
 	switch {
-	// Behave like GPG. Should we make 65536 the lowest value used?
-	case i < 1024:
-		i = 1024
+	case i < 65536:
+		i = 65536
 	case i > 65011712:
 		i = 65011712
 	}
@@ -78,11 +74,11 @@ func (c *Config) encodedCount() uint8 {
 // if i is not in the above range (encodedCount above takes care to
 // pass i in the correct range). See RFC 4880 Section 3.7.7.1.
 func encodeCount(i int) uint8 {
-	if i < 1024 || i > 65011712 {
+	if i < 65536 || i > 65011712 {
 		panic("count arg i outside the required range")
 	}
 
-	for encoded := 0; encoded < 256; encoded++ {
+	for encoded := 96; encoded < 256; encoded++ {
 		count := decodeCount(uint8(encoded))
 		if count >= i {
 			return uint8(encoded)
