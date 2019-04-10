@@ -36,7 +36,12 @@ func testParse(t *testing.T, input []byte, expected, expectedPlaintext string) {
 	}
 
 	config := &packet.Config{}
-	if _, err := openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body, config); err != nil {
+	if _, _, err := openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body, config); err != nil {
+		t.Errorf("failed to check signature: %s", err)
+	}
+
+	b, _ = Decode(input)
+	if _, err := b.VerifySignature(keyring, config); err != nil {
 		t.Errorf("failed to check signature: %s", err)
 	}
 }
@@ -122,7 +127,7 @@ func TestSigning(t *testing.T) {
 		}
 
 		config := &packet.Config{}
-		if _, err := openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body, config); err != nil {
+		if _, _, err := openpgp.CheckDetachedSignature(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body, config); err != nil {
 			t.Errorf("#%d: failed to check signature: %s", i, err)
 		}
 	}
