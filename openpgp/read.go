@@ -365,8 +365,14 @@ func (scr *signatureCheckReader) Read(buf []byte) (n int, err error) {
 // returns the signer if the signature is valid. If the signer isn't known,
 // ErrUnknownIssuer is returned.
 func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader, config *packet.Config) (signer *Entity, err error) {
+	signer, _, err = CheckDetachedSignatureWithHash(keyring, signed, signature, config)
+	return signer, err
+}
+
+// CheckDetachedSignatureWithHash performs the same actions as
+// CheckDetachedSignature and returns the used hash algorithm.
+func CheckDetachedSignatureWithHash(keyring KeyRing, signed, signature io.Reader, config *packet.Config) (signer *Entity, hashFunc crypto.Hash, err error) {
 	var issuerKeyId uint64
-	var hashFunc crypto.Hash
 	var sigType packet.SignatureType
 	var keys []Key
 	var p packet.Packet
@@ -375,16 +381,16 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader, config
 	for {
 		p, err = packets.Next()
 		if err == io.EOF {
-			return nil, errors.ErrUnknownIssuer
+			return nil, hashFunc, errors.ErrUnknownIssuer
 		}
 		if err != nil {
-			return nil, err
+			return nil, hashFunc, err
 		}
 
 		switch sig := p.(type) {
 		case *packet.Signature:
 			if sig.IssuerKeyId == nil {
-				return nil, errors.StructuralError("signature doesn't have an issuer")
+				return nil, hashFunc, errors.StructuralError("signature doesn't have an issuer")
 			}
 			issuerKeyId = *sig.IssuerKeyId
 			hashFunc = sig.Hash
@@ -394,7 +400,7 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader, config
 			hashFunc = sig.Hash
 			sigType = sig.SigType
 		default:
-			return nil, errors.StructuralError("non signature packet found")
+			return nil, hashFunc, errors.StructuralError("non signature packet found")
 		}
 
 		keys = keyring.KeysByIdUsage(issuerKeyId, packet.KeyFlagSign)
@@ -409,11 +415,11 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader, config
 
 	h, wrappedHash, err := hashForSignature(hashFunc, sigType)
 	if err != nil {
-		return nil, err
+		return nil, hashFunc, err
 	}
 
 	if _, err := io.Copy(wrappedHash, signed); err != nil && err != io.EOF {
-		return nil, err
+		return nil, hashFunc, err
 	}
 
 	for _, key := range keys {
@@ -430,15 +436,15 @@ func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader, config
 		}
 
 		if err == errors.ErrSignatureExpired {
-			return key.Entity, err
+			return key.Entity, hashFunc, err
 		}
 
 		if err == nil {
-			return key.Entity, nil
+			return key.Entity, hashFunc, nil
 		}
 	}
 
-	return nil, err
+	return nil, hashFunc, err
 }
 
 // CheckArmoredDetachedSignature performs the same actions as

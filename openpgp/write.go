@@ -215,8 +215,8 @@ func encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 	// In the event that a recipient doesn't specify any supported ciphers
 	// or hash functions, these are the ones that we assume that every
 	// implementation supports.
-	defaultCiphers := candidateCiphers[len(candidateCiphers)-1:]
-	defaultHashes := candidateHashes[0:3]
+	defaultCiphers := candidateCiphers[0:1]
+	defaultHashes := candidateHashes[0:1]
 
 	encryptKeys := make([]Key, len(to))
 	for i := range to {
