@@ -13,6 +13,8 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"hash"
+	"io"
+	"math/big"
 	"testing"
 	"time"
 
@@ -128,7 +130,16 @@ func TestRSAPrivateKey(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := NewRSAPrivateKey(time.Now(), rsaPriv).Serialize(&buf); err != nil {
+	xrsaPriv := &rsa.PrivateKey{
+		PublicKey: rsa.PublicKey{
+			E: rsaPriv.PublicKey.E,
+			N: rsaPriv.PublicKey.N,
+		},
+		D: rsaPriv.D,
+		Primes: rsaPriv.Primes,
+	}
+	xrsaPriv.Precompute()
+	if err := NewRSAPrivateKey(time.Now(), xrsaPriv).Serialize(&buf); err != nil {
 		t.Fatal(err)
 	}
 
@@ -212,7 +223,7 @@ type rsaSigner struct {
 }
 
 func TestRSASignerPrivateKey(t *testing.T) {
-	rsaPriv, err := rsa.GenerateKey(rand.Reader, 1024)
+	rsaPriv, err := rsa.GenerateKey(rand.Reader, 1024, make([]*big.Int, 0))
 	if err != nil {
 		t.Fatal(err)
 	}
