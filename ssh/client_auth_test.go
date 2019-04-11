@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
+	"net"
 	"os"
 	"strings"
 	"testing"
@@ -477,7 +479,7 @@ func TestRetryableAuth(t *testing.T) {
 	}
 }
 
-func ExampleRetryableAuthMethod(t *testing.T) {
+func ExampleRetryableAuthMethod() {
 	user := "testuser"
 	NumberOfPrompts := 3
 
@@ -495,9 +497,17 @@ func ExampleRetryableAuthMethod(t *testing.T) {
 		},
 	}
 
-	if err := tryAuth(t, config); err != nil {
-		t.Fatalf("unable to dial remote side: %s", err)
+	host := "mysshserver"
+	netConn, err := net.Dial("tcp", host)
+	if err != nil {
+		log.Fatal(err)
 	}
+
+	sshConn, _, _, err := NewClientConn(netConn, host, config)
+	if err != nil {
+		log.Fatal(err)
+	}
+	_ = sshConn
 }
 
 // Test if username is received on server side when NoClientAuth is used
