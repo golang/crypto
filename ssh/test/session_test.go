@@ -384,17 +384,19 @@ func TestMACs(t *testing.T) {
 	macOrder := config.MACs
 
 	for _, mac := range macOrder {
-		server := newServer(t)
-		defer server.Shutdown()
-		conf := clientConfig()
-		conf.MACs = []string{mac}
-		// Don't fail if sshd doesn't have the MAC.
-		conf.MACs = append(conf.MACs, macOrder...)
-		if conn, err := server.TryDial(conf); err == nil {
-			conn.Close()
-		} else {
-			t.Fatalf("failed for MAC %q", mac)
-		}
+		t.Run(mac, func(t *testing.T) {
+			server := newServer(t)
+			defer server.Shutdown()
+			conf := clientConfig()
+			conf.MACs = []string{mac}
+			// Don't fail if sshd doesn't have the MAC.
+			conf.MACs = append(conf.MACs, macOrder...)
+			if conn, err := server.TryDial(conf); err == nil {
+				conn.Close()
+			} else {
+				t.Fatalf("failed for MAC %q", mac)
+			}
+		})
 	}
 }
 
@@ -403,17 +405,19 @@ func TestKeyExchanges(t *testing.T) {
 	config.SetDefaults()
 	kexOrder := config.KeyExchanges
 	for _, kex := range kexOrder {
-		server := newServer(t)
-		defer server.Shutdown()
-		conf := clientConfig()
-		// Don't fail if sshd doesn't have the kex.
-		conf.KeyExchanges = append([]string{kex}, kexOrder...)
-		conn, err := server.TryDial(conf)
-		if err == nil {
-			conn.Close()
-		} else {
-			t.Errorf("failed for kex %q", kex)
-		}
+		t.Run(kex, func(t *testing.T) {
+			server := newServer(t)
+			defer server.Shutdown()
+			conf := clientConfig()
+			// Don't fail if sshd doesn't have the kex.
+			conf.KeyExchanges = append([]string{kex}, kexOrder...)
+			conn, err := server.TryDial(conf)
+			if err == nil {
+				conn.Close()
+			} else {
+				t.Errorf("failed for kex %q", kex)
+			}
+		})
 	}
 }
 
@@ -424,20 +428,22 @@ func TestClientAuthAlgorithms(t *testing.T) {
 		"ecdsa",
 		"ed25519",
 	} {
-		server := newServer(t)
-		conf := clientConfig()
-		conf.SetDefaults()
-		conf.Auth = []ssh.AuthMethod{
-			ssh.PublicKeys(testSigners[key]),
-		}
+		t.Run(key, func(t *testing.T) {
+			server := newServer(t)
+			conf := clientConfig()
+			conf.SetDefaults()
+			conf.Auth = []ssh.AuthMethod{
+				ssh.PublicKeys(testSigners[key]),
+			}
 
-		conn, err := server.TryDial(conf)
-		if err == nil {
-			conn.Close()
-		} else {
-			t.Errorf("failed for key %q", key)
-		}
+			conn, err := server.TryDial(conf)
+			if err == nil {
+				conn.Close()
+			} else {
+				t.Errorf("failed for key %q", key)
+			}
 
-		server.Shutdown()
+			server.Shutdown()
+		})
 	}
 }
