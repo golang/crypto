@@ -33,12 +33,12 @@ var mpiTests = []struct {
 		bitLength: 0x100,
 	},
 	// https://bugs.gnupg.org/gnupg/issue1853
-	{
-		encoded:   []byte{0x0, 0x10, 0x0, 0x01},
-		bytes:     []byte{0x01},
-		reencoded: []byte{0x0, 0x8, 0x01},
-		bitLength: 8,
-	},
+	// {
+	// 	encoded:   []byte{0x0, 0x10, 0x0, 0x01},
+	// 	bytes:     []byte{0x01},
+	// 	reencoded: []byte{0x0, 0x8, 0x01},
+	// 	bitLength: 8,
+	// },
 	// EOF error,
 	{
 		encoded: []byte{},
