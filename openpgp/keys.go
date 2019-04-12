@@ -96,7 +96,7 @@ func (e *Entity) encryptionKey(now time.Time) (Key, bool) {
 		if subkey.Sig.FlagsValid &&
 			subkey.Sig.FlagEncryptCommunications &&
 			subkey.PublicKey.PubKeyAlgo.CanEncrypt() &&
-			!subkey.Sig.KeyExpired(now) &&
+			!subkey.PublicKey.KeyExpired(subkey.Sig, now) &&
 			(maxTime.IsZero() || subkey.Sig.CreationTime.After(maxTime)) {
 			candidateSubkey = i
 			maxTime = subkey.Sig.CreationTime
@@ -115,7 +115,7 @@ func (e *Entity) encryptionKey(now time.Time) (Key, bool) {
 	i := e.primaryIdentity()
 	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagEncryptCommunications &&
 		e.PrimaryKey.PubKeyAlgo.CanEncrypt() &&
-		!i.SelfSignature.KeyExpired(now) {
+		!e.PrimaryKey.KeyExpired(i.SelfSignature, now) {
 		return Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
 	}
 
@@ -132,7 +132,7 @@ func (e *Entity) signingKey(now time.Time) (Key, bool) {
 		if subkey.Sig.FlagsValid &&
 			subkey.Sig.FlagSign &&
 			subkey.PublicKey.PubKeyAlgo.CanSign() &&
-			!subkey.Sig.KeyExpired(now) {
+			!subkey.PublicKey.KeyExpired(subkey.Sig, now) {
 			candidateSubkey = i
 			break
 		}
@@ -147,7 +147,7 @@ func (e *Entity) signingKey(now time.Time) (Key, bool) {
 	// with the primary key.
 	i := e.primaryIdentity()
 	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagSign &&
-		!i.SelfSignature.KeyExpired(now) {
+		!e.PrimaryKey.KeyExpired(i.SelfSignature, now) {
 		return Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true
 	}
 

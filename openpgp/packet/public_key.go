@@ -814,3 +814,16 @@ func (pk *PublicKey) BitLength() (bitLength uint16, err error) {
 	}
 	return
 }
+
+// KeyExpired returns whether sig is a self-signature of a key that has
+// expired or is created in the future.
+func (pk *PublicKey) KeyExpired(sig *Signature, currentTime time.Time) bool {
+	if pk.CreationTime.After(currentTime) {
+		return true
+	}
+	if sig.KeyLifetimeSecs == nil {
+		return false
+	}
+	expiry := pk.CreationTime.Add(time.Duration(*sig.KeyLifetimeSecs) * time.Second)
+	return currentTime.After(expiry)
+}
