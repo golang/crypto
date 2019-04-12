@@ -203,7 +203,15 @@ func (priv *PrivateKey) Validate() error {
 
 // GenerateKey generates an RSA keypair of the given bit size using the
 // random source random (for example, crypto/rand.Reader).
-func GenerateKey(random io.Reader, bits int, primes []*big.Int) (*PrivateKey, error) {
+func GenerateKey(random io.Reader, bits int) (*PrivateKey, error) {
+	var primes []*big.Int
+	return GenerateMultiPrimeKey(random, 2, bits, primes)
+}
+
+// GenerateKeyWithPrimes generates an RSA keypair of the given bit size using
+// the random source random (for example, crypto/rand.Reader) and the given
+// prepopulated primes.
+func GenerateKeyWithPrimes(random io.Reader, bits int, primes []*big.Int) (*PrivateKey, error) {
 	return GenerateMultiPrimeKey(random, 2, bits, primes)
 }
 

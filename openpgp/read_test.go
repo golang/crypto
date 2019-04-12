@@ -15,6 +15,7 @@ import (
 
 	"golang.org/x/crypto/openpgp/armor"
 	"golang.org/x/crypto/openpgp/errors"
+	"golang.org/x/crypto/openpgp/packet"
 )
 
 func readerFromHex(s string) io.Reader {
@@ -298,7 +299,8 @@ func TestSymmetricallyEncrypted(t *testing.T) {
 
 func testDetachedSignature(t *testing.T, kring KeyRing, signature io.Reader, sigInput, tag string, expectedSignerKeyId uint64) {
 	signed := bytes.NewBufferString(sigInput)
-	signer, err := CheckDetachedSignature(kring, signed, signature)
+	config := &packet.Config{}
+	signer, err := CheckDetachedSignature(kring, signed, signature, config)
 	if err != nil {
 		t.Errorf("%s: signature error: %s", tag, err)
 		return
@@ -319,7 +321,8 @@ func TestDetachedSignature(t *testing.T) {
 	testDetachedSignature(t, kring, readerFromHex(detachedSignatureV3TextHex), signedInput, "v3", testKey1KeyId)
 
 	incorrectSignedInput := signedInput + "X"
-	_, err := CheckDetachedSignature(kring, bytes.NewBufferString(incorrectSignedInput), readerFromHex(detachedSignatureHex))
+	config := &packet.Config{}
+	_, err := CheckDetachedSignature(kring, bytes.NewBufferString(incorrectSignedInput), readerFromHex(detachedSignatureHex), config)
 	if err == nil {
 		t.Fatal("CheckDetachedSignature returned without error for bad signature")
 	}
@@ -345,7 +348,8 @@ func TestDetachedSignatureP256(t *testing.T) {
 
 func testHashFunctionError(t *testing.T, signatureHex string) {
 	kring, _ := ReadKeyRing(readerFromHex(testKeys1And2Hex))
-	_, err := CheckDetachedSignature(kring, nil, readerFromHex(signatureHex))
+	config := &packet.Config{}
+	_, err := CheckDetachedSignature(kring, nil, readerFromHex(signatureHex), config)
 	if err == nil {
 		t.Fatal("Packet with bad hash type was correctly parsed")
 	}
@@ -369,7 +373,8 @@ func TestMissingHashFunction(t *testing.T) {
 	// RIPEMD160, which isn't compiled in.  Since that's the only signature
 	// packet we don't find any suitable packets and end up with ErrUnknownIssuer
 	kring, _ := ReadKeyRing(readerFromHex(testKeys1And2Hex))
-	_, err := CheckDetachedSignature(kring, nil, readerFromHex(missingHashFunctionHex))
+	config := &packet.Config{}
+	_, err := CheckDetachedSignature(kring, nil, readerFromHex(missingHashFunctionHex), config)
 	if err == nil {
 		t.Fatal("Packet with missing hash type was correctly parsed")
 	}

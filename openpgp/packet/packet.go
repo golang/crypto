@@ -10,11 +10,9 @@ import (
 	"bytes"
 	"bufio"
 	"crypto/cipher"
-	"crypto/des"
-	"crypto/rsa"
-	"golang.org/x/crypto/cast5"
 	"golang.org/x/crypto/openpgp/errors"
 	"golang.org/x/crypto/openpgp/internal/algorithm"
+	"golang.org/x/crypto/rsa"
 	"io"
 	"math/big"
 )
