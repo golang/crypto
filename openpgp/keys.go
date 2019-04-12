@@ -347,7 +347,6 @@ EachPacket:
 			if err := addUserID(e, packets, pkt); err != nil {
 				return nil, err
 			}
-			packets.Unread(p)
 		case *packet.Signature:
 			if pkt.SigType == packet.SigTypeKeyRevocation {
 				revocations = append(revocations, pkt)

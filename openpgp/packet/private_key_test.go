@@ -14,7 +14,6 @@ import (
 	"encoding/hex"
 	"hash"
 	"io"
-	"math/big"
 	"testing"
 	"time"
 
@@ -223,7 +222,7 @@ type rsaSigner struct {
 }
 
 func TestRSASignerPrivateKey(t *testing.T) {
-	rsaPriv, err := rsa.GenerateKey(rand.Reader, 1024, make([]*big.Int, 0))
+	rsaPriv, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
 		t.Fatal(err)
 	}

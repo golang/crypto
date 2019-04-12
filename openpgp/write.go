@@ -270,7 +270,7 @@ func writeAndSign(payload io.WriteCloser, candidateHashes []uint8, signed *Entit
 		if err != nil {
 			return nil, err
 		}
-		return signatureWriter{encryptedData, literalData, hash, wrappedHash, h, signer, sigType, config}, nil
+		return signatureWriter{payload, literalData, hash, wrappedHash, h, signer, sigType, config}, nil
 	}
 	return literalData, nil
 }
@@ -384,7 +384,7 @@ func Sign(output io.Writer, signed *Entity, hints *FileHints, config *packet.Con
 		preferredHashes = defaultHashes
 	}
 	candidateHashes = intersectPreferences(candidateHashes, preferredHashes)
-	return writeAndSign(noOpCloser{output}, candidateHashes, signed, hints, sigType, config)
+	return writeAndSign(noOpCloser{output}, candidateHashes, signed, hints, packet.SigTypeBinary, config)
 }
 
 // signatureWriter hashes the contents of a message while passing it along to

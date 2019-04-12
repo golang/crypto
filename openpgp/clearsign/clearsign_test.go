@@ -10,9 +10,6 @@ import (
 	"golang.org/x/crypto/openpgp/packet"
 	"fmt"
 	"testing"
-
-	"golang.org/x/crypto/openpgp"
-	"golang.org/x/crypto/openpgp/packet"
 )
 
 func testParse(t *testing.T, input []byte, expected, expectedPlaintext string) {
@@ -188,7 +185,8 @@ func TestMultiSign(t *testing.T) {
 			if string(block.Bytes) != string(input) {
 				t.Errorf("Inline data didn't match original; got %q want %q", string(block.Bytes), string(input))
 			}
-			_, err = openpgp.CheckDetachedSignature(verifyKeys, bytes.NewReader(block.Bytes), block.ArmoredSignature.Body)
+			config := &packet.Config{}
+			_, err = openpgp.CheckDetachedSignature(verifyKeys, bytes.NewReader(block.Bytes), block.ArmoredSignature.Body, config)
 			if nKeys == 0 {
 				if err == nil {
 					t.Errorf("verifying inline (%s) succeeded; want failure", desc)
