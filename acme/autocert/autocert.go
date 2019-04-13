@@ -65,7 +65,7 @@ type HostPolicy func(ctx context.Context, host string) error
 func HostWhitelist(hosts ...string) HostPolicy {
 	whitelist := make(map[string]bool, len(hosts))
 	for _, h := range hosts {
-		whitelist[h] = true
+		whitelist[strings.ToLower(h)] = true
 	}
 	return func(_ context.Context, host string) error {
 		if !whitelist[host] {
@@ -236,7 +236,7 @@ func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, 
 		return nil, errors.New("acme/autocert: Manager.Prompt not set")
 	}
 
-	name := hello.ServerName
+	name := strings.ToLower(hello.ServerName)
 	if name == "" {
 		return nil, errors.New("acme/autocert: missing server name")
 	}
