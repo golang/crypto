@@ -32,6 +32,7 @@ import (
 	"time"
 
 	"golang.org/x/crypto/acme"
+	"golang.org/x/net/idna"
 )
 
 // createCertRetryAfter is how much time to wait before removing a failed state
@@ -63,12 +64,15 @@ type HostPolicy func(ctx context.Context, host string) error
 // Only exact matches are currently supported. Subdomains, regexp or wildcard
 // will not match.
 //
-// Note that all hosts will be converted to lowercase via strings.ToLower so that
-// Manager.GetCertificate can handle mixedcase hosts correctly.
+// Note that all hosts will be converted to Punycode via idna.Lookup.ToASCII so that
+// Manager.GetCertificate can handle the Unicode IDN and mixedcase hosts correctly.
+// Invlaid hosts will be silently ignored.
 func HostWhitelist(hosts ...string) HostPolicy {
 	whitelist := make(map[string]bool, len(hosts))
 	for _, h := range hosts {
-		whitelist[strings.ToLower(h)] = true
+		if h, err := idna.Lookup.ToASCII(h); err == nil {
+			whitelist[h] = true
+		}
 	}
 	return func(_ context.Context, host string) error {
 		if !whitelist[host] {
@@ -239,14 +243,25 @@ func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, 
 		return nil, errors.New("acme/autocert: Manager.Prompt not set")
 	}
 
-	name := strings.ToLower(hello.ServerName)
+	name := hello.ServerName
 	if name == "" {
 		return nil, errors.New("acme/autocert: missing server name")
 	}
 	if !strings.Contains(strings.Trim(name, "."), ".") {
 		return nil, errors.New("acme/autocert: server name component count invalid")
 	}
-	if strings.ContainsAny(name, `+/\`) {
+
+	// Note that this conversion is necessary because some server names in the handshakes
+	// made by some clients (like cURL) is not implicitly converted to Punycode, which will
+	// cause the certificate to fail to be obtained. In addition, we should also treat
+	// example.com and EXAMPLE.COM as equivalent and must return the same certificate for
+	// them. Fortunately, this conversion also helped us deal with this kind of mixedcase
+	// problems.
+	//
+	// Due to the "σςΣ" problem (see https://unicode.org/faq/idn.html#22), we can't use
+	// idna.Punycode.ToASCII (or just idna.ToASCII) here.
+	name, err := idna.Lookup.ToASCII(hello.ServerName)
+	if err != nil {
 		return nil, errors.New("acme/autocert: server name contains invalid character")
 	}
 
