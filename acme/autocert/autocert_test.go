@@ -209,6 +209,17 @@ func TestGetCertificate_trailingDot(t *testing.T) {
 	testGetCertificate(t, man, "example.org", hello)
 }
 
+func TestGetCertificate_mixedcase(t *testing.T) {
+	man := &Manager{Prompt: AcceptTOS}
+	defer man.stopRenew()
+
+	lowercaseHello := clientHelloInfo("example.org", true)
+	testGetCertificate(t, man, "example.org", lowercaseHello)
+
+	uppercaseHello := clientHelloInfo("EXAMPLE.ORG", true)
+	testGetCertificate(t, man, "example.org", uppercaseHello)
+}
+
 func TestGetCertificate_ForceRSA(t *testing.T) {
 	man := &Manager{
 		Prompt:   AcceptTOS,
@@ -906,7 +917,7 @@ func TestCache(t *testing.T) {
 }
 
 func TestHostWhitelist(t *testing.T) {
-	policy := HostWhitelist("example.com", "example.org", "*.example.net")
+	policy := HostWhitelist("example.com", "EXAMPLE.ORG", "*.example.net")
 	tt := []struct {
 		host  string
 		allow bool
