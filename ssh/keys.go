@@ -868,7 +868,7 @@ func encryptedBlock(block *pem.Block) bool {
 }
 
 // ParseRawPrivateKey returns a private key from a PEM encoded private key. It
-// supports RSA (PKCS#1), PKCS#8, DSA (OpenSSL), and ECDSA private keys.
+// supports RSA (PKCS#1), PKCS#8, DSA (OpenSSL), ECDSA and ED25519 private keys.
 func ParseRawPrivateKey(pemBytes []byte) (interface{}, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
