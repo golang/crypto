@@ -420,3 +420,17 @@ func TestOutputNewlines(t *testing.T) {
 		t.Errorf("incorrect output: was %q, expected %q", output, expected)
 	}
 }
+
+func TestCursorStateCrash(t *testing.T) {
+	// If the cursor math is off, reading a bunch of times will inevitably
+	// panic with a slice bounds out of range.
+	buf := bytes.NewBufferString("foo")
+	ss := NewTerminal(buf, "> ")
+	ss.SetEnterClear(true)
+	for i := 0; i < 100; i++ {
+		_, err := ss.ReadLine()
+		if err != nil {
+			t.Errorf("unexpected error: %q", err)
+		}
+	}
+}
