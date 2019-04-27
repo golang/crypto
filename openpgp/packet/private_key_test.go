@@ -129,7 +129,16 @@ func TestRSAPrivateKey(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	if err := NewRSAPrivateKey(time.Now(), rsaPriv).Serialize(&buf); err != nil {
+	xrsaPriv := &rsa.PrivateKey{
+		PublicKey: rsa.PublicKey{
+			E: rsaPriv.PublicKey.E,
+			N: rsaPriv.PublicKey.N,
+		},
+		D: rsaPriv.D,
+		Primes: rsaPriv.Primes,
+	}
+	xrsaPriv.Precompute()
+	if err := NewRSAPrivateKey(time.Now(), xrsaPriv).Serialize(&buf); err != nil {
 		t.Fatal(err)
 	}
 
@@ -209,15 +218,7 @@ func TestECDSAPrivateKey(t *testing.T) {
 }
 
 type rsaSigner struct {
-	priv *rsa.PrivateKey
-}
-
-func (s *rsaSigner) Public() crypto.PublicKey {
-	return s.priv.PublicKey
-}
-
-func (s *rsaSigner) Sign(rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
-	return s.priv.Sign(rand, msg, opts)
+	*rsa.PrivateKey
 }
 
 func TestRSASignerPrivateKey(t *testing.T) {
@@ -228,12 +229,8 @@ func TestRSASignerPrivateKey(t *testing.T) {
 
 	priv := NewSignerPrivateKey(time.Now(), &rsaSigner{rsaPriv})
 
-	if priv.PubKeyAlgo != PubKeyAlgoRSASignOnly {
-		t.Fatal("NewSignerPrivateKey should have made a sign-only RSA private key")
-	}
-
 	sig := &Signature{
-		PubKeyAlgo: PubKeyAlgoRSASignOnly,
+		PubKeyAlgo: PubKeyAlgoRSA,
 		Hash:       crypto.SHA256,
 	}
 	msg := []byte("Hello World!")
@@ -255,15 +252,7 @@ func TestRSASignerPrivateKey(t *testing.T) {
 }
 
 type ecdsaSigner struct {
-	priv *ecdsa.PrivateKey
-}
-
-func (s *ecdsaSigner) Public() crypto.PublicKey {
-	return s.priv.PublicKey
-}
-
-func (s *ecdsaSigner) Sign(rand io.Reader, msg []byte, opts crypto.SignerOpts) ([]byte, error) {
-	return s.priv.Sign(rand, msg, opts)
+	*ecdsa.PrivateKey
 }
 
 func TestECDSASignerPrivateKey(t *testing.T) {

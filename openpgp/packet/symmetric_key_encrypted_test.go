@@ -58,8 +58,8 @@ func TestSymmetricKeyEncrypted(t *testing.T) {
 	}
 }
 
-const symmetricallyEncryptedHex = "8c0d04030302371a0b38d884f02060c91cf97c9973b8e58e028e9501708ccfe618fb92afef7fa2d80ddadd93cf"
-const symmetricallyEncryptedContentsHex = "cb1062004d14c4df636f6e74656e74732e0a"
+const symmetricallyEncryptedHex = "c32e04090308f9f479ee0862ee8700a86d5cce4c166b5a7d664dcbe0f0eb2696a3e8a815fe8913251605ad79cc865f15d24301c3da8f5003383b9bd62c673589e2292d990902227311905ff4a7f694727578468e15d9f1aadb41572c4b2a789d7f93896661249200b64af9fbf6abf001f5498d036a"
+const symmetricallyEncryptedContentsHex = "cb1875076d73672e7478745cafc23e636f6e74656e74732e0d0a"
 
 func TestSerializeSymmetricKeyEncryptedCiphers(t *testing.T) {
 	tests := [...]struct {

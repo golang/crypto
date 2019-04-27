@@ -39,6 +39,16 @@ const (
 	KeyAlgoED25519  = "ssh-ed25519"
 )
 
+// These constants represent non-default signature algorithms that are supported
+// as algorithm parameters to AlgorithmSigner.SignWithAlgorithm methods. See
+// [PROTOCOL.agent] section 4.5.1 and
+// https://tools.ietf.org/html/draft-ietf-curdle-rsa-sha2-10
+const (
+	SigAlgoRSA        = "ssh-rsa"
+	SigAlgoRSASHA2256 = "rsa-sha2-256"
+	SigAlgoRSASHA2512 = "rsa-sha2-512"
+)
+
 // parsePubKey parses a public key of the given algorithm.
 // Use ParsePublicKey for keys with prepended algorithm.
 func parsePubKey(in []byte, algo string) (pubKey PublicKey, rest []byte, err error) {
@@ -302,6 +312,19 @@ type Signer interface {
 	Sign(rand io.Reader, data []byte) (*Signature, error)
 }
 
+// A AlgorithmSigner is a Signer that also supports specifying a specific
+// algorithm to use for signing.
+type AlgorithmSigner interface {
+	Signer
+
+	// SignWithAlgorithm is like Signer.Sign, but allows specification of a
+	// non-default signing algorithm. See the SigAlgo* constants in this
+	// package for signature algorithms supported by this package. Callers may
+	// pass an empty string for the algorithm in which case the AlgorithmSigner
+	// will use its default algorithm.
+	SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error)
+}
+
 type rsaPublicKey rsa.PublicKey
 
 func (r *rsaPublicKey) Type() string {
@@ -350,13 +373,21 @@ func (r *rsaPublicKey) Marshal() []byte {
 }
 
 func (r *rsaPublicKey) Verify(data []byte, sig *Signature) error {
-	if sig.Format != r.Type() {
+	var hash crypto.Hash
+	switch sig.Format {
+	case SigAlgoRSA:
+		hash = crypto.SHA1
+	case SigAlgoRSASHA2256:
+		hash = crypto.SHA256
+	case SigAlgoRSASHA2512:
+		hash = crypto.SHA512
+	default:
 		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, r.Type())
 	}
-	h := crypto.SHA1.New()
+	h := hash.New()
 	h.Write(data)
 	digest := h.Sum(nil)
-	return rsa.VerifyPKCS1v15((*rsa.PublicKey)(r), crypto.SHA1, digest, sig.Blob)
+	return rsa.VerifyPKCS1v15((*rsa.PublicKey)(r), hash, digest, sig.Blob)
 }
 
 func (r *rsaPublicKey) CryptoPublicKey() crypto.PublicKey {
@@ -460,6 +491,14 @@ func (k *dsaPrivateKey) PublicKey() PublicKey {
 }
 
 func (k *dsaPrivateKey) Sign(rand io.Reader, data []byte) (*Signature, error) {
+	return k.SignWithAlgorithm(rand, data, "")
+}
+
+func (k *dsaPrivateKey) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error) {
+	if algorithm != "" && algorithm != k.PublicKey().Type() {
+		return nil, fmt.Errorf("ssh: unsupported signature algorithm %s", algorithm)
+	}
+
 	h := crypto.SHA1.New()
 	h.Write(data)
 	digest := h.Sum(nil)
@@ -692,16 +731,42 @@ func (s *wrappedSigner) PublicKey() PublicKey {
 }
 
 func (s *wrappedSigner) Sign(rand io.Reader, data []byte) (*Signature, error) {
+	return s.SignWithAlgorithm(rand, data, "")
+}
+
+func (s *wrappedSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error) {
 	var hashFunc crypto.Hash
 
-	switch key := s.pubKey.(type) {
-	case *rsaPublicKey, *dsaPublicKey:
-		hashFunc = crypto.SHA1
-	case *ecdsaPublicKey:
-		hashFunc = ecHash(key.Curve)
-	case ed25519PublicKey:
-	default:
-		return nil, fmt.Errorf("ssh: unsupported key type %T", key)
+	if _, ok := s.pubKey.(*rsaPublicKey); ok {
+		// RSA keys support a few hash functions determined by the requested signature algorithm
+		switch algorithm {
+		case "", SigAlgoRSA:
+			algorithm = SigAlgoRSA
+			hashFunc = crypto.SHA1
+		case SigAlgoRSASHA2256:
+			hashFunc = crypto.SHA256
+		case SigAlgoRSASHA2512:
+			hashFunc = crypto.SHA512
+		default:
+			return nil, fmt.Errorf("ssh: unsupported signature algorithm %s", algorithm)
+		}
+	} else {
+		// The only supported algorithm for all other key types is the same as the type of the key
+		if algorithm == "" {
+			algorithm = s.pubKey.Type()
+		} else if algorithm != s.pubKey.Type() {
+			return nil, fmt.Errorf("ssh: unsupported signature algorithm %s", algorithm)
+		}
+
+		switch key := s.pubKey.(type) {
+		case *dsaPublicKey:
+			hashFunc = crypto.SHA1
+		case *ecdsaPublicKey:
+			hashFunc = ecHash(key.Curve)
+		case ed25519PublicKey:
+		default:
+			return nil, fmt.Errorf("ssh: unsupported key type %T", key)
+		}
 	}
 
 	var digest []byte
@@ -746,7 +811,7 @@ func (s *wrappedSigner) Sign(rand io.Reader, data []byte) (*Signature, error) {
 	}
 
 	return &Signature{
-		Format: s.pubKey.Type(),
+		Format: algorithm,
 		Blob:   signature,
 	}, nil
 }
@@ -804,7 +869,7 @@ func encryptedBlock(block *pem.Block) bool {
 }
 
 // ParseRawPrivateKey returns a private key from a PEM encoded private key. It
-// supports RSA (PKCS#1), DSA (OpenSSL), and ECDSA private keys.
+// supports RSA (PKCS#1), PKCS#8, DSA (OpenSSL), and ECDSA private keys.
 func ParseRawPrivateKey(pemBytes []byte) (interface{}, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block == nil {
@@ -818,6 +883,9 @@ func ParseRawPrivateKey(pemBytes []byte) (interface{}, error) {
 	switch block.Type {
 	case "RSA PRIVATE KEY":
 		return x509.ParsePKCS1PrivateKey(block.Bytes)
+	// RFC5208 - https://tools.ietf.org/html/rfc5208
+	case "PRIVATE KEY":
+		return x509.ParsePKCS8PrivateKey(block.Bytes)
 	case "EC PRIVATE KEY":
 		return x509.ParseECPrivateKey(block.Bytes)
 	case "DSA PRIVATE KEY":
@@ -901,8 +969,8 @@ func ParseDSAPrivateKey(der []byte) (*dsa.PrivateKey, error) {
 // Implemented based on the documentation at
 // https://github.com/openssh/openssh-portable/blob/master/PROTOCOL.key
 func parseOpenSSHPrivateKey(key []byte) (crypto.PrivateKey, error) {
-	magic := append([]byte("openssh-key-v1"), 0)
-	if !bytes.Equal(magic, key[0:len(magic)]) {
+	const magic = "openssh-key-v1\x00"
+	if len(key) < len(magic) || string(key[:len(magic)]) != magic {
 		return nil, errors.New("ssh: invalid openssh private key format")
 	}
 	remaining := key[len(magic):]

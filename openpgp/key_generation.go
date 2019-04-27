@@ -35,9 +35,13 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 	var pubSubkey *packet.PublicKey
 	var privSubkey *packet.PrivateKey
 
+	primarykeyAlgorithm := packet.PubKeyAlgoRSA
+	if config != nil && uint8(config.Algorithm) != 0 {
+		primarykeyAlgorithm = config.Algorithm
+	}
 	var subkeyAlgorithm packet.PublicKeyAlgorithm
 
-	if config.Algorithm == packet.PubKeyAlgoRSA {
+	if primarykeyAlgorithm == packet.PubKeyAlgoRSA {
 
 		bits := defaultRSAKeyBits
 		if config != nil && config.RSABits != 0 {
@@ -45,11 +49,11 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		}
 
 		var primaryPrimes []*big.Int
-		if len(config.RSAPrimes) >= 2 {
+		if config != nil && len(config.RSAPrimes) >= 2 {
 			primaryPrimes = config.RSAPrimes[0:2]
 		}
 
-		primaryKey, err := rsa.GenerateKey(config.Random(), bits, primaryPrimes)
+		primaryKey, err := rsa.GenerateKeyWithPrimes(config.Random(), bits, primaryPrimes)
 		if err != nil {
 			return nil, err
 		}
@@ -58,11 +62,11 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		pubPrimary = packet.NewRSAPublicKey(currentTime, &primaryKey.PublicKey)
 
 		var subkeyPrimes []*big.Int
-		if len(config.RSAPrimes) >= 4 {
+		if config != nil && len(config.RSAPrimes) >= 4 {
 			subkeyPrimes = config.RSAPrimes[2:4]
 		}
 
-		subkey, err := rsa.GenerateKey(config.Random(), bits, subkeyPrimes)
+		subkey, err := rsa.GenerateKeyWithPrimes(config.Random(), bits, subkeyPrimes)
 		if err != nil {
 			return nil, err
 		}
@@ -72,7 +76,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 
 		subkeyAlgorithm = packet.PubKeyAlgoRSA
 
-	} else if config.Algorithm == packet.PubKeyAlgoEdDSA {
+	} else if primarykeyAlgorithm == packet.PubKeyAlgoEdDSA {
 
 		pubPrimaryKey, primaryKey, err := ed25519.GenerateKey(config.Random())
 		if err != nil {
@@ -113,7 +117,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		SelfSignature: &packet.Signature{
 			CreationTime: currentTime,
 			SigType:      packet.SigTypePositiveCert,
-			PubKeyAlgo:   config.Algorithm,
+			PubKeyAlgo:   primarykeyAlgorithm,
 			Hash:         config.Hash(),
 			IsPrimaryId:  &isPrimaryId,
 			FlagsValid:   true,
@@ -123,6 +127,10 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		},
 	}
 	e.Identities[uid.Id].Signatures = append(e.Identities[uid.Id].Signatures, e.Identities[uid.Id].SelfSignature)
+	err := e.Identities[uid.Id].SelfSignature.SignUserId(uid.Id, e.PrimaryKey, e.PrivateKey, config)
+	if err != nil {
+		return nil, err
+	}
 
 	// If the user passes in a DefaultHash via packet.Config,
 	// set the PreferredHash for the SelfSignature.
@@ -152,6 +160,10 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 	}
 	e.Subkeys[0].PublicKey.IsSubkey = true
 	e.Subkeys[0].PrivateKey.IsSubkey = true
+	err = e.Subkeys[0].Sig.SignKey(e.Subkeys[0].PublicKey, e.PrivateKey, config)
+	if err != nil {
+		return nil, err
+	}
 
 	return e, nil
 }

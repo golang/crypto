@@ -16,12 +16,10 @@ import (
 
 func TestKeyGeneration(t *testing.T) {
 	size := 1024
-	if testing.Short() {
-		size = 128
-	}
 	priv, err := GenerateKey(rand.Reader, size)
 	if err != nil {
-		t.Errorf("failed to generate key")
+		t.Errorf("failed to generate key: %v", err)
+		return
 	}
 	if bits := priv.N.BitLen(); bits != size {
 		t.Errorf("key too short (%d vs %d)", bits, size)
@@ -30,45 +28,39 @@ func TestKeyGeneration(t *testing.T) {
 }
 
 func Test3PrimeKeyGeneration(t *testing.T) {
-	size := 768
-	if testing.Short() {
-		size = 256
-	}
+	size := 1024
 
 	priv, err := GenerateMultiPrimeKey(rand.Reader, 3, size)
 	if err != nil {
-		t.Errorf("failed to generate key")
+		t.Errorf("failed to generate key: %v", err)
+		return
 	}
 	testKeyBasics(t, priv)
 }
 
 func Test4PrimeKeyGeneration(t *testing.T) {
-	size := 768
-	if testing.Short() {
-		size = 256
-	}
+	size := 1024
 
 	priv, err := GenerateMultiPrimeKey(rand.Reader, 4, size)
 	if err != nil {
-		t.Errorf("failed to generate key")
+		t.Errorf("failed to generate key: %v", err)
+		return
 	}
 	testKeyBasics(t, priv)
 }
 
 func TestNPrimeKeyGeneration(t *testing.T) {
-	primeSize := 64
 	maxN := 24
 	if testing.Short() {
-		primeSize = 16
 		maxN = 16
 	}
 	// Test that generation of N-prime keys works for N > 4.
 	for n := 5; n < maxN; n++ {
-		priv, err := GenerateMultiPrimeKey(rand.Reader, n, 64+n*primeSize)
+		priv, err := GenerateMultiPrimeKey(rand.Reader, n, 1024)
 		if err == nil {
 			testKeyBasics(t, priv)
 		} else {
-			t.Errorf("failed to generate %d-prime key", n)
+			t.Errorf("failed to generate %d-prime key: %v", n, err)
 		}
 	}
 }

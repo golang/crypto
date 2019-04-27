@@ -338,7 +338,7 @@ func (scr *signatureCheckReader) Read(buf []byte) (n int, err error) {
 		var ok bool
 		if scr.md.Signature, ok = p.(*packet.Signature); ok {
 			scr.md.SignatureError = scr.md.SignedBy.PublicKey.VerifySignature(scr.h, scr.md.Signature)
-			if scr.md.SignatureError == nil && scr.md.Signature.KeyExpired(scr.config.Now()) {
+			if scr.md.SignatureError == nil && scr.md.Signature.SigExpired(scr.config.Now()) {
 				scr.md.SignatureError = errors.ErrSignatureExpired
 			}
 		} else if scr.md.SignatureV3, ok = p.(*packet.SignatureV3); ok {
@@ -426,7 +426,7 @@ func CheckDetachedSignatureWithHash(keyring KeyRing, signed, signature io.Reader
 		switch sig := p.(type) {
 		case *packet.Signature:
 			err = key.PublicKey.VerifySignature(h, sig)
-			if err == nil && sig.KeyExpired(config.Now()) {
+			if err == nil && sig.SigExpired(config.Now()) {
 				err = errors.ErrSignatureExpired
 			}
 		case *packet.SignatureV3:
