@@ -130,8 +130,10 @@ func Decode(data []byte) (b *Block, rest []byte) {
 		if key != "Hash" {
 			return nil, data
 		}
-		val = strings.TrimSpace(val)
-		b.Headers.Add(key, val)
+		for _, val := range strings.Split(val, ",") {
+			val = strings.TrimSpace(val)
+			b.Headers.Add(key, val)
+		}
 	}
 
 	firstLine := true
@@ -399,31 +401,20 @@ func EncodeMulti(w io.Writer, privateKeys []*packet.PrivateKey, config *packet.C
 // VerifySignature checks a clearsigned message signature, and checks that the
 // hash algorithm in the header matches the hash algorithm in the signature.
 func (b *Block) VerifySignature(keyring openpgp.KeyRing, config *packet.Config) (signer *openpgp.Entity, err error) {
-	if len(b.Headers) != 1 {
-		return nil, errors.StructuralError("expected exactly 1 cleartext message header, got " + strconv.Itoa(len(b.Headers)))
-	}
-	var expectedHash string
-	for k, v := range b.Headers {
-		if k != "Hash" {
-			return nil, errors.StructuralError(`expected cleartext message header "Hash", got "` + k + `"`)
+	var expectedHashes []crypto.Hash
+	for _, v := range b.Headers {
+		for _, name := range v {
+			expectedHash := nameToHash(name)
+			if uint8(expectedHash) == 0 {
+				return nil, errors.StructuralError("unknown hash algorithm in cleartext message headers")
+			}
+			expectedHashes = append(expectedHashes, expectedHash)
 		}
-		if len(v) != 1 {
-			return nil, errors.StructuralError("expected exactly 1 cleartext message header value, got " + strconv.Itoa(len(v)))
-		}
-		expectedHash = v[0]
 	}
-	expectedHashFunc := nameToHash(expectedHash)
-	if uint8(expectedHashFunc) == 0 {
-		return nil, errors.StructuralError("unknown hash algorithm in cleartext message headers")
+	if len(expectedHashes) == 0 {
+		expectedHashes = append(expectedHashes, crypto.MD5)
 	}
-	var hashFunc crypto.Hash
-	if signer, hashFunc, err = openpgp.CheckDetachedSignatureWithHash(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body, config); err != nil {
-		return nil, err
-	}
-	if hashFunc != expectedHashFunc {
-		return nil, errors.StructuralError("hash algorithm mismatch with cleartext message headers: expected " + expectedHash + " signature, got " + nameOfHash(hashFunc))
-	}
-	return
+	return openpgp.CheckDetachedSignatureAndHash(keyring, bytes.NewBuffer(b.Bytes), b.ArmoredSignature.Body, expectedHashes, config)
 }
 
 // nameOfHash returns the OpenPGP name for the given hash, or the empty string

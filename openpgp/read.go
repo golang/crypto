@@ -365,32 +365,34 @@ func (scr *signatureCheckReader) Read(buf []byte) (n int, err error) {
 // returns the signer if the signature is valid. If the signer isn't known,
 // ErrUnknownIssuer is returned.
 func CheckDetachedSignature(keyring KeyRing, signed, signature io.Reader, config *packet.Config) (signer *Entity, err error) {
-	signer, _, err = CheckDetachedSignatureWithHash(keyring, signed, signature, config)
-	return signer, err
+	var expectedHashes []crypto.Hash
+	return CheckDetachedSignatureAndHash(keyring, signed, signature, expectedHashes, config)
 }
 
-// CheckDetachedSignatureWithHash performs the same actions as
-// CheckDetachedSignature and returns the used hash algorithm.
-func CheckDetachedSignatureWithHash(keyring KeyRing, signed, signature io.Reader, config *packet.Config) (signer *Entity, hashFunc crypto.Hash, err error) {
+// CheckDetachedSignatureAndHash performs the same actions as
+// CheckDetachedSignature and checks that the expected hash functions were used.
+func CheckDetachedSignatureAndHash(keyring KeyRing, signed, signature io.Reader, expectedHashes []crypto.Hash, config *packet.Config) (signer *Entity, err error) {
 	var issuerKeyId uint64
+	var hashFunc crypto.Hash
 	var sigType packet.SignatureType
 	var keys []Key
 	var p packet.Packet
 
+	expectedHashesLen := len(expectedHashes)
 	packets := packet.NewReader(signature)
 	for {
 		p, err = packets.Next()
 		if err == io.EOF {
-			return nil, hashFunc, errors.ErrUnknownIssuer
+			return nil, errors.ErrUnknownIssuer
 		}
 		if err != nil {
-			return nil, hashFunc, err
+			return nil, err
 		}
 
 		switch sig := p.(type) {
 		case *packet.Signature:
 			if sig.IssuerKeyId == nil {
-				return nil, hashFunc, errors.StructuralError("signature doesn't have an issuer")
+				return nil, errors.StructuralError("signature doesn't have an issuer")
 			}
 			issuerKeyId = *sig.IssuerKeyId
 			hashFunc = sig.Hash
@@ -400,7 +402,16 @@ func CheckDetachedSignatureWithHash(keyring KeyRing, signed, signature io.Reader
 			hashFunc = sig.Hash
 			sigType = sig.SigType
 		default:
-			return nil, hashFunc, errors.StructuralError("non signature packet found")
+			return nil, errors.StructuralError("non signature packet found")
+		}
+
+		for i, expectedHash := range expectedHashes {
+			if hashFunc == expectedHash {
+				break
+			}
+			if i + 1 == expectedHashesLen {
+				return nil, errors.StructuralError("hash algorithm mismatch with cleartext message headers")
+			}
 		}
 
 		keys = keyring.KeysByIdUsage(issuerKeyId, packet.KeyFlagSign)
@@ -415,11 +426,11 @@ func CheckDetachedSignatureWithHash(keyring KeyRing, signed, signature io.Reader
 
 	h, wrappedHash, err := hashForSignature(hashFunc, sigType)
 	if err != nil {
-		return nil, hashFunc, err
+		return nil, err
 	}
 
 	if _, err := io.Copy(wrappedHash, signed); err != nil && err != io.EOF {
-		return nil, hashFunc, err
+		return nil, err
 	}
 
 	for _, key := range keys {
@@ -436,15 +447,15 @@ func CheckDetachedSignatureWithHash(keyring KeyRing, signed, signature io.Reader
 		}
 
 		if err == errors.ErrSignatureExpired {
-			return key.Entity, hashFunc, err
+			return key.Entity, err
 		}
 
 		if err == nil {
-			return key.Entity, hashFunc, nil
+			return key.Entity, nil
 		}
 	}
 
-	return nil, hashFunc, err
+	return nil, err
 }
 
 // CheckArmoredDetachedSignature performs the same actions as
