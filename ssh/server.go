@@ -407,6 +407,7 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 	authFailures := 0
 	var authErrs []error
 	var displayedBanner bool
+	var nextAuthMethods []string
 
 userAuthLoop:
 	for {
@@ -636,14 +637,17 @@ userAuthLoop:
 
 		var failureMsg userAuthFailureMsg
 
-		nextAuthMethods := strings.Join(config.NextAuthMethodsCallback(s), ",")
-		if config.PasswordCallback != nil && !strings.Contains(nextAuthMethods, "password") {
+		if len(nextAuthMethods) == 0 && config.NextAuthMethodsCallback != nil {
+			nextAuthMethods = config.NextAuthMethodsCallback(s)
+		}
+		authMethods := strings.Join(nextAuthMethods, ",")
+		if config.PasswordCallback != nil && !strings.Contains(authMethods, "password") {
 			failureMsg.Methods = append(failureMsg.Methods, "password")
 		}
-		if config.PublicKeyCallback != nil && !strings.Contains(nextAuthMethods, "publickey") {
+		if config.PublicKeyCallback != nil && !strings.Contains(authMethods, "publickey") {
 			failureMsg.Methods = append(failureMsg.Methods, "publickey")
 		}
-		if config.KeyboardInteractiveCallback != nil && !strings.Contains(nextAuthMethods, "keyboard-interactive") {
+		if config.KeyboardInteractiveCallback != nil && !strings.Contains(authMethods, "keyboard-interactive") {
 			failureMsg.Methods = append(failureMsg.Methods, "keyboard-interactive")
 		}
 		if config.GSSAPIWithMICConfig != nil && config.GSSAPIWithMICConfig.Server != nil &&
@@ -655,9 +659,9 @@ userAuthLoop:
 			return nil, errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
 		}
 
-		if authErr == ErrPartialSuccess {
+		if authErr == ErrPartialSuccess && len(nextAuthMethods) > 0 {
 			failureMsg.PartialSuccess = true
-			failureMsg.Methods = config.NextAuthMethodsCallback(s)
+			failureMsg.Methods = nextAuthMethods
 		}
 
 		if err := s.transport.writePacket(Marshal(&failureMsg)); err != nil {
