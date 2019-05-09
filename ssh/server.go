@@ -338,7 +338,9 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 	authFailures := 0
 	var authErrs []error
 	var displayedBanner bool
+	var firstAuthOk bool
 	var nextAuthMethods []string
+	var nextAuthMethodsPlain string
 
 userAuthLoop:
 	for {
@@ -386,6 +388,16 @@ userAuthLoop:
 
 		perms = nil
 		authErr := ErrNoAuth
+		// get next auth methods
+		if len(nextAuthMethods) == 0 && config.NextAuthMethodsCallback != nil {
+			nextAuthMethods = config.NextAuthMethodsCallback(s)
+			nextAuthMethodsPlain = strings.Join(nextAuthMethods, ",")
+		}
+		// If user request auth method in next auth method, should be deny
+		if strings.Contains(nextAuthMethodsPlain, userAuthReq.Method) && !firstAuthOk {
+			authErr = errors.New(fmt.Sprintf("ssh: %v auth should be first auth success", nextAuthMethods))
+			break
+		}
 
 		switch userAuthReq.Method {
 		case "none":
@@ -525,17 +537,16 @@ userAuthLoop:
 
 		var failureMsg userAuthFailureMsg
 
-		if len(nextAuthMethods) == 0 && config.NextAuthMethodsCallback != nil {
-			nextAuthMethods = config.NextAuthMethodsCallback(s)
-		}
-		authMethods := strings.Join(nextAuthMethods, ",")
-		if config.PasswordCallback != nil && !strings.Contains(authMethods, "password") {
+		// if password in next auth methods, should not be tell client
+		if config.PasswordCallback != nil && !strings.Contains(nextAuthMethodsPlain, "password") {
 			failureMsg.Methods = append(failureMsg.Methods, "password")
 		}
-		if config.PublicKeyCallback != nil && !strings.Contains(authMethods, "publickey") {
+		// if publickey in next auth methods, should not be tell client
+		if config.PublicKeyCallback != nil && !strings.Contains(nextAuthMethodsPlain, "publickey") {
 			failureMsg.Methods = append(failureMsg.Methods, "publickey")
 		}
-		if config.KeyboardInteractiveCallback != nil && !strings.Contains(authMethods, "keyboard-interactive") {
+		// if keyboard-interactive in next auth methods, should not be tell client
+		if config.KeyboardInteractiveCallback != nil && !strings.Contains(nextAuthMethodsPlain, "keyboard-interactive") {
 			failureMsg.Methods = append(failureMsg.Methods, "keyboard-interactive")
 		}
 
@@ -543,7 +554,9 @@ userAuthLoop:
 			return nil, errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
 		}
 
+		// if auth error is partial success, so need next auth
 		if authErr == ErrPartialSuccess && len(nextAuthMethods) > 0 {
+			firstAuthOk = true
 			failureMsg.PartialSuccess = true
 			failureMsg.Methods = nextAuthMethods
 		}
