@@ -338,7 +338,6 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 	authFailures := 0
 	var authErrs []error
 	var displayedBanner bool
-	var firstAuthOk bool
 	var nextAuthMethods []string
 	var nextAuthMethodsPlain string
 
@@ -389,14 +388,9 @@ userAuthLoop:
 		perms = nil
 		authErr := ErrNoAuth
 		// get next auth methods
-		if len(nextAuthMethods) == 0 && config.NextAuthMethodsCallback != nil {
+		if config.NextAuthMethodsCallback != nil && len(nextAuthMethods) == 0 {
 			nextAuthMethods = config.NextAuthMethodsCallback(s)
 			nextAuthMethodsPlain = strings.Join(nextAuthMethods, ",")
-		}
-		// If user request auth method in next auth method, should be deny
-		if strings.Contains(nextAuthMethodsPlain, userAuthReq.Method) && !firstAuthOk {
-			authErr = errors.New(fmt.Sprintf("ssh: %v auth should be first auth success", nextAuthMethods))
-			break
 		}
 
 		switch userAuthReq.Method {
@@ -555,10 +549,13 @@ userAuthLoop:
 		}
 
 		// if auth error is partial success, so need next auth
-		if authErr == ErrPartialSuccess && len(nextAuthMethods) > 0 {
-			firstAuthOk = true
-			failureMsg.PartialSuccess = true
-			failureMsg.Methods = nextAuthMethods
+		if authErr == ErrPartialSuccess {
+			if len(nextAuthMethods) > 0 {
+				failureMsg.PartialSuccess = true
+				failureMsg.Methods = nextAuthMethods
+		    } else {
+				return nil, errors.New("ssh: no next authentication methods configured but first auth return partial success")
+			}
 		}
 
 		if err := s.transport.writePacket(Marshal(&failureMsg)); err != nil {
