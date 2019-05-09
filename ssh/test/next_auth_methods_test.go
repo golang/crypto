@@ -3,13 +3,12 @@ package test
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"errors"
 	"fmt"
+	"golang.org/x/crypto/ssh"
 	"log"
 	"net"
 	"testing"
-	"errors"
-
-	"golang.org/x/crypto/ssh"
 )
 
 func generateSigner() (ssh.Signer, error) {
@@ -206,6 +205,7 @@ func TestNextAuthMethods(t *testing.T) {
 	var authMethods []ssh.AuthMethod
 	var clientConfig *ssh.ClientConfig
 	var client *ssh.Client
+	var keyboardInteractiveChallenge ssh.KeyboardInteractiveChallenge
 
 	// Error password
 	authMethods = []ssh.AuthMethod{ssh.Password("bar123")}
@@ -226,7 +226,7 @@ func TestNextAuthMethods(t *testing.T) {
 	}
 
 	// Error keyboard interactive code response
-	keyboardInteractiveChallenge := func(user, instruction string, questions []string, echos []bool, ) (answers []string, err error) {
+	keyboardInteractiveChallenge = func(user, instruction string, questions []string, echos []bool, ) (answers []string, err error) {
 		if len(questions) == 0 {
 			return []string{}, nil
 		}
@@ -240,7 +240,7 @@ func TestNextAuthMethods(t *testing.T) {
 		return
 	}
 
-	// Right keyboard interactive code response, but should login success
+	// Right keyboard interactive code response, but should not login success
 	keyboardInteractiveChallenge = func(user, instruction string, questions []string, echos []bool, ) (answers []string, err error) {
 		if len(questions) == 0 {
 			return []string{}, nil
@@ -249,7 +249,7 @@ func TestNextAuthMethods(t *testing.T) {
 	}
 	authMethods = []ssh.AuthMethod{ssh.KeyboardInteractive(keyboardInteractiveChallenge)}
 	clientConfig = &ssh.ClientConfig{User: "foo", Auth:authMethods, HostKeyCallback: ssh.InsecureIgnoreHostKey()}
-	client, err = ssh.Dial("tcp", net.JoinHostPort("127.0.0.1", "2200"), clientConfig)
+	_, err = ssh.Dial("tcp", net.JoinHostPort("127.0.0.1", "2200"), clientConfig)
 	if err == nil {
 		t.Error("Interactive code right but should not connect, because interactive code in next methods", err)
 		return
