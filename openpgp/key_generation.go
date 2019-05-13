@@ -22,7 +22,7 @@ const defaultRSAKeyBits = 2048
 // which may be empty but must not contain any of "()<>\x00".
 // If config is nil, sensible defaults will be used.
 func NewEntity(name, comment, email string, config *packet.Config) (*Entity, error) {
-	currentTime := config.Now()
+	creationTime := config.Now()
 
 	uid := packet.NewUserId(name, comment, email)
 	if uid == nil {
@@ -58,8 +58,8 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 			return nil, err
 		}
 
-		privPrimary = packet.NewRSAPrivateKey(currentTime, primaryKey)
-		pubPrimary = packet.NewRSAPublicKey(currentTime, &primaryKey.PublicKey)
+		privPrimary = packet.NewRSAPrivateKey(creationTime, primaryKey)
+		pubPrimary = packet.NewRSAPublicKey(creationTime, &primaryKey.PublicKey)
 
 		var subkeyPrimes []*big.Int
 		if config != nil && len(config.RSAPrimes) >= 4 {
@@ -71,8 +71,8 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 			return nil, err
 		}
 
-		pubSubkey = packet.NewRSAPublicKey(currentTime, &subkey.PublicKey)
-		privSubkey = packet.NewRSAPrivateKey(currentTime, subkey)
+		pubSubkey = packet.NewRSAPublicKey(creationTime, &subkey.PublicKey)
+		privSubkey = packet.NewRSAPrivateKey(creationTime, subkey)
 
 		subkeyAlgorithm = packet.PubKeyAlgoRSA
 
@@ -83,8 +83,8 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 			return nil, err
 		}
 
-		privPrimary = packet.NewEdDSAPrivateKey(currentTime, primaryKey)
-		pubPrimary = packet.NewEdDSAPublicKey(currentTime, pubPrimaryKey)
+		privPrimary = packet.NewEdDSAPrivateKey(creationTime, primaryKey)
+		pubPrimary = packet.NewEdDSAPublicKey(creationTime, pubPrimaryKey)
 
 		var kdf = ecdh.KDF{
 			Hash:   algorithm.SHA512,
@@ -96,8 +96,8 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 			return nil, err
 		}
 
-		pubSubkey = packet.NewECDHPublicKey(currentTime, &privSubkeyRaw.PublicKey)
-		privSubkey = packet.NewECDHPrivateKey(currentTime, privSubkeyRaw)
+		pubSubkey = packet.NewECDHPublicKey(creationTime, &privSubkeyRaw.PublicKey)
+		privSubkey = packet.NewECDHPrivateKey(creationTime, privSubkeyRaw)
 
 		subkeyAlgorithm = packet.PubKeyAlgoEdDSA
 
@@ -115,7 +115,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		Name:   uid.Id,
 		UserId: uid,
 		SelfSignature: &packet.Signature{
-			CreationTime: currentTime,
+			CreationTime: creationTime,
 			SigType:      packet.SigTypePositiveCert,
 			PubKeyAlgo:   primarykeyAlgorithm,
 			Hash:         config.Hash(),
@@ -148,7 +148,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 		PublicKey:  pubSubkey,
 		PrivateKey: privSubkey,
 		Sig: &packet.Signature{
-			CreationTime:              currentTime,
+			CreationTime:              creationTime,
 			SigType:                   packet.SigTypeSubkeyBinding,
 			PubKeyAlgo:                subkeyAlgorithm,
 			Hash:                      config.Hash(),
