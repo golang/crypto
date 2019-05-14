@@ -338,22 +338,25 @@ func TestReset(t *testing.T) {
 func TestClone(t *testing.T) {
 	out1 := make([]byte, 16)
 	out2 := make([]byte, 16)
-	in := sequentialBytes(0x100)
 
-	for _, v := range testShakes {
-		h1 := v.constructor(nil, []byte{0x01})
-		h1.Write([]byte{0x01})
+	// Test for sizes smaller and larger than block size.
+	for _, size := range []int{0x1, 0x100} {
+		in := sequentialBytes(size)
+		for _, v := range testShakes {
+			h1 := v.constructor(nil, []byte{0x01})
+			h1.Write([]byte{0x01})
 
-		h2 := h1.Clone()
+			h2 := h1.Clone()
 
-		h1.Write(in)
-		h1.Read(out1)
+			h1.Write(in)
+			h1.Read(out1)
 
-		h2.Write(in)
-		h2.Read(out2)
+			h2.Write(in)
+			h2.Read(out2)
 
-		if !bytes.Equal(out1, out2) {
-			t.Error("\nExpected:\n", hex.EncodeToString(out1), "\ngot:\n", hex.EncodeToString(out2))
+			if !bytes.Equal(out1, out2) {
+				t.Error("\nExpected:\n", hex.EncodeToString(out1), "\ngot:\n", hex.EncodeToString(out2))
+			}
 		}
 	}
 }
