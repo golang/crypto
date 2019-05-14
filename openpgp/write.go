@@ -233,7 +233,7 @@ func writeAndSign(payload io.WriteCloser, candidateHashes []uint8, signed *Entit
 
 	if signer != nil {
 		ops := &packet.OnePassSignature{
-			SigType:    packet.SigTypeBinary,
+			SigType:    sigType,
 			Hash:       hash,
 			PubKeyAlgo: signer.PubKeyAlgo,
 			KeyId:      signer.KeyId,
