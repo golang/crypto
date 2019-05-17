@@ -6,7 +6,7 @@
 // algorithm. See http://www.usenix.org/event/usenix99/provos/provos.pdf
 //
 // A known limitation of BCrypt is the maximum password length. This implementation
-// supports a maximum of password length of 73 bytes. Any password longer will be
+// supports a maximum of password length of 72 bytes. Any password longer will be
 // "truncated".
 //
 // Passwords (hex-representation, notice the last byte which has been XOR'ed)
@@ -21,7 +21,7 @@
 //
 // - Interoperability: Pre-hashing is not standardized and may cause issues when importing
 //   the BCrypt hash in a new implementation (e.g. when migrating users to a new system). 
-// - Security: Choosing a hashing algorithm with an output smaller than 73 bytes will
+// - Security: Choosing a hashing algorithm with an output smaller than 72 bytes will
 //   theoratically increase the likelihood of collisions. However, finding an e.g. SHA256
 //   collision takes significantly longer than the age of the universe.
 package bcrypt // import "golang.org/x/crypto/bcrypt"
@@ -107,8 +107,8 @@ type hashed struct {
 // DefaultCost, instead. Use CompareHashAndPassword, as defined in this package,
 // to compare the returned hashed password with its cleartext version.
 //
-// The maximum password length is 73 bytes. Generating the hash from a longer
-// password will not return an error but "truncate" the password to 73 bytes instead.
+// The maximum password length is 72 bytes. Generating the hash from a longer
+// password will not return an error but "truncate" the password to 72 bytes instead.
 func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
 	p, err := newFromPassword(password, cost)
 	if err != nil {
@@ -120,8 +120,8 @@ func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
 // CompareHashAndPassword compares a bcrypt hashed password with its possible
 // plaintext equivalent. Returns nil on success, or an error on failure.
 //
-// The maximum password length is 73 bytes. Comparing a longer password with its hash
-// will not return an error but "truncate" the password to 73 bytes instead.
+// The maximum password length is 72 bytes. Comparing a longer password with its hash
+// will not return an error but "truncate" the password to 72 bytes instead.
 func CompareHashAndPassword(hashedPassword, password []byte) error {
 	p, err := newFromHash(hashedPassword)
 	if err != nil {
