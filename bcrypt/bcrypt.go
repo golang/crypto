@@ -9,7 +9,7 @@
 // supports a maximum of password length of 72 bytes. Any password longer will be
 // "truncated".
 //
-// Passwords (hex-representation, notice the last byte which has been XOR'ed)
+// Passwords (hex-representation, the last byte of mutated is XOR'ed)
 //
 // - original: c602deca4a1b94b83df97edb017c3a1c2f76cd869138b1c9ad017e5c9fec1490d5e9c7b02e0f2884ce6a923de5b246bf213b1fdaa42cbec5caa14342d750ec865d5d9f872b1da3f089
 // - mutated:  c602deca4a1b94b83df97edb017c3a1c2f76cd869138b1c9ad017e5c9fec1490d5e9c7b02e0f2884ce6a923de5b246bf213b1fdaa42cbec5caa14342d750ec865d5d9f872b1da3f076
