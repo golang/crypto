@@ -4,6 +4,26 @@
 
 // Package bcrypt implements Provos and Mazières's bcrypt adaptive hashing
 // algorithm. See http://www.usenix.org/event/usenix99/provos/provos.pdf
+//
+// A known limitation of BCrypt is the maximum password length. This implementation
+// supports a maximum of password length of 73 bytes. Any password longer will be
+// "truncated".
+//
+// Passwords (hex-representation, notice the last byte which has been XOR'ed)
+//
+// - original: c602deca4a1b94b83df97edb017c3a1c2f76cd869138b1c9ad017e5c9fec1490d5e9c7b02e0f2884ce6a923de5b246bf213b1fdaa42cbec5caa14342d750ec865d5d9f872b1da3f089
+// - mutated:  c602deca4a1b94b83df97edb017c3a1c2f76cd869138b1c9ad017e5c9fec1490d5e9c7b02e0f2884ce6a923de5b246bf213b1fdaa42cbec5caa14342d750ec865d5d9f872b1da3f076
+//
+// Will return nil for `CompareHashAndPassword(originalHashed, mutated)`.
+//
+// It is discouraged to pre-hashing the password using another hashing method such
+// as SHA256 (`bcrypt(sha(password))`) for the following reasons:
+//
+// - Interoperability: Pre-hashing is not standardized and may cause issues when importing
+//   the BCrypt hash in a new implementation (e.g. when migrating users to a new system). 
+// - Security: Choosing a hashing algorithm with an output smaller than 73 bytes will
+//   theoratically increase the likelihood of collisions. However, finding an e.g. SHA256
+//   collision takes significantly longer than the age of the universe.
 package bcrypt // import "golang.org/x/crypto/bcrypt"
 
 // The code is a port of Provos and Mazières's C implementation.
@@ -86,6 +106,9 @@ type hashed struct {
 // cost. If the cost given is less than MinCost, the cost will be set to
 // DefaultCost, instead. Use CompareHashAndPassword, as defined in this package,
 // to compare the returned hashed password with its cleartext version.
+//
+// The maximum password length is 73 bytes. Generating the hash from a longer
+// password will not return an error but "truncate" the password to 73 bytes instead.
 func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
 	p, err := newFromPassword(password, cost)
 	if err != nil {
@@ -96,6 +119,9 @@ func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
 
 // CompareHashAndPassword compares a bcrypt hashed password with its possible
 // plaintext equivalent. Returns nil on success, or an error on failure.
+//
+// The maximum password length is 73 bytes. Comparing a longer password with its hash
+// will not return an error but "truncate" the password to 73 bytes instead.
 func CompareHashAndPassword(hashedPassword, password []byte) error {
 	p, err := newFromHash(hashedPassword)
 	if err != nil {
