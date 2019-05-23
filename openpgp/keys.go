@@ -70,9 +70,9 @@ type KeyRing interface {
 	DecryptionKeys() []Key
 }
 
-// primaryIdentity returns the Identity marked as primary or the first identity
+// PrimaryIdentity returns the Identity marked as primary or the first identity
 // if none are so marked.
-func (e *Entity) primaryIdentity() *Identity {
+func (e *Entity) PrimaryIdentity() *Identity {
 	var firstIdentity *Identity
 	for _, ident := range e.Identities {
 		if firstIdentity == nil {
@@ -85,9 +85,9 @@ func (e *Entity) primaryIdentity() *Identity {
 	return firstIdentity
 }
 
-// encryptionKey returns the best candidate Key for encrypting a message to the
+// EncryptionKey returns the best candidate Key for encrypting a message to the
 // given Entity.
-func (e *Entity) encryptionKey(now time.Time) (Key, bool) {
+func (e *Entity) EncryptionKey(now time.Time) (Key, bool) {
 	candidateSubkey := -1
 
 	// Iterate the keys to find the newest key
@@ -112,7 +112,7 @@ func (e *Entity) encryptionKey(now time.Time) (Key, bool) {
 	// the primary key doesn't have any usage metadata then we
 	// assume that the primary key is ok. Or, if the primary key is
 	// marked as ok to encrypt to, then we can obviously use it.
-	i := e.primaryIdentity()
+	i := e.PrimaryIdentity()
 	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagEncryptCommunications &&
 		e.PrimaryKey.PubKeyAlgo.CanEncrypt() &&
 		!e.PrimaryKey.KeyExpired(i.SelfSignature, now) {
@@ -123,9 +123,9 @@ func (e *Entity) encryptionKey(now time.Time) (Key, bool) {
 	return Key{}, false
 }
 
-// signingKey return the best candidate Key for signing a message with this
+// SigningKey return the best candidate Key for signing a message with this
 // Entity.
-func (e *Entity) signingKey(now time.Time) (Key, bool) {
+func (e *Entity) SigningKey(now time.Time) (Key, bool) {
 	candidateSubkey := -1
 
 	for i, subkey := range e.Subkeys {
@@ -145,7 +145,7 @@ func (e *Entity) signingKey(now time.Time) (Key, bool) {
 
 	// If we have no candidate subkey then we assume that it's ok to sign
 	// with the primary key.
-	i := e.primaryIdentity()
+	i := e.PrimaryIdentity()
 	if !i.SelfSignature.FlagsValid || i.SelfSignature.FlagSign &&
 		!e.PrimaryKey.KeyExpired(i.SelfSignature, now) {
 		return Key{e, e.PrimaryKey, e.PrivateKey, i.SelfSignature}, true

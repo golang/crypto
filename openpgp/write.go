@@ -191,7 +191,7 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 func writeAndSign(payload io.WriteCloser, candidateHashes []uint8, signed *Entity, hints *FileHints, sigType packet.SignatureType, config *packet.Config) (plaintext io.WriteCloser, err error) {
 	var signer *packet.PrivateKey
 	if signed != nil {
-		signKey, ok := signed.signingKey(config.Now())
+		signKey, ok := signed.SigningKey(config.Now())
 		if !ok {
 			return nil, errors.InvalidArgumentError("no valid signing keys")
 		}
@@ -308,12 +308,12 @@ func encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 	encryptKeys := make([]Key, len(to))
 	for i := range to {
 		var ok bool
-		encryptKeys[i], ok = to[i].encryptionKey(config.Now())
+		encryptKeys[i], ok = to[i].EncryptionKey(config.Now())
 		if !ok {
 			return nil, errors.InvalidArgumentError("cannot encrypt a message to key id " + strconv.FormatUint(to[i].PrimaryKey.KeyId, 16) + " because it has no encryption keys")
 		}
 
-		sig := to[i].primaryIdentity().SelfSignature
+		sig := to[i].PrimaryIdentity().SelfSignature
 
 		preferredSymmetric := sig.PreferredSymmetric
 		if len(preferredSymmetric) == 0 {
@@ -379,7 +379,7 @@ func Sign(output io.Writer, signed *Entity, hints *FileHints, config *packet.Con
 		hashToHashId(crypto.RIPEMD160),
 	}
 	defaultHashes := candidateHashes[len(candidateHashes)-1:]
-	preferredHashes := signed.primaryIdentity().SelfSignature.PreferredHash
+	preferredHashes := signed.PrimaryIdentity().SelfSignature.PreferredHash
 	if len(preferredHashes) == 0 {
 		preferredHashes = defaultHashes
 	}

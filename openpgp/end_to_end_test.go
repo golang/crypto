@@ -251,7 +251,7 @@ func encryptDecryptTest(t *testing.T, testSetFrom algorithmSet, testSetTo algori
 	if !md.IsEncrypted {
 		t.Fatal("The message should be encrypted")
 	}
-	signKey, _ := signed.signingKey(time.Now())
+	signKey, _ := signed.SigningKey(time.Now())
 	expectedKeyId := signKey.PublicKey.KeyId
 	if md.SignedByKeyId != expectedKeyId {
 		t.Fatalf("Message signed by wrong key id, got: %v, want: %v", *md.SignedBy, expectedKeyId)
@@ -265,7 +265,7 @@ func encryptDecryptTest(t *testing.T, testSetFrom algorithmSet, testSetTo algori
 		t.Fatalf("Error reading encrypted contents: %s", err)
 	}
 
-	encryptKey, _ := publicKeyTo[0].encryptionKey(time.Now())
+	encryptKey, _ := publicKeyTo[0].EncryptionKey(time.Now())
 	expectedEncKeyId := encryptKey.PublicKey.KeyId
 	if len(md.EncryptedToKeyIds) != 1 || md.EncryptedToKeyIds[0] != expectedEncKeyId {
 		t.Errorf("Expected message to be encrypted to %v, but got %#v", expectedKeyId, md.EncryptedToKeyIds)

@@ -235,7 +235,7 @@ func TestEncryption(t *testing.T) {
 
 		testTime, _ := time.Parse("2006-01-02", "2013-07-01")
 		if test.isSigned {
-			signKey, _ := kring[0].signingKey(testTime)
+			signKey, _ := kring[0].SigningKey(testTime)
 			expectedKeyId := signKey.PublicKey.KeyId
 			if md.SignedByKeyId != expectedKeyId {
 				t.Errorf("#%d: message signed by wrong key id, got: %v, want: %v", i, *md.SignedBy, expectedKeyId)
@@ -251,7 +251,7 @@ func TestEncryption(t *testing.T) {
 			continue
 		}
 
-		encryptKey, _ := kring[0].encryptionKey(testTime)
+		encryptKey, _ := kring[0].EncryptionKey(testTime)
 		expectedKeyId := encryptKey.PublicKey.KeyId
 		if len(md.EncryptedToKeyIds) != 1 || md.EncryptedToKeyIds[0] != expectedKeyId {
 			t.Errorf("#%d: expected message to be encrypted to %v, but got %#v", i, expectedKeyId, md.EncryptedToKeyIds)
@@ -333,7 +333,7 @@ func TestSigning(t *testing.T) {
 		}
 
 		testTime, _ := time.Parse("2006-01-02", "2013-07-01")
-		signKey, _ := kring[0].signingKey(testTime)
+		signKey, _ := kring[0].SigningKey(testTime)
 		expectedKeyId := signKey.PublicKey.KeyId
 		if md.SignedByKeyId != expectedKeyId {
 			t.Errorf("#%d: message signed by wrong key id, got: %v, want: %v", i, *md.SignedBy, expectedKeyId)

@@ -28,7 +28,7 @@ func TestKeyExpiry(t *testing.T) {
 	// sub  1024R/96A672F5  created: 2013-07-01 23:11:23 +0200 CEST  expires: 2013-07-31  usage: E
 	//
 	// So this should select the newest, non-expired encryption key.
-	key, ok := entity.encryptionKey(time1)
+	key, ok := entity.EncryptionKey(time1)
 	if !ok {
 		t.Fatal("No encryption key found")
 	}
@@ -39,14 +39,14 @@ func TestKeyExpiry(t *testing.T) {
 	// Once the first encryption subkey has expired, the second should be
 	// selected.
 	time2, _ := time.Parse(timeFormat, "2013-07-09")
-	key, _ = entity.encryptionKey(time2)
+	key, _ = entity.EncryptionKey(time2)
 	if id, expected := key.PublicKey.KeyIdShortString(), "96A672F5"; id != expected {
 		t.Errorf("Expected key %s at time %s, but got key %s", expected, time2.Format(timeFormat), id)
 	}
 
 	// Once all the keys have expired, nothing should be returned.
 	time3, _ := time.Parse(timeFormat, "2013-08-01")
-	if key, ok := entity.encryptionKey(time3); ok {
+	if key, ok := entity.EncryptionKey(time3); ok {
 		t.Errorf("Expected no key at time %s, but got key %s", time3.Format(timeFormat), key.PublicKey.KeyIdShortString())
 	}
 }
