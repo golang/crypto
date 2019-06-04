@@ -18,6 +18,11 @@ var mpiTests = []struct {
 	err       error
 }{
 	{
+		encoded:   []byte{0x0, 0x0},
+		bytes:     []byte{},
+		bitLength: 0,
+	},
+	{
 		encoded:   []byte{0x0, 0x1, 0x1},
 		bytes:     []byte{0x1},
 		bitLength: 1,
@@ -33,12 +38,12 @@ var mpiTests = []struct {
 		bitLength: 0x100,
 	},
 	// https://bugs.gnupg.org/gnupg/issue1853
-	// {
-	// 	encoded:   []byte{0x0, 0x10, 0x0, 0x01},
-	// 	bytes:     []byte{0x01},
-	// 	reencoded: []byte{0x0, 0x8, 0x01},
-	// 	bitLength: 8,
-	// },
+	{
+		encoded:   []byte{0x0, 0x10, 0x0, 0x1},
+		bytes:     []byte{0x0, 0x1},
+		reencoded: []byte{0x0, 0x1, 0x1},
+		bitLength: 0x10,
+	},
 	// EOF error,
 	{
 		encoded: []byte{},
@@ -71,7 +76,10 @@ func TestMPI(t *testing.T) {
 			reencoded = test.reencoded
 		}
 
-		if b := mpi.EncodedBytes(); !bytes.Equal(b, reencoded) {
+		if b := mpi.EncodedBytes(); !bytes.Equal(b, test.encoded) {
+			t.Errorf("#%d: bad encoding got:%x want:%x", i, b, test.encoded)
+		}
+		if b := NewMPI(mpi.Bytes()).EncodedBytes(); !bytes.Equal(b, reencoded) {
 			t.Errorf("#%d: bad encoding got:%x want:%x", i, b, reencoded)
 		}
 	}

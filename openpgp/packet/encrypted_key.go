@@ -207,7 +207,8 @@ func serializeEncryptedKeyRSA(w io.Writer, rand io.Reader, header [10]byte, pub 
 		return errors.InvalidArgumentError("RSA encryption failed: " + err.Error())
 	}
 
-	packetLen := 10 /* header length */ + 2 /* mpi size */ + len(cipherText)
+	cipherMPI := encoding.NewMPI(cipherText)
+	packetLen := 10 /* header length */ + int(cipherMPI.EncodedLength())
 
 	err = serializeHeader(w, packetTypeEncryptedKey, packetLen)
 	if err != nil {
@@ -217,7 +218,7 @@ func serializeEncryptedKeyRSA(w io.Writer, rand io.Reader, header [10]byte, pub 
 	if err != nil {
 		return err
 	}
-	_, err = w.Write(encoding.NewMPI(cipherText).EncodedBytes())
+	_, err = w.Write(cipherMPI.EncodedBytes())
 	return err
 }
 
