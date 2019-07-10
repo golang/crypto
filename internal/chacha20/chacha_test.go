@@ -7,10 +7,15 @@ package chacha20
 import (
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"math/rand"
 	"testing"
 )
+
+func _() {
+	// Assert that bufSize is a multiple of blockSize.
+	var b [1]byte
+	_ = b[bufSize%blockSize]
+}
 
 func TestCore(t *testing.T) {
 	// This is just a smoke test that checks the example from
@@ -121,6 +126,8 @@ func TestStep(t *testing.T) {
 		}
 		// finish the encryption
 		s.XORKeyStream(output[i:], input[i:])
+		// ensure we tolerate a call with an empty input
+		s.XORKeyStream(output[len(output):], input[len(input):])
 
 		got := hex.EncodeToString(output)
 		if got != c.output {
@@ -170,22 +177,42 @@ func TestAdvance(t *testing.T) {
 	}
 }
 
-func BenchmarkChaCha20(b *testing.B) {
-	sizes := []int{32, 63, 64, 256, 1024, 1350, 65536}
-	for _, size := range sizes {
-		s := size
-		b.Run(fmt.Sprint(s), func(b *testing.B) {
-			k := [32]byte{}
-			c := [16]byte{}
-			src := make([]byte, s)
-			dst := make([]byte, s)
-			b.SetBytes(int64(s))
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				XORKeyStream(dst, src, &c, &k)
-			}
-		})
+func benchmarkChaCha20(b *testing.B, step, count int) {
+	tot := step * count
+	src := make([]byte, tot)
+	dst := make([]byte, tot)
+	b.SetBytes(int64(tot))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		c := New([8]uint32{}, [3]uint32{})
+		for i := 0; i < tot; i += step {
+			c.XORKeyStream(dst[i:], src[i:i+step])
+		}
 	}
+}
+
+func BenchmarkChaCha20(b *testing.B) {
+	b.Run("64", func(b *testing.B) {
+		benchmarkChaCha20(b, 64, 1)
+	})
+	b.Run("256", func(b *testing.B) {
+		benchmarkChaCha20(b, 256, 1)
+	})
+	b.Run("10x25", func(b *testing.B) {
+		benchmarkChaCha20(b, 10, 25)
+	})
+	b.Run("4096", func(b *testing.B) {
+		benchmarkChaCha20(b, 256, 1)
+	})
+	b.Run("100x40", func(b *testing.B) {
+		benchmarkChaCha20(b, 100, 40)
+	})
+	b.Run("65536", func(b *testing.B) {
+		benchmarkChaCha20(b, 65536, 1)
+	})
+	b.Run("1000x65", func(b *testing.B) {
+		benchmarkChaCha20(b, 1000, 65)
+	})
 }
 
 func TestHChaCha20(t *testing.T) {

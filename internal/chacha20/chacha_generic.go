@@ -2,29 +2,35 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package ChaCha20 implements the core ChaCha20 function as specified
-// in https://tools.ietf.org/html/rfc7539#section-2.3.
+// Package chacha20 implements the ChaCha20 encryption algorithm
+// as specified in RFC 8439.
 package chacha20
 
 import (
 	"crypto/cipher"
 	"encoding/binary"
+	"math/bits"
 
 	"golang.org/x/crypto/internal/subtle"
 )
 
-// assert that *Cipher implements cipher.Stream
-var _ cipher.Stream = (*Cipher)(nil)
-
 // Cipher is a stateful instance of ChaCha20 using a particular key
 // and nonce. A *Cipher implements the cipher.Stream interface.
 type Cipher struct {
+	// The ChaCha20 state is 16 words: 4 constant, 8 of key, 1 of counter
+	// (incremented after each block), and 3 of nonce.
 	key     [8]uint32
-	counter uint32 // incremented after each block
+	counter uint32
 	nonce   [3]uint32
-	buf     [bufSize]byte // buffer for unused keystream bytes
-	len     int           // number of unused keystream bytes at end of buf
+
+	// The last len bytes of buf are leftover key stream bytes from the previous
+	// XORKeyStream invocation. The size of buf depends on how many blocks are
+	// computed at a time.
+	buf [bufSize]byte
+	len int
 }
+
+var _ cipher.Stream = (*Cipher)(nil)
 
 // New creates a new ChaCha20 stream cipher with the given key and nonce.
 // The initial counter value is set to 0.
@@ -32,27 +38,32 @@ func New(key [8]uint32, nonce [3]uint32) *Cipher {
 	return &Cipher{key: key, nonce: nonce}
 }
 
-// ChaCha20 constants spelling "expand 32-byte k"
+// The constant first 4 words of the ChaCha20 state.
 const (
-	j0 uint32 = 0x61707865
-	j1 uint32 = 0x3320646e
-	j2 uint32 = 0x79622d32
-	j3 uint32 = 0x6b206574
+	j0 uint32 = 0x61707865 // expa
+	j1 uint32 = 0x3320646e // nd 3
+	j2 uint32 = 0x79622d32 // 2-by
+	j3 uint32 = 0x6b206574 // te k
 )
 
+const blockSize = 64
+
+// quarterRound is the core of ChaCha20. It shuffles the bits of 4 state words.
+// It's executed 4 times for each of the 20 ChaCha20 rounds, operating on all 16
+// words each round, in columnar or diagonal groups of 4 at a time.
 func quarterRound(a, b, c, d uint32) (uint32, uint32, uint32, uint32) {
 	a += b
 	d ^= a
-	d = (d << 16) | (d >> 16)
+	d = bits.RotateLeft32(d, 16)
 	c += d
 	b ^= c
-	b = (b << 12) | (b >> 20)
+	b = bits.RotateLeft32(b, 12)
 	a += b
 	d ^= a
-	d = (d << 8) | (d >> 24)
+	d = bits.RotateLeft32(d, 8)
 	c += d
 	b ^= c
-	b = (b << 7) | (b >> 25)
+	b = bits.RotateLeft32(b, 7)
 	return a, b, c, d
 }
 
@@ -67,116 +78,141 @@ func quarterRound(a, b, c, d uint32) (uint32, uint32, uint32, uint32) {
 // the src buffers was passed in a single run. That is, Cipher
 // maintains state and does not reset at each XORKeyStream call.
 func (s *Cipher) XORKeyStream(dst, src []byte) {
-	if len(dst) < len(src) {
-		panic("chacha20: output smaller than input")
-	}
-	if subtle.InexactOverlap(dst[:len(src)], src) {
-		panic("chacha20: invalid buffer overlap")
-	}
-
-	// xor src with buffered keystream first
-	if s.len != 0 {
-		buf := s.buf[len(s.buf)-s.len:]
-		if len(src) < len(buf) {
-			buf = buf[:len(src)]
-		}
-		td, ts := dst[:len(buf)], src[:len(buf)] // BCE hint
-		for i, b := range buf {
-			td[i] = ts[i] ^ b
-		}
-		s.len -= len(buf)
-		if s.len != 0 {
-			return
-		}
-		s.buf = [len(s.buf)]byte{} // zero the empty buffer
-		src = src[len(buf):]
-		dst = dst[len(buf):]
-	}
-
 	if len(src) == 0 {
 		return
 	}
-	if haveAsm {
-		if uint64(len(src))+uint64(s.counter)*64 > (1<<38)-64 {
-			panic("chacha20: counter overflow")
+	if len(dst) < len(src) {
+		panic("chacha20: output smaller than input")
+	}
+	dst = dst[:len(src)]
+	if subtle.InexactOverlap(dst, src) {
+		panic("chacha20: invalid buffer overlap")
+	}
+
+	// First, drain any remaining key stream from a previous XORKeyStream.
+	if s.len != 0 {
+		keyStream := s.buf[bufSize-s.len:]
+		if len(src) < len(keyStream) {
+			keyStream = keyStream[:len(src)]
 		}
-		s.xorKeyStreamAsm(dst, src)
-		return
+		_ = src[len(keyStream)-1] // bounds check elimination hint
+		for i, b := range keyStream {
+			dst[i] = src[i] ^ b
+		}
+		s.len -= len(keyStream)
+		src = src[len(keyStream):]
+		dst = dst[len(keyStream):]
 	}
 
-	// set up a 64-byte buffer to pad out the final block if needed
-	// (hoisted out of the main loop to avoid spills)
-	rem := len(src) % 64  // length of final block
-	fin := len(src) - rem // index of final block
+	const blocksPerBuf = bufSize / blockSize
+	numBufs := (uint64(len(src)) + bufSize - 1) / bufSize
+	if uint64(s.counter)+numBufs*blocksPerBuf >= 1<<32 {
+		panic("chacha20: counter overflow")
+	}
+
+	// xorKeyStreamBlocks implementations expect input lengths that are a
+	// multiple of bufSize. Platform-specific ones process multiple blocks at a
+	// time, so have bufSizes that are a multiple of blockSize.
+
+	rem := len(src) % bufSize
+	full := len(src) - rem
+
+	if full > 0 {
+		s.xorKeyStreamBlocks(dst[:full], src[:full])
+	}
+
+	// If we have a partial (multi-)block, pad it for xorKeyStreamBlocks, and
+	// keep the leftover keystream for the next XORKeyStream invocation.
 	if rem > 0 {
-		copy(s.buf[len(s.buf)-64:], src[fin:])
+		s.buf = [bufSize]byte{}
+		copy(s.buf[:], src[full:])
+		s.xorKeyStreamBlocks(s.buf[:], s.buf[:])
+		s.len = bufSize - copy(dst[full:], s.buf[:])
+	}
+}
+
+func (s *Cipher) xorKeyStreamBlocksGeneric(dst, src []byte) {
+	if len(dst) != len(src) || len(dst)%blockSize != 0 {
+		panic("chacha20: internal error: wrong dst and/or src length")
 	}
 
-	// pre-calculate most of the first round
-	s1, s5, s9, s13 := quarterRound(j1, s.key[1], s.key[5], s.nonce[0])
-	s2, s6, s10, s14 := quarterRound(j2, s.key[2], s.key[6], s.nonce[1])
-	s3, s7, s11, s15 := quarterRound(j3, s.key[3], s.key[7], s.nonce[2])
+	// To generate each block of key stream, the initial cipher state
+	// (represented below) is passed through 20 rounds of shuffling,
+	// alternatively applying quarterRounds by columns (like 1, 5, 9, 13)
+	// or by diagonals (like 1, 6, 11, 12).
+	//
+	//      0:cccccccc   1:cccccccc   2:cccccccc   3:cccccccc
+	//      4:kkkkkkkk   5:kkkkkkkk   6:kkkkkkkk   7:kkkkkkkk
+	//      8:kkkkkkkk   9:kkkkkkkk  10:kkkkkkkk  11:kkkkkkkk
+	//     12:bbbbbbbb  13:nnnnnnnn  14:nnnnnnnn  15:nnnnnnnn
+	//
+	//            c=constant k=key b=blockcount n=nonce
+	var (
+		c0, c1, c2, c3   = j0, j1, j2, j3
+		c4, c5, c6, c7   = s.key[0], s.key[1], s.key[2], s.key[3]
+		c8, c9, c10, c11 = s.key[4], s.key[5], s.key[6], s.key[7]
+		_, c13, c14, c15 = s.counter, s.nonce[0], s.nonce[1], s.nonce[2]
+	)
 
-	n := len(src)
-	src, dst = src[:n:n], dst[:n:n] // BCE hint
-	for i := 0; i < n; i += 64 {
-		// calculate the remainder of the first round
-		s0, s4, s8, s12 := quarterRound(j0, s.key[0], s.key[4], s.counter)
+	// Three quarters of the first round don't depend on the counter, so we can
+	// calculate them here, and reuse them for multiple blocks in the loop.
+	// TODO(filippo): experiment with reusing across XORKeyStream calls.
+	s1, s5, s9, s13 := quarterRound(c1, c5, c9, c13)
+	s2, s6, s10, s14 := quarterRound(c2, c6, c10, c14)
+	s3, s7, s11, s15 := quarterRound(c3, c7, c11, c15)
 
-		// execute the second round
+	for i := 0; i < len(src); i += blockSize {
+		// The remainder of the first column round.
+		s0, s4, s8, s12 := quarterRound(c0, c4, c8, s.counter)
+
+		// The second diagonal round.
 		x0, x5, x10, x15 := quarterRound(s0, s5, s10, s15)
 		x1, x6, x11, x12 := quarterRound(s1, s6, s11, s12)
 		x2, x7, x8, x13 := quarterRound(s2, s7, s8, s13)
 		x3, x4, x9, x14 := quarterRound(s3, s4, s9, s14)
 
-		// execute the remaining 18 rounds
+		// The remaining 18 rounds.
 		for i := 0; i < 9; i++ {
+			// Column round.
 			x0, x4, x8, x12 = quarterRound(x0, x4, x8, x12)
 			x1, x5, x9, x13 = quarterRound(x1, x5, x9, x13)
 			x2, x6, x10, x14 = quarterRound(x2, x6, x10, x14)
 			x3, x7, x11, x15 = quarterRound(x3, x7, x11, x15)
 
+			// Diagonal round.
 			x0, x5, x10, x15 = quarterRound(x0, x5, x10, x15)
 			x1, x6, x11, x12 = quarterRound(x1, x6, x11, x12)
 			x2, x7, x8, x13 = quarterRound(x2, x7, x8, x13)
 			x3, x4, x9, x14 = quarterRound(x3, x4, x9, x14)
 		}
 
-		x0 += j0
-		x1 += j1
-		x2 += j2
-		x3 += j3
-
-		x4 += s.key[0]
-		x5 += s.key[1]
-		x6 += s.key[2]
-		x7 += s.key[3]
-		x8 += s.key[4]
-		x9 += s.key[5]
-		x10 += s.key[6]
-		x11 += s.key[7]
-
+		// Finally, add back the initial state to generate the key stream.
+		x0 += c0
+		x1 += c1
+		x2 += c2
+		x3 += c3
+		x4 += c4
+		x5 += c5
+		x6 += c6
+		x7 += c7
+		x8 += c8
+		x9 += c9
+		x10 += c10
+		x11 += c11
 		x12 += s.counter
-		x13 += s.nonce[0]
-		x14 += s.nonce[1]
-		x15 += s.nonce[2]
+		x13 += c13
+		x14 += c14
+		x15 += c15
 
-		// increment the counter
 		s.counter += 1
 		if s.counter == 0 {
-			panic("chacha20: counter overflow")
+			panic("chacha20: internal error: counter overflow")
 		}
 
-		// pad to 64 bytes if needed
 		in, out := src[i:], dst[i:]
-		if i == fin {
-			// src[fin:] has already been copied into s.buf before
-			// the main loop
-			in, out = s.buf[len(s.buf)-64:], s.buf[len(s.buf)-64:]
-		}
-		in, out = in[:64], out[:64] // BCE hint
+		in, out = in[:blockSize], out[:blockSize] // bounds check elimination hint
 
-		// XOR the key stream with the source and write out the result
+		// XOR the key stream with the source and write out the result.
 		xor(out[0:], in[0:], x0)
 		xor(out[4:], in[4:], x1)
 		xor(out[8:], in[8:], x2)
@@ -194,22 +230,13 @@ func (s *Cipher) XORKeyStream(dst, src []byte) {
 		xor(out[56:], in[56:], x14)
 		xor(out[60:], in[60:], x15)
 	}
-	// copy any trailing bytes out of the buffer and into dst
-	if rem != 0 {
-		s.len = 64 - rem
-		copy(dst[fin:], s.buf[len(s.buf)-64:])
-	}
 }
 
 // Advance discards bytes in the key stream until the next 64 byte block
-// boundary is reached and updates the counter accordingly. If the key
-// stream is already at a block boundary no bytes will be discarded and
-// the counter will be unchanged.
+// boundary is reached. If the key stream is already at a block boundary no
+// bytes will be discarded.
 func (s *Cipher) Advance() {
-	s.len -= s.len % 64
-	if s.len == 0 {
-		s.buf = [len(s.buf)]byte{}
-	}
+	s.len -= s.len % blockSize
 }
 
 // XORKeyStream crypts bytes from in to out using the given key and counters.
@@ -246,11 +273,13 @@ func HChaCha20(key *[8]uint32, nonce *[4]uint32) [8]uint32 {
 	x12, x13, x14, x15 := nonce[0], nonce[1], nonce[2], nonce[3]
 
 	for i := 0; i < 10; i++ {
+		// Diagonal round.
 		x0, x4, x8, x12 = quarterRound(x0, x4, x8, x12)
 		x1, x5, x9, x13 = quarterRound(x1, x5, x9, x13)
 		x2, x6, x10, x14 = quarterRound(x2, x6, x10, x14)
 		x3, x7, x11, x15 = quarterRound(x3, x7, x11, x15)
 
+		// Column round.
 		x0, x5, x10, x15 = quarterRound(x0, x5, x10, x15)
 		x1, x6, x11, x12 = quarterRound(x1, x6, x11, x12)
 		x2, x7, x8, x13 = quarterRound(x2, x7, x8, x13)
