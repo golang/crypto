@@ -28,6 +28,13 @@ type Cipher struct {
 	// computed at a time.
 	buf [bufSize]byte
 	len int
+
+	// The counter-independent results of the first round are cached after they
+	// are computed the first time.
+	precompDone      bool
+	p1, p5, p9, p13  uint32
+	p2, p6, p10, p14 uint32
+	p3, p7, p11, p15 uint32
 }
 
 var _ cipher.Stream = (*Cipher)(nil)
@@ -155,21 +162,24 @@ func (s *Cipher) xorKeyStreamBlocksGeneric(dst, src []byte) {
 	)
 
 	// Three quarters of the first round don't depend on the counter, so we can
-	// calculate them here, and reuse them for multiple blocks in the loop.
-	// TODO(filippo): experiment with reusing across XORKeyStream calls.
-	s1, s5, s9, s13 := quarterRound(c1, c5, c9, c13)
-	s2, s6, s10, s14 := quarterRound(c2, c6, c10, c14)
-	s3, s7, s11, s15 := quarterRound(c3, c7, c11, c15)
+	// calculate them here, and reuse them for multiple blocks in the loop, and
+	// for future XORKeyStream invocations.
+	if !s.precompDone {
+		s.p1, s.p5, s.p9, s.p13 = quarterRound(c1, c5, c9, c13)
+		s.p2, s.p6, s.p10, s.p14 = quarterRound(c2, c6, c10, c14)
+		s.p3, s.p7, s.p11, s.p15 = quarterRound(c3, c7, c11, c15)
+		s.precompDone = true
+	}
 
 	for i := 0; i < len(src); i += blockSize {
 		// The remainder of the first column round.
-		s0, s4, s8, s12 := quarterRound(c0, c4, c8, s.counter)
+		fcr0, fcr4, fcr8, fcr12 := quarterRound(c0, c4, c8, s.counter)
 
 		// The second diagonal round.
-		x0, x5, x10, x15 := quarterRound(s0, s5, s10, s15)
-		x1, x6, x11, x12 := quarterRound(s1, s6, s11, s12)
-		x2, x7, x8, x13 := quarterRound(s2, s7, s8, s13)
-		x3, x4, x9, x14 := quarterRound(s3, s4, s9, s14)
+		x0, x5, x10, x15 := quarterRound(fcr0, s.p5, s.p10, s.p15)
+		x1, x6, x11, x12 := quarterRound(s.p1, s.p6, s.p11, fcr12)
+		x2, x7, x8, x13 := quarterRound(s.p2, s.p7, fcr8, s.p13)
+		x3, x4, x9, x14 := quarterRound(s.p3, fcr4, s.p9, s.p14)
 
 		// The remaining 18 rounds.
 		for i := 0; i < 9; i++ {
