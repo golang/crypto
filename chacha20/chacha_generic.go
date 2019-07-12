@@ -2,16 +2,29 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package chacha20 implements the ChaCha20 encryption algorithm
+// Package chacha20 implements the ChaCha20 encryption algorithms
 // as specified in RFC 8439.
 package chacha20
 
 import (
 	"crypto/cipher"
 	"encoding/binary"
+	"errors"
 	"math/bits"
 
 	"golang.org/x/crypto/internal/subtle"
+)
+
+const (
+	// KeySize is the size of the key used by this cipher, in bytes.
+	KeySize = 32
+
+	// NonceSize is the size of the nonce used with the standard variant of this
+	// cipher, in bytes.
+	//
+	// Note that this is too short to be safely generated at random if the same
+	// key is reused more than 2³² times.
+	NonceSize = 12
 )
 
 // Cipher is a stateful instance of ChaCha20 using a particular key
@@ -39,10 +52,46 @@ type Cipher struct {
 
 var _ cipher.Stream = (*Cipher)(nil)
 
-// New creates a new ChaCha20 stream cipher with the given key and nonce.
-// The initial counter value is set to 0.
-func New(key [8]uint32, nonce [3]uint32) *Cipher {
-	return &Cipher{key: key, nonce: nonce}
+// NewUnauthenticatedCipher creates a new ChaCha20 stream cipher with the given
+// 32 bytes key and a 12 bytes nonce. It returns an error if key or nonce have
+// any other length.
+//
+// Note that ChaCha20, like all stream ciphers, is not authenticated and allows
+// attackers to silently tamper with the plaintext. For this reason, it is more
+// appropriate as a building block than as a standalone encryption mechanism.
+// Instead, consider using package golang.org/x/crypto/chacha20poly1305.
+func NewUnauthenticatedCipher(key, nonce []byte) (*Cipher, error) {
+	// This function is split into a wrapper so that the Cipher allocation will
+	// be inlined, and depending on how the caller uses the return value, won't
+	// escape to the heap.
+	c := &Cipher{}
+	return newUnauthenticatedCipher(c, key, nonce)
+}
+
+func newUnauthenticatedCipher(c *Cipher, key, nonce []byte) (*Cipher, error) {
+	if len(key) != KeySize {
+		return nil, errors.New("chacha20: wrong key size")
+	}
+	if len(nonce) != NonceSize {
+		return nil, errors.New("chacha20: wrong nonce size")
+	}
+
+	c.key = [8]uint32{
+		binary.LittleEndian.Uint32(key[0:4]),
+		binary.LittleEndian.Uint32(key[4:8]),
+		binary.LittleEndian.Uint32(key[8:12]),
+		binary.LittleEndian.Uint32(key[12:16]),
+		binary.LittleEndian.Uint32(key[16:20]),
+		binary.LittleEndian.Uint32(key[20:24]),
+		binary.LittleEndian.Uint32(key[24:28]),
+		binary.LittleEndian.Uint32(key[28:32]),
+	}
+	c.nonce = [3]uint32{
+		binary.LittleEndian.Uint32(nonce[0:4]),
+		binary.LittleEndian.Uint32(nonce[4:8]),
+		binary.LittleEndian.Uint32(nonce[8:12]),
+	}
+	return c, nil
 }
 
 // The constant first 4 words of the ChaCha20 state.
@@ -242,45 +291,38 @@ func (s *Cipher) xorKeyStreamBlocksGeneric(dst, src []byte) {
 	}
 }
 
-// Advance discards bytes in the key stream until the next 64 byte block
-// boundary is reached. If the key stream is already at a block boundary no
-// bytes will be discarded.
-func (s *Cipher) Advance() {
-	s.len -= s.len % blockSize
+// HChaCha20 uses the ChaCha20 core to generate a derived key from a 32 bytes
+// key and a 16 bytes nonce. It returns an error if key or nonce have any other
+// length. It is used as part of the XChaCha20 construction.
+func HChaCha20(key, nonce []byte) ([]byte, error) {
+	// This function is split into a wrapper so that the slice allocation will
+	// be inlined, and depending on how the caller uses the return value, won't
+	// escape to the heap.
+	out := make([]byte, 32)
+	return hChaCha20(out, key, nonce)
 }
 
-// XORKeyStream crypts bytes from in to out using the given key and counters.
-// In and out must overlap entirely or not at all. Counter contains the raw
-// ChaCha20 counter bytes (i.e. block counter followed by nonce).
-func XORKeyStream(out, in []byte, counter *[16]byte, key *[32]byte) {
-	s := Cipher{
-		key: [8]uint32{
-			binary.LittleEndian.Uint32(key[0:4]),
-			binary.LittleEndian.Uint32(key[4:8]),
-			binary.LittleEndian.Uint32(key[8:12]),
-			binary.LittleEndian.Uint32(key[12:16]),
-			binary.LittleEndian.Uint32(key[16:20]),
-			binary.LittleEndian.Uint32(key[20:24]),
-			binary.LittleEndian.Uint32(key[24:28]),
-			binary.LittleEndian.Uint32(key[28:32]),
-		},
-		nonce: [3]uint32{
-			binary.LittleEndian.Uint32(counter[4:8]),
-			binary.LittleEndian.Uint32(counter[8:12]),
-			binary.LittleEndian.Uint32(counter[12:16]),
-		},
-		counter: binary.LittleEndian.Uint32(counter[0:4]),
+func hChaCha20(out, key, nonce []byte) ([]byte, error) {
+	if len(key) != KeySize {
+		return nil, errors.New("chacha20: wrong HChaCha20 key size")
 	}
-	s.XORKeyStream(out, in)
-}
+	if len(nonce) != 16 {
+		return nil, errors.New("chacha20: wrong HChaCha20 nonce size")
+	}
 
-// HChaCha20 uses the ChaCha20 core to generate a derived key from a key and a
-// nonce. It should only be used as part of the XChaCha20 construction.
-func HChaCha20(key *[8]uint32, nonce *[4]uint32) [8]uint32 {
 	x0, x1, x2, x3 := j0, j1, j2, j3
-	x4, x5, x6, x7 := key[0], key[1], key[2], key[3]
-	x8, x9, x10, x11 := key[4], key[5], key[6], key[7]
-	x12, x13, x14, x15 := nonce[0], nonce[1], nonce[2], nonce[3]
+	x4 := binary.LittleEndian.Uint32(key[0:4])
+	x5 := binary.LittleEndian.Uint32(key[4:8])
+	x6 := binary.LittleEndian.Uint32(key[8:12])
+	x7 := binary.LittleEndian.Uint32(key[12:16])
+	x8 := binary.LittleEndian.Uint32(key[16:20])
+	x9 := binary.LittleEndian.Uint32(key[20:24])
+	x10 := binary.LittleEndian.Uint32(key[24:28])
+	x11 := binary.LittleEndian.Uint32(key[28:32])
+	x12 := binary.LittleEndian.Uint32(nonce[0:4])
+	x13 := binary.LittleEndian.Uint32(nonce[4:8])
+	x14 := binary.LittleEndian.Uint32(nonce[8:12])
+	x15 := binary.LittleEndian.Uint32(nonce[12:16])
 
 	for i := 0; i < 10; i++ {
 		// Diagonal round.
@@ -296,8 +338,14 @@ func HChaCha20(key *[8]uint32, nonce *[4]uint32) [8]uint32 {
 		x3, x4, x9, x14 = quarterRound(x3, x4, x9, x14)
 	}
 
-	var out [8]uint32
-	out[0], out[1], out[2], out[3] = x0, x1, x2, x3
-	out[4], out[5], out[6], out[7] = x12, x13, x14, x15
-	return out
+	_ = out[31] // bounds check elimination hint
+	binary.LittleEndian.PutUint32(out[0:4], x0)
+	binary.LittleEndian.PutUint32(out[4:8], x1)
+	binary.LittleEndian.PutUint32(out[8:12], x2)
+	binary.LittleEndian.PutUint32(out[12:16], x3)
+	binary.LittleEndian.PutUint32(out[16:20], x12)
+	binary.LittleEndian.PutUint32(out[20:24], x13)
+	binary.LittleEndian.PutUint32(out[24:28], x14)
+	binary.LittleEndian.PutUint32(out[28:32], x15)
+	return out, nil
 }
