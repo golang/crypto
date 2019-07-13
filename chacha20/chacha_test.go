@@ -31,11 +31,11 @@ func TestNoOverlap(t *testing.T) {
 	for _, c := range testVectors {
 		s, _ := NewUnauthenticatedCipher(hexDecode(c.key), hexDecode(c.nonce))
 		input := hexDecode(c.input)
-		output := make([]byte, c.length)
+		output := make([]byte, len(input))
 		s.XORKeyStream(output, input)
 		got := hex.EncodeToString(output)
 		if got != c.output {
-			t.Errorf("length=%v: got %#v, want %#v", c.length, got, c.output)
+			t.Errorf("length=%v: got %#v, want %#v", len(input), got, c.output)
 		}
 	}
 }
@@ -48,7 +48,7 @@ func TestOverlap(t *testing.T) {
 		s.XORKeyStream(data, data)
 		got := hex.EncodeToString(data)
 		if got != c.output {
-			t.Errorf("length=%v: got %#v, want %#v", c.length, got, c.output)
+			t.Errorf("length=%v: got %#v, want %#v", len(data), got, c.output)
 		}
 	}
 }
@@ -57,21 +57,21 @@ func TestOverlap(t *testing.T) {
 func TestUnaligned(t *testing.T) {
 	const max = 8 // max offset (+1) to test
 	for _, c := range testVectors {
-		input := make([]byte, c.length+max)
-		output := make([]byte, c.length+max)
+		data := hexDecode(c.input)
+		input := make([]byte, len(data)+max)
+		output := make([]byte, len(data)+max)
 		for i := 0; i < max; i++ { // input offsets
 			for j := 0; j < max; j++ { // output offsets
 				s, _ := NewUnauthenticatedCipher(hexDecode(c.key), hexDecode(c.nonce))
 
-				input := input[i : i+c.length]
-				output := output[j : j+c.length]
+				input := input[i : i+len(data)]
+				output := output[j : j+len(data)]
 
-				data := hexDecode(c.input)
 				copy(input, data)
 				s.XORKeyStream(output, input)
 				got := hex.EncodeToString(output)
 				if got != c.output {
-					t.Errorf("length=%v: got %#v, want %#v", c.length, got, c.output)
+					t.Errorf("length=%v: got %#v, want %#v", len(data), got, c.output)
 				}
 			}
 		}
@@ -86,14 +86,14 @@ func TestStep(t *testing.T) {
 	for _, c := range testVectors {
 		s, _ := NewUnauthenticatedCipher(hexDecode(c.key), hexDecode(c.nonce))
 		input := hexDecode(c.input)
-		output := make([]byte, c.length)
+		output := make([]byte, len(input))
 
 		// step through the buffers
 		i, step := 0, steps[rnd.Intn(len(steps))]
-		for i+step < c.length {
+		for i+step < len(input) {
 			s.XORKeyStream(output[i:i+step], input[i:i+step])
-			if i+step < c.length && output[i+step] != 0 {
-				t.Errorf("length=%v, i=%v, step=%v: output overwritten", c.length, i, step)
+			if i+step < len(input) && output[i+step] != 0 {
+				t.Errorf("length=%v, i=%v, step=%v: output overwritten", len(input), i, step)
 			}
 			i += step
 			step = steps[rnd.Intn(len(steps))]
@@ -105,7 +105,7 @@ func TestStep(t *testing.T) {
 
 		got := hex.EncodeToString(output)
 		if got != c.output {
-			t.Errorf("length=%v: got %#v, want %#v", c.length, got, c.output)
+			t.Errorf("length=%v: got %#v, want %#v", len(input), got, c.output)
 		}
 	}
 }

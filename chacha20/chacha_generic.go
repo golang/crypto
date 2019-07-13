@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package chacha20 implements the ChaCha20 encryption algorithms
-// as specified in RFC 8439.
+// Package chacha20 implements the ChaCha20 and XChaCha20 encryption algorithms
+// as specified in RFC 8439 and draft-irtf-cfrg-xchacha-01.
 package chacha20
 
 import (
@@ -25,9 +25,13 @@ const (
 	// Note that this is too short to be safely generated at random if the same
 	// key is reused more than 2³² times.
 	NonceSize = 12
+
+	// NonceSizeX is the size of the nonce used with the XChaCha20 variant of
+	// this cipher, in bytes.
+	NonceSizeX = 24
 )
 
-// Cipher is a stateful instance of ChaCha20 using a particular key
+// Cipher is a stateful instance of ChaCha20 or XChaCha20 using a particular key
 // and nonce. A *Cipher implements the cipher.Stream interface.
 type Cipher struct {
 	// The ChaCha20 state is 16 words: 4 constant, 8 of key, 1 of counter
@@ -53,8 +57,9 @@ type Cipher struct {
 var _ cipher.Stream = (*Cipher)(nil)
 
 // NewUnauthenticatedCipher creates a new ChaCha20 stream cipher with the given
-// 32 bytes key and a 12 bytes nonce. It returns an error if key or nonce have
-// any other length.
+// 32 bytes key and a 12 or 24 bytes nonce. If a nonce of 24 bytes is provided,
+// the XChaCha20 construction will be used. It returns an error if key or nonce
+// have any other length.
 //
 // Note that ChaCha20, like all stream ciphers, is not authenticated and allows
 // attackers to silently tamper with the plaintext. For this reason, it is more
@@ -72,7 +77,15 @@ func newUnauthenticatedCipher(c *Cipher, key, nonce []byte) (*Cipher, error) {
 	if len(key) != KeySize {
 		return nil, errors.New("chacha20: wrong key size")
 	}
-	if len(nonce) != NonceSize {
+	if len(nonce) == NonceSizeX {
+		// XChaCha20 uses the ChaCha20 core to mix 16 bytes of the nonce into a
+		// derived key, allowing it to operate on a nonce of 24 bytes. See
+		// draft-irtf-cfrg-xchacha-01, Section 2.3.
+		key, _ = HChaCha20(key, nonce[0:16])
+		cNonce := make([]byte, NonceSize)
+		copy(cNonce[4:12], nonce[16:24])
+		nonce = cNonce
+	} else if len(nonce) != NonceSize {
 		return nil, errors.New("chacha20: wrong nonce size")
 	}
 
