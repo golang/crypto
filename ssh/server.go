@@ -340,6 +340,7 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 	var displayedBanner bool
 	var nextAuthMethods []string
 	var nextAuthMethodsPlain string
+	var nextAuthLoaded bool
 
 userAuthLoop:
 	for {
@@ -547,13 +548,17 @@ userAuthLoop:
 		if len(failureMsg.Methods) == 0 {
 			return nil, errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
 		}
+		if nextAuthLoaded {
+			failureMsg.Methods = nextAuthMethods
+		}
 
 		// if auth error is partial success, so need next auth
 		if authErr == ErrPartialSuccess {
 			if len(nextAuthMethods) > 0 {
+				nextAuthLoaded = true
 				failureMsg.PartialSuccess = true
 				failureMsg.Methods = nextAuthMethods
-		    } else {
+			} else {
 				return nil, errors.New("ssh: no next authentication methods configured but first auth return partial success")
 			}
 		}
