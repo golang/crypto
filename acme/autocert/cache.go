@@ -124,6 +124,7 @@ func (d DirCache) writeTempFile(prefix string, b []byte) (string, error) {
 	}
 	if _, err := f.Write(b); err != nil {
 		f.Close()
+		os.Remove(f.Name())
 		return "", err
 	}
 	return f.Name(), f.Close()
