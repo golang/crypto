@@ -258,7 +258,7 @@ func (pk *PrivateKey) Decrypt(passphrase []byte) error {
 		h.Write(data[:len(data)-sha1.Size])
 		sum := h.Sum(nil)
 		if !bytes.Equal(sum, data[len(data)-sha1.Size:]) {
-			return errors.StructuralError("private key checksum failure")
+			return errors.StructuralError("private key sha1 checksum failure")
 		}
 		data = data[:len(data)-sha1.Size]
 	} else {
