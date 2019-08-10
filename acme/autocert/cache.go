@@ -119,14 +119,19 @@ func (d DirCache) Delete(ctx context.Context, name string) error {
 }
 
 // writeTempFile writes b to a temporary file, closes the file and returns its path.
-func (d DirCache) writeTempFile(prefix string, b []byte) (string, error) {
+func (d DirCache) writeTempFile(prefix string, b []byte) (string, reterr error) {
 	// TempFile uses 0600 permissions
 	f, err := ioutil.TempFile(string(d), prefix)
 	if err != nil {
 		return "", err
 	}
+	defer func() {
+		if reterr != nil {
+			os.Remove(f.Name())
+		}
+	}()
 	if _, err := f.Write(b); err != nil {
-		f.Close()
+		reterr = f.Close()
 		return "", err
 	}
 	return f.Name(), f.Close()
