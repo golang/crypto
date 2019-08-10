@@ -69,13 +69,14 @@ func (d DirCache) Put(ctx context.Context, name string, data []byte) error {
 		return err
 	}
 
-	var (
-		tmp  string
-		err  error
-		done = make(chan struct{})
-	)
+	done := make(chan struct{})
+	var err error
 	go func() {
-		defer close(done)
+		var tmp string
+		defer func() {
+			os.Remove(tmp)
+			close(done)
+		}()
 		if tmp, err = d.writeTempFile(name, data); err != nil {
 			return
 		}
@@ -89,11 +90,8 @@ func (d DirCache) Put(ctx context.Context, name string, data []byte) error {
 	}()
 	select {
 	case <-ctx.Done():
-		err = ctx.Err()
+		return ctx.Err()
 	case <-done:
-	}
-	if err != nil {
-		os.Remove(tmp)
 	}
 	return err
 }
