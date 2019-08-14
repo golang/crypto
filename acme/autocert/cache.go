@@ -73,13 +73,11 @@ func (d DirCache) Put(ctx context.Context, name string, data []byte) error {
 	var err error
 	go func() {
 		var tmp string
-		defer func() {
-			os.Remove(tmp)
-			close(done)
-		}()
+		defer close(done)
 		if tmp, err = d.writeTempFile(name, data); err != nil {
 			return
 		}
+		defer os.Remove(tmp)
 		select {
 		case <-ctx.Done():
 			// Don't overwrite the file if the context was canceled.
