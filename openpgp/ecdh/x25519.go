@@ -137,7 +137,8 @@ func X25519Decrypt(priv *PrivateKey, vsG, m, curveOID, fingerprint []byte) (msg 
 }
 
 func copyReversed(out []byte, in []byte) {
-	for i := 31; i >= 0; i-- {
-		out[31-i] = in[i]
+	l := len(in)
+	for i := 0; i < l; i++ {
+		out[i] = in[l-i-1]
 	}
 }
