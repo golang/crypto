@@ -47,12 +47,14 @@ func TestDirCache(t *testing.T) {
 	if _, err := os.Stat(name); err != nil {
 		t.Error(err)
 	}
-	tmp, err := filepath.Glob(name + "[^0-9]")
+
+	// test put deletes temp file
+	tmp, err := filepath.Glob(name + "?*")
 	if err != nil {
 		t.Error(err)
 	}
 	if tmp != nil {
-		t.Errorf("get %v; want nil", tmp)
+		t.Errorf("temp file exists: %s", tmp)
 	}
 
 	// test delete
