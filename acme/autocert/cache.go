@@ -72,8 +72,8 @@ func (d DirCache) Put(ctx context.Context, name string, data []byte) error {
 	done := make(chan struct{})
 	var err error
 	go func() {
-		var tmp string
 		defer close(done)
+		var tmp string
 		if tmp, err = d.writeTempFile(name, data); err != nil {
 			return
 		}
