@@ -750,12 +750,16 @@ func (c *Client) doReg(ctx context.Context, url string, typ string, acct *Accoun
 }
 
 // popNonce returns a nonce value previously stored with c.addNonce
-// or fetches a fresh one from a URL by issuing a HEAD request.
-// It first tries c.directoryURL() and then the provided url if the former fails.
+// or fetches a fresh one from c.dir.NonceURL.
+// If NonceURL is empty, it first tries c.directoryURL() and, failing that,
+// the provided url.
 func (c *Client) popNonce(ctx context.Context, url string) (string, error) {
 	c.noncesMu.Lock()
 	defer c.noncesMu.Unlock()
 	if len(c.nonces) == 0 {
+		if c.dir != nil && c.dir.NonceURL != "" {
+			return c.fetchNonce(ctx, c.dir.NonceURL)
+		}
 		dirURL := c.directoryURL()
 		v, err := c.fetchNonce(ctx, dirURL)
 		if err != nil && url != dirURL {

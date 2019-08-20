@@ -84,3 +84,40 @@ func TestRFC_Discover(t *testing.T) {
 		t.Error("dir.Meta.ExternalAccountRequired is false")
 	}
 }
+
+func TestRFC_popNonce(t *testing.T) {
+	var count int
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The Client uses only Directory.NonceURL when specified.
+		// Expect no other URL paths.
+		if r.URL.Path != "/new-nonce" {
+			t.Errorf("r.URL.Path = %q; want /new-nonce", r.URL.Path)
+		}
+		if count > 0 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		count++
+		w.Header().Set("Replay-Nonce", "second")
+	}))
+	cl := &Client{
+		DirectoryURL: ts.URL,
+		dir:          &Directory{NonceURL: ts.URL + "/new-nonce"},
+	}
+	cl.addNonce(http.Header{"Replay-Nonce": {"first"}})
+
+	for i, nonce := range []string{"first", "second"} {
+		v, err := cl.popNonce(context.Background(), "")
+		if err != nil {
+			t.Errorf("%d: cl.popNonce: %v", i, err)
+		}
+		if v != nonce {
+			t.Errorf("%d: cl.popNonce = %q; want %q", i, v, nonce)
+		}
+	}
+	// No more nonces and server replies with an error past first nonce fetch.
+	// Expected to fail.
+	if _, err := cl.popNonce(context.Background(), ""); err == nil {
+		t.Error("last cl.popNonce returned nil error")
+	}
+}
