@@ -585,11 +585,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 	return e, nil
 }
 
-// SerializePrivate serializes an Entity, including private key material, but
-// excluding signatures from other entities, to the given Writer.
-// Identities and subkeys are re-signed in case they changed since NewEntry.
-// If config is nil, sensible defaults will be used.
-func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error) {
+func (e *Entity) serializePrivate(w io.Writer, config *packet.Config, reSign bool) (err error) {
 	err = e.PrivateKey.Serialize(w)
 	if err != nil {
 		return
@@ -599,9 +595,11 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 		if err != nil {
 			return
 		}
-		err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
-		if err != nil {
-			return
+		if reSign {
+			err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
+			if err != nil {
+				return
+			}
 		}
 		err = ident.SelfSignature.Serialize(w)
 		if err != nil {
@@ -613,9 +611,11 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 		if err != nil {
 			return
 		}
-		err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
-		if err != nil {
-			return
+		if reSign {
+			err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
+			if err != nil {
+				return
+			}
 		}
 		err = subkey.Sig.Serialize(w)
 		if err != nil {
@@ -623,6 +623,26 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 		}
 	}
 	return nil
+}
+
+// SerializePrivateWithoutSigning serializes an Entity, including private key material
+// preserving signatures from other entities, to the given Writer.
+// Identities and subkeys are preserved with the original signatures. This is useful in serializing
+// subkey only entities.
+// If config is nil, defaults will be used.
+func (e *Entity) SerializePrivateWithoutSigning(w io.Writer, config *packet.Config) (err error) {
+	return e.serializePrivate(w, config, false)
+}
+
+// SerializePrivate serializes an Entity, including private key material, but
+// excluding signatures from other entities, to the given Writer.
+// Identities and subkeys are re-signed in case they changed since NewEntry.
+// If config is nil, defaults will be used.
+func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error) {
+	if e.PrivateKey.Dummy {
+		return errors.ErrDummyPrivateKey("dummy private key cannot re-sign identities")
+	}
+	return e.serializePrivate(w, config, true)
 }
 
 // Serialize writes the public part of the given Entity to w, including

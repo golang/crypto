@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/openpgp/armor"
 	"golang.org/x/crypto/openpgp/errors"
 	"golang.org/x/crypto/openpgp/packet"
 )
@@ -129,6 +130,54 @@ func TestRevokedUserID(t *testing.T) {
 
 	if identityName, expectedName := identities[0].Name, "Golang Gopher <no-reply@golang.com>"; identityName != expectedName {
 		t.Errorf("obtained identity %s expected %s", identityName, expectedName)
+	}
+}
+
+func TestDummyPrivateKey(t *testing.T) {
+	// This public key has a signing subkey, but has a dummy placeholder
+	// instead of the real private key. It's used in scenarios where the
+	// main private key is withheld and only signing is allowed (e.g. build
+	// servers).
+	keys, err := ReadArmoredKeyRing(bytes.NewBufferString(onlySubkeyNoPrivateKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != 1 {
+		t.Errorf("Failed to accept key with dummy private key, %d", len(keys))
+	}
+	if !keys[0].PrivateKey.Dummy {
+		t.Errorf("Primary private key should be marked as a dummy key")
+	}
+	if len(keys[0].Subkeys) != 1 {
+		t.Errorf("Failed to accept good subkey, %d", len(keys[0].Subkeys))
+	}
+
+	// Test serialization of stub private key via entity.SerializePrivate().
+	var buf bytes.Buffer
+	w, err := armor.Encode(&buf, PrivateKeyType, nil)
+	if err != nil {
+		t.Errorf("Failed top initialise armored key writer")
+	}
+	err = keys[0].SerializePrivateWithoutSigning(w, nil)
+	if err != nil {
+		t.Errorf("Failed to serialize entity")
+	}
+	if w.Close() != nil {
+		t.Errorf("Failed to close writer for armored key")
+	}
+
+	keys, err = ReadArmoredKeyRing(bytes.NewBufferString(buf.String()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(keys) != 1 {
+		t.Errorf("Failed to accept key with dummy private key, %d", len(keys))
+	}
+	if !keys[0].PrivateKey.Dummy {
+		t.Errorf("Primary private key should be marked as a dummy key after serialisation")
+	}
+	if len(keys[0].Subkeys) != 1 {
+		t.Errorf("Failed to accept good subkey, %d", len(keys[0].Subkeys))
 	}
 }
 

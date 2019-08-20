@@ -15,6 +15,7 @@ import (
 	"encoding/hex"
 	"testing"
 
+	"golang.org/x/crypto/openpgp/errors"
 	_ "golang.org/x/crypto/ripemd160"
 )
 
@@ -70,13 +71,16 @@ func TestIterated(t *testing.T) {
 
 var parseTests = []struct {
 	spec, in, out string
+	dummyKey      bool
 }{
 	/* Simple with SHA1 */
-	{"0002", "hello", "aaf4c61d"},
+	{"0002", "hello", "aaf4c61d", false},
 	/* Salted with SHA1 */
-	{"01020102030405060708", "hello", "f4f7d67e"},
+	{"01020102030405060708", "hello", "f4f7d67e", false},
 	/* Iterated with SHA1 */
-	{"03020102030405060708f1", "hello", "f2a57b7c"},
+	{"03020102030405060708f1", "hello", "f2a57b7c", false},
+	/* GNU dummy S2K */
+	{"6502474e5501", "", "", true},
 }
 
 func TestParse(t *testing.T) {
@@ -85,10 +89,16 @@ func TestParse(t *testing.T) {
 		buf := bytes.NewBuffer(spec)
 		f, err := Parse(buf)
 		if err != nil {
-			t.Errorf("%d: Parse returned error: %s", i, err)
-			continue
+			if _, ok := err.(errors.ErrDummyPrivateKey); ok {
+				if !test.dummyKey {
+					t.Errorf("%d: Expected key GNU extension not found", i)
+				}
+				continue
+			} else {
+				t.Errorf("%d: Parse returned error: %s", i, err)
+				continue
+			}
 		}
-
 		expected, _ := hex.DecodeString(test.out)
 		out := make([]byte, len(expected))
 		f(out, []byte(test.in))

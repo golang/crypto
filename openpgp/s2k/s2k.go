@@ -152,13 +152,27 @@ func Iterated(out []byte, h hash.Hash, in []byte, salt []byte, count int) {
 }
 
 // Parse reads a binary specification for a string-to-key transformation from r
-// and returns a function which performs that transform.
+// and returns a function which performs that transform. If the S2K is a special
+// GNU extension that indicates that the private key is missing, then the error
+// returned is errors.ErrDummyPrivateKey.
 func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	var buf [9]byte
 
 	_, err = io.ReadFull(r, buf[:2])
 	if err != nil {
 		return
+	}
+
+	if buf[0] == 101 {
+		// This is a GNU extension. See
+		// https://git.gnupg.org/cgi-bin/gitweb.cgi?p=gnupg.git;a=blob;f=doc/DETAILS;h=fe55ae16ab4e26d8356dc574c9e8bc935e71aef1;hb=23191d7851eae2217ecdac6484349849a24fd94a#l1109
+		if _, err = io.ReadFull(r, buf[:4]); err != nil {
+			return nil, err
+		}
+		if buf[0] == 'G' && buf[1] == 'N' && buf[2] == 'U' && buf[3] == 1 {
+			return nil, errors.ErrDummyPrivateKey("dummy key found")
+		}
+		return nil, errors.UnsupportedError("GNU S2K extension")
 	}
 
 	hash, ok := HashIdToHash(buf[1])

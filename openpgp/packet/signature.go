@@ -509,6 +509,9 @@ func (sig *Signature) signPrepareHash(h hash.Hash) (digest []byte, err error) {
 // On success, the signature is stored in sig. Call Serialize to write it out.
 // If config is nil, sensible defaults will be used.
 func (sig *Signature) Sign(h hash.Hash, priv *PrivateKey, config *Config) (err error) {
+	if priv.Dummy {
+		return errors.ErrDummyPrivateKey("dummy key found")
+	}
 	sig.outSubpackets = sig.buildSubpackets()
 	digest, err := sig.signPrepareHash(h)
 	if err != nil {
@@ -576,6 +579,9 @@ func unwrapECDSASig(b []byte) (r, s *big.Int, err error) {
 // Serialize to write it out.
 // If config is nil, sensible defaults will be used.
 func (sig *Signature) SignUserId(id string, pub *PublicKey, priv *PrivateKey, config *Config) error {
+	if priv.Dummy {
+		return errors.ErrDummyPrivateKey("dummy key found")
+	}
 	h, err := userIdSignatureHash(id, pub, sig.Hash)
 	if err != nil {
 		return err
@@ -587,6 +593,9 @@ func (sig *Signature) SignUserId(id string, pub *PublicKey, priv *PrivateKey, co
 // success, the signature is stored in sig. Call Serialize to write it out.
 // If config is nil, sensible defaults will be used.
 func (sig *Signature) SignKey(pub *PublicKey, priv *PrivateKey, config *Config) error {
+	if priv.Dummy {
+		return errors.ErrDummyPrivateKey("dummy key found")
+	}
 	h, err := keySignatureHash(&priv.PublicKey, pub, sig.Hash)
 	if err != nil {
 		return err
