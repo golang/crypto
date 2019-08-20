@@ -137,19 +137,32 @@ type Account struct {
 }
 
 // Directory is ACME server discovery data.
+// See https://tools.ietf.org/html/rfc8555#section-7.1.1 for more details.
 type Directory struct {
+	// NonceURL indicates an endpoint where to fetch fresh nonce values from.
+	NonceURL string
+
 	// RegURL is an account endpoint URL, allowing for creating new
 	// and modifying existing accounts.
 	RegURL string
 
-	// AuthzURL is used to initiate Identifier Authorization flow.
+	// OrderURL is used to initiate the certificate issuance flow
+	// as described in RFC8555.
+	OrderURL string
+
+	// AuthzURL is used to initiate identifier pre-authorization flow.
+	// Empty string indicates the flow is unsupported by the CA.
 	AuthzURL string
 
 	// CertURL is a new certificate issuance endpoint URL.
+	// It is non-RFC8555 compliant and is obsoleted by OrderURL.
 	CertURL string
 
 	// RevokeURL is used to initiate a certificate revocation flow.
 	RevokeURL string
+
+	// KeyChangeURL allows to perform account key rollover flow.
+	KeyChangeURL string
 
 	// Term is a URI identifying the current terms of service.
 	Terms string
@@ -162,6 +175,10 @@ type Directory struct {
 	// recognises as referring to itself for the purposes of CAA record validation
 	// as defined in RFC6844.
 	CAA []string
+
+	// ExternalAccountRequired indicates that the CA requires for all account-related
+	// requests to include external account binding information.
+	ExternalAccountRequired bool
 }
 
 // Challenge encodes a returned CA challenge.

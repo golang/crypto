@@ -4,7 +4,10 @@
 
 // Package acme provides an implementation of the
 // Automatic Certificate Management Environment (ACME) spec.
-// See https://tools.ietf.org/html/draft-ietf-acme-acme-02 for details.
+// The intial implementation was based on ACME draft-02 and
+// is now being extended to comply with RFC8555.
+// See https://tools.ietf.org/html/draft-ietf-acme-acme-02
+// and https://tools.ietf.org/html/rfc8555 for details.
 //
 // Most common scenarios will want to use autocert subdirectory instead,
 // which provides automatic access to certificates from Let's Encrypt
@@ -143,27 +146,53 @@ func (c *Client) Discover(ctx context.Context) (Directory, error) {
 	c.addNonce(res.Header)
 
 	var v struct {
-		Reg    string `json:"new-reg"`
-		Authz  string `json:"new-authz"`
-		Cert   string `json:"new-cert"`
-		Revoke string `json:"revoke-cert"`
-		Meta   struct {
-			Terms   string   `json:"terms-of-service"`
-			Website string   `json:"website"`
-			CAA     []string `json:"caa-identities"`
+		Reg          string `json:"new-reg"`
+		RegRFC       string `json:"newAccount"`
+		Authz        string `json:"new-authz"`
+		AuthzRFC     string `json:"newAuthz"`
+		OrderRFC     string `json:"newOrder"`
+		Cert         string `json:"new-cert"`
+		Revoke       string `json:"revoke-cert"`
+		RevokeRFC    string `json:"revokeCert"`
+		NonceRFC     string `json:"newNonce"`
+		KeyChangeRFC string `json:"keyChange"`
+		Meta         struct {
+			Terms           string   `json:"terms-of-service"`
+			TermsRFC        string   `json:"termsOfService"`
+			WebsiteRFC      string   `json:"website"`
+			CAA             []string `json:"caa-identities"`
+			CAARFC          []string `json:"caaIdentities"`
+			ExternalAcctRFC bool     `json:"externalAccountRequired"`
 		}
 	}
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
 		return Directory{}, err
 	}
+	if v.OrderRFC == "" {
+		// Non-RFC compliant ACME CA.
+		c.dir = &Directory{
+			RegURL:    v.Reg,
+			AuthzURL:  v.Authz,
+			CertURL:   v.Cert,
+			RevokeURL: v.Revoke,
+			Terms:     v.Meta.Terms,
+			Website:   v.Meta.WebsiteRFC,
+			CAA:       v.Meta.CAA,
+		}
+		return *c.dir, nil
+	}
+	// RFC compliant ACME CA.
 	c.dir = &Directory{
-		RegURL:    v.Reg,
-		AuthzURL:  v.Authz,
-		CertURL:   v.Cert,
-		RevokeURL: v.Revoke,
-		Terms:     v.Meta.Terms,
-		Website:   v.Meta.Website,
-		CAA:       v.Meta.CAA,
+		RegURL:                  v.RegRFC,
+		AuthzURL:                v.AuthzRFC,
+		OrderURL:                v.OrderRFC,
+		RevokeURL:               v.RevokeRFC,
+		NonceURL:                v.NonceRFC,
+		KeyChangeURL:            v.KeyChangeRFC,
+		Terms:                   v.Meta.TermsRFC,
+		Website:                 v.Meta.WebsiteRFC,
+		CAA:                     v.Meta.CAARFC,
+		ExternalAccountRequired: v.Meta.ExternalAcctRFC,
 	}
 	return *c.dir, nil
 }
