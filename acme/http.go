@@ -200,7 +200,7 @@ func (c *Client) postNoRetry(ctx context.Context, key crypto.Signer, url string,
 	if err != nil {
 		return nil, nil, err
 	}
-	b, err := jwsEncodeJSON(body, key, nonce)
+	b, err := jwsEncodeJSON(body, key, noKeyID, nonce, url)
 	if err != nil {
 		return nil, nil, err
 	}
