@@ -587,7 +587,8 @@ func (pk *PrivateKey) parseEdDSAPrivateKey(data []byte) (err error) {
 		return err
 	}
 
-	copy(eddsaPriv[:32], d.Bytes())
+	priv := d.Bytes()
+	copy(eddsaPriv[32-len(priv):32], priv)
 	copy(eddsaPriv[32:], eddsaPub[:])
 
 	pk.PrivateKey = eddsaPriv
