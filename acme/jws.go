@@ -30,7 +30,7 @@ const noKeyID = keyID("")
 //
 // If kid is non-empty, its quoted value is inserted in the protected head
 // as "kid" field value. Otherwise, JWK is computed using jwkEncode and inserted
-// as "jwk" field value.
+// as "jwk" field value. The "jwk" and "kid" fields are mutually exclusive.
 //
 // See https://tools.ietf.org/html/rfc7515#section-7.
 func jwsEncodeJSON(claimset interface{}, key crypto.Signer, kid keyID, nonce, url string) ([]byte, error) {

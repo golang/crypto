@@ -16,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -28,10 +29,10 @@ import (
 
 // Decodes a JWS-encoded request and unmarshals the decoded JSON into a provided
 // interface.
-func decodeJWSRequest(t *testing.T, v interface{}, r *http.Request) {
+func decodeJWSRequest(t *testing.T, v interface{}, r io.Reader) {
 	// Decode request
 	var req struct{ Payload string }
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r).Decode(&req); err != nil {
 		t.Fatal(err)
 	}
 	payload, err := base64.RawURLEncoding.DecodeString(req.Payload)
@@ -47,12 +48,14 @@ func decodeJWSRequest(t *testing.T, v interface{}, r *http.Request) {
 type jwsHead struct {
 	Alg   string
 	Nonce string
+	URL   string            `json:"url"`
+	KID   string            `json:"kid"`
 	JWK   map[string]string `json:"jwk"`
 }
 
-func decodeJWSHead(r *http.Request) (*jwsHead, error) {
+func decodeJWSHead(r io.Reader) (*jwsHead, error) {
 	var req struct{ Protected string }
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := json.NewDecoder(r).Decode(&req); err != nil {
 		return nil, err
 	}
 	b, err := base64.RawURLEncoding.DecodeString(req.Protected)
@@ -123,7 +126,7 @@ func TestRegister(t *testing.T) {
 			Contact   []string
 			Agreement string
 		}
-		decodeJWSRequest(t, &j, r)
+		decodeJWSRequest(t, &j, r.Body)
 
 		// Test request
 		if j.Resource != "new-reg" {
@@ -193,7 +196,7 @@ func TestUpdateReg(t *testing.T) {
 			Contact   []string
 			Agreement string
 		}
-		decodeJWSRequest(t, &j, r)
+		decodeJWSRequest(t, &j, r.Body)
 
 		// Test request
 		if j.Resource != "reg" {
@@ -215,7 +218,11 @@ func TestUpdateReg(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	c := Client{Key: testKeyEC}
+	c := Client{
+		Key:          testKeyEC,
+		DirectoryURL: ts.URL,       // don't dial outside of localhost
+		dir:          &Directory{}, // don't do discovery
+	}
 	a := &Account{URI: ts.URL, Contact: contacts, AgreedTerms: terms}
 	var err error
 	if a, err = c.UpdateReg(context.Background(), a); err != nil {
@@ -254,7 +261,7 @@ func TestGetReg(t *testing.T) {
 			Contact   []string
 			Agreement string
 		}
-		decodeJWSRequest(t, &j, r)
+		decodeJWSRequest(t, &j, r.Body)
 
 		// Test request
 		if j.Resource != "reg" {
@@ -276,7 +283,11 @@ func TestGetReg(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	c := Client{Key: testKeyEC}
+	c := Client{
+		Key:          testKeyEC,
+		DirectoryURL: ts.URL,       // don't dial outside of localhost
+		dir:          &Directory{}, // don't do discovery
+	}
 	a, err := c.GetReg(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -318,7 +329,7 @@ func TestAuthorize(t *testing.T) {
 						Value string
 					}
 				}
-				decodeJWSRequest(t, &j, r)
+				decodeJWSRequest(t, &j, r.Body)
 
 				// Test request
 				if j.Resource != "new-authz" {
@@ -629,7 +640,7 @@ func TestRevokeAuthorization(t *testing.T) {
 				Status   string
 				Delete   bool
 			}
-			decodeJWSRequest(t, &req, r)
+			decodeJWSRequest(t, &req, r.Body)
 			if req.Resource != "authz" {
 				t.Errorf("req.Resource = %q; want authz", req.Resource)
 			}
@@ -644,7 +655,11 @@ func TestRevokeAuthorization(t *testing.T) {
 		}
 	}))
 	defer ts.Close()
-	client := &Client{Key: testKey}
+	client := &Client{
+		Key:          testKey,
+		DirectoryURL: ts.URL,       // don't dial outside of localhost
+		dir:          &Directory{}, // don't do discovery
+	}
 	ctx := context.Background()
 	if err := client.RevokeAuthorization(ctx, ts.URL+"/1"); err != nil {
 		t.Errorf("err = %v", err)
@@ -704,7 +719,7 @@ func TestAcceptChallenge(t *testing.T) {
 			Type     string
 			Auth     string `json:"keyAuthorization"`
 		}
-		decodeJWSRequest(t, &j, r)
+		decodeJWSRequest(t, &j, r.Body)
 
 		// Test request
 		if j.Resource != "challenge" {
@@ -730,7 +745,11 @@ func TestAcceptChallenge(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cl := Client{Key: testKeyEC}
+	cl := Client{
+		Key:          testKeyEC,
+		DirectoryURL: ts.URL,       // don't dial outside of localhost
+		dir:          &Directory{}, // don't do discovery
+	}
 	c, err := cl.Accept(context.Background(), &Challenge{
 		URI:   ts.URL,
 		Token: "token1",
@@ -771,7 +790,7 @@ func TestNewCert(t *testing.T) {
 			NotBefore string `json:"notBefore,omitempty"`
 			NotAfter  string `json:"notAfter,omitempty"`
 		}
-		decodeJWSRequest(t, &j, r)
+		decodeJWSRequest(t, &j, r.Body)
 
 		// Test request
 		if j.Resource != "new-cert" {
@@ -956,7 +975,7 @@ func TestRevokeCert(t *testing.T) {
 			Certificate string
 			Reason      int
 		}
-		decodeJWSRequest(t, &req, r)
+		decodeJWSRequest(t, &req, r.Body)
 		if req.Resource != "revoke-cert" {
 			t.Errorf("req.Resource = %q; want revoke-cert", req.Resource)
 		}
@@ -1117,7 +1136,7 @@ func TestNonce_postJWS(t *testing.T) {
 			w.Write([]byte(`{"status":"valid"}`))
 		}()
 
-		head, err := decodeJWSHead(r)
+		head, err := decodeJWSHead(r.Body)
 		if err != nil {
 			t.Errorf("decodeJWSHead: %v", err)
 			return
