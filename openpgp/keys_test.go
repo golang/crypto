@@ -495,3 +495,45 @@ func TestNewEntityPublicSerialization(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNotationPacket(t *testing.T) {
+	keys, err := ReadArmoredKeyRing(bytes.NewBufferString(keyWithNotation))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(keys) != 1 {
+		t.Errorf("Failed to accept key, %d", len(keys))
+	}
+
+	identity := keys[0].Identities["Testt <test@exa>"]
+
+	if numSigs, numExpected := len(identity.Signatures), 1; numSigs != numExpected {
+		t.Fatalf("got %d signatures, expected %d", numSigs, numExpected)
+	}
+
+	notations := identity.Signatures[0].Notations
+	if numSigs, numExpected := len(notations), 2; numSigs != numExpected {
+		t.Fatalf("got %d Data Notation subpackets, expected %d", numSigs, numExpected)
+	}
+
+	if notations[0].IsHumanReadable() != true {
+		t.Fatalf("got false, expected true")
+	}
+
+	if notations[0].GetName() != "test@example.com" {
+		t.Fatalf("got %s, expected test@example.com", notations[0].GetName())
+	}
+
+	if notations[0].GetStringValue() != "2" {
+		t.Fatalf("got %s, expected 2", notations[0].GetName())
+	}
+
+	if notations[1].GetName() != "test@example.com" {
+		t.Fatalf("got %s, expected test@example.com", notations[0].GetName())
+	}
+
+	if notations[1].GetStringValue() != "3" {
+		t.Fatalf("got %s, expected 3", notations[0].GetName())
+	}
+}

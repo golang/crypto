@@ -58,6 +58,7 @@ type Signature struct {
 	PreferredSymmetric, PreferredHash, PreferredCompression []uint8
 	IssuerKeyId                                             *uint64
 	IsPrimaryId                                             *bool
+	Notations                                               []Notation
 
 	// FlagsValid is set if any flags were given. See RFC 4880, section
 	// 5.2.3.21 for details.
@@ -217,6 +218,7 @@ const (
 	keyExpirationSubpacket       signatureSubpacketType = 9
 	prefSymmetricAlgosSubpacket  signatureSubpacketType = 11
 	issuerSubpacket              signatureSubpacketType = 16
+	notationDataSubpacket        signatureSubpacketType = 20
 	prefHashAlgosSubpacket       signatureSubpacketType = 21
 	prefCompressionSubpacket     signatureSubpacketType = 22
 	primaryUserIdSubpacket       signatureSubpacketType = 25
@@ -316,6 +318,24 @@ func parseSignatureSubpacket(sig *Signature, subpacket []byte, isHashed bool) (r
 		}
 		sig.IssuerKeyId = new(uint64)
 		*sig.IssuerKeyId = binary.BigEndian.Uint64(subpacket)
+	case notationDataSubpacket:
+		// Notation data, section 5.2.3.16
+		nameLength := uint32(subpacket[4])<<8 | uint32(subpacket[5])
+		valueLength := uint32(subpacket[6])<<8 | uint32(subpacket[7])
+
+		if len(subpacket) != (int(nameLength) + int(valueLength) + 8) {
+			err = errors.StructuralError("notation data subpacket with bad length")
+			return
+		}
+
+		notation := Notation{
+			flags: subpacket[0:4],
+			name: string(subpacket[8: (nameLength + 8)]),
+			value: subpacket[(nameLength + 8) : (valueLength + nameLength + 8)],
+			critical: isCritical,
+		}
+
+		sig.Notations = append(sig.Notations, notation)
 	case prefHashAlgosSubpacket:
 		// Preferred hash algorithms, section 5.2.3.8
 		if !isHashed {
@@ -743,6 +763,17 @@ func (sig *Signature) buildSubpackets() (subpackets []outputSubpacket) {
 			flags |= KeyFlagEncryptStorage
 		}
 		subpackets = append(subpackets, outputSubpacket{true, keyFlagsSubpacket, false, []byte{flags}})
+	}
+
+	for _, notation := range sig.Notations {
+		subpackets = append(
+			subpackets,
+			outputSubpacket{
+				true,
+				notationDataSubpacket,
+				notation.IsCritical(),
+				notation.getData(),
+		})
 	}
 
 	// The following subpackets may only appear in self-signatures
