@@ -900,7 +900,7 @@ func TestFetchCertRetry(t *testing.T) {
 func TestFetchCertCancel(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Retry-After", "0")
-		w.WriteHeader(http.StatusAccepted)
+		w.WriteHeader(http.StatusBadRequest)
 	}))
 	defer ts.Close()
 	ctx, cancel := context.WithCancel(context.Background())

@@ -474,3 +474,192 @@ func TestRFC_GetRegOtherError(t *testing.T) {
 		t.Errorf("GetReg: %v; want any other non-nil err", err)
 	}
 }
+
+func TestRFC_AuthorizeOrder(t *testing.T) {
+	s := newACMEServer()
+	s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/accounts/1"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status": "valid"}`))
+	})
+	s.handle("/acme/new-order", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/orders/1"))
+		w.WriteHeader(http.StatusCreated)
+		fmt.Fprintf(w, `{
+			"status": "pending",
+			"expires": "2019-09-01T00:00:00Z",
+			"notBefore": "2019-08-31T00:00:00Z",
+			"notAfter": "2019-09-02T00:00:00Z",
+			"identifiers": [{"type":"dns", "value":"example.org"}],
+			"authorizations": [%q]
+		}`, s.url("/authz/1"))
+	})
+	s.start()
+	defer s.close()
+
+	cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
+	o, err := cl.AuthorizeOrder(context.Background(), DomainIDs("example.org"),
+		WithOrderNotBefore(time.Date(2019, 8, 31, 0, 0, 0, 0, time.UTC)),
+		WithOrderNotAfter(time.Date(2019, 9, 2, 0, 0, 0, 0, time.UTC)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	okOrder := &Order{
+		URI:         s.url("/orders/1"),
+		Status:      StatusPending,
+		Expires:     time.Date(2019, 9, 1, 0, 0, 0, 0, time.UTC),
+		NotBefore:   time.Date(2019, 8, 31, 0, 0, 0, 0, time.UTC),
+		NotAfter:    time.Date(2019, 9, 2, 0, 0, 0, 0, time.UTC),
+		Identifiers: []AuthzID{AuthzID{Type: "dns", Value: "example.org"}},
+		AuthzURLs:   []string{s.url("/authz/1")},
+	}
+	if !reflect.DeepEqual(o, okOrder) {
+		t.Errorf("AuthorizeOrder = %+v; want %+v", o, okOrder)
+	}
+}
+
+func TestRFC_GetOrder(t *testing.T) {
+	s := newACMEServer()
+	s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/accounts/1"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status": "valid"}`))
+	})
+	s.handle("/orders/1", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/orders/1"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{
+			"status": "invalid",
+			"expires": "2019-09-01T00:00:00Z",
+			"notBefore": "2019-08-31T00:00:00Z",
+			"notAfter": "2019-09-02T00:00:00Z",
+			"identifiers": [{"type":"dns", "value":"example.org"}],
+			"authorizations": ["/authz/1"],
+			"finalize": "/orders/1/fin",
+			"certificate": "/orders/1/cert",
+			"error": {"type": "badRequest"}
+		}`))
+	})
+	s.start()
+	defer s.close()
+
+	cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
+	o, err := cl.GetOrder(context.Background(), s.url("/orders/1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	okOrder := &Order{
+		URI:         s.url("/orders/1"),
+		Status:      StatusInvalid,
+		Expires:     time.Date(2019, 9, 1, 0, 0, 0, 0, time.UTC),
+		NotBefore:   time.Date(2019, 8, 31, 0, 0, 0, 0, time.UTC),
+		NotAfter:    time.Date(2019, 9, 2, 0, 0, 0, 0, time.UTC),
+		Identifiers: []AuthzID{AuthzID{Type: "dns", Value: "example.org"}},
+		AuthzURLs:   []string{"/authz/1"},
+		FinalizeURL: "/orders/1/fin",
+		CertURL:     "/orders/1/cert",
+		Error:       &Error{ProblemType: "badRequest"},
+	}
+	if !reflect.DeepEqual(o, okOrder) {
+		t.Errorf("GetOrder = %+v\nwant %+v", o, okOrder)
+	}
+}
+
+func TestRFC_WaitOrder(t *testing.T) {
+	for _, st := range []string{StatusReady, StatusValid} {
+		t.Run(st, func(t *testing.T) {
+			testWaitOrder(t, st)
+		})
+	}
+}
+
+func testWaitOrder(t *testing.T, okStatus string) {
+	s := newACMEServer()
+	s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/accounts/1"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status": "valid"}`))
+	})
+	var count int
+	s.handle("/orders/1", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/orders/1"))
+		w.WriteHeader(http.StatusOK)
+		s := StatusPending
+		if count > 0 {
+			s = okStatus
+		}
+		fmt.Fprintf(w, `{"status": %q}`, s)
+		count++
+	})
+	s.start()
+	defer s.close()
+
+	var order *Order
+	var err error
+	done := make(chan struct{})
+	go func() {
+		cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
+		order, err = cl.WaitOrder(context.Background(), s.url("/orders/1"))
+		close(done)
+	}()
+	select {
+	case <-time.After(3 * time.Second):
+		t.Fatal("WaitOrder took too long to return")
+	case <-done:
+		if err != nil {
+			t.Fatalf("WaitOrder: %v", err)
+		}
+		if order.Status != okStatus {
+			t.Errorf("order.Status = %q; want %q", order.Status, okStatus)
+		}
+	}
+}
+
+func TestRFC_WaitOrderError(t *testing.T) {
+	s := newACMEServer()
+	s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/accounts/1"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status": "valid"}`))
+	})
+	var count int
+	s.handle("/orders/1", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/orders/1"))
+		w.WriteHeader(http.StatusOK)
+		s := StatusPending
+		if count > 0 {
+			s = StatusInvalid
+		}
+		fmt.Fprintf(w, `{"status": %q}`, s)
+		count++
+	})
+	s.start()
+	defer s.close()
+
+	var err error
+	done := make(chan struct{})
+	go func() {
+		cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
+		_, err = cl.WaitOrder(context.Background(), s.url("/orders/1"))
+		close(done)
+	}()
+	select {
+	case <-time.After(3 * time.Second):
+		t.Fatal("WaitOrder took too long to return")
+	case <-done:
+		if err == nil {
+			t.Fatal("WaitOrder returned nil error")
+		}
+		e, ok := err.(*WaitOrderError)
+		if !ok {
+			t.Fatalf("err = %v (%T); want WaitOrderError", err, err)
+		}
+		if e.OrderURL != s.url("/orders/1") {
+			t.Errorf("e.OrderURL = %q; want %q", e.OrderURL, s.url("/orders/1"))
+		}
+		if e.Status != StatusInvalid {
+			t.Errorf("e.Status = %q; want %q", e.Status, StatusInvalid)
+		}
+	}
+}

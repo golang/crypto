@@ -14,10 +14,12 @@ import (
 	"time"
 )
 
-// ACME server response statuses used to describe Authorization and Challenge states.
+// ACME status values of Account, Order, Authorization and Challenge objects.
+// See https://tools.ietf.org/html/rfc8555#section-7.1.6 for details.
 const (
 	StatusDeactivated = "deactivated"
 	StatusInvalid     = "invalid"
+	StatusReady       = "ready"
 	StatusPending     = "pending"
 	StatusProcessing  = "processing"
 	StatusRevoked     = "revoked"
@@ -102,6 +104,18 @@ func (a *AuthorizationError) Error() string {
 	return fmt.Sprintf("acme: authorization error for %s: %s", a.Identifier, strings.Join(e, "; "))
 }
 
+// WaitOrderError is returned from Client's WaitOrder.
+// It indicates the order is unusable and the clients should start over with
+// AuthorizeOrder.
+type WaitOrderError struct {
+	OrderURL string
+	Status   string
+}
+
+func (we *WaitOrderError) Error() string {
+	return fmt.Sprintf("acme: wait order %s: status %s", we.OrderURL, we.Status)
+}
+
 // RateLimit reports whether err represents a rate limit error and
 // any Retry-After duration returned by the server.
 //
@@ -138,7 +152,7 @@ type Account struct {
 	Contact []string
 
 	// Status indicates current account status as returned by the CA.
-	// Possible values are "valid", "deactivated", and "revoked".
+	// Possible values are StatusValid, StatusDeactivated, and StatusRevoked.
 	Status string
 
 	// OrdersURL is a URL from which a list of orders submitted by this account
@@ -223,27 +237,86 @@ type Directory struct {
 	ExternalAccountRequired bool
 }
 
-// Challenge encodes a returned CA challenge.
-// Its Error field may be non-nil if the challenge is part of an Authorization
-// with StatusInvalid.
-type Challenge struct {
-	// Type is the challenge type, e.g. "http-01", "tls-sni-02", "dns-01".
-	Type string
-
-	// URI is where a challenge response can be posted to.
+// Order represents a client's request for a certificate.
+// It tracks the request flow progress through to issuance.
+type Order struct {
+	// URI uniquely identifies an order.
 	URI string
 
-	// Token is a random value that uniquely identifies the challenge.
-	Token string
-
-	// Status identifies the status of this challenge.
+	// Status represents the current status of the order.
+	// It indicates which action the client should take.
+	//
+	// Possible values are StatusPending, StatusReady, StatusProcessing, StatusValid and StatusInvalid.
+	// Pending means the CA does not believe that the client has fulfilled the requirements.
+	// Ready indicates that the client has fulfilled all the requirements and can submit a CSR
+	// to obtain a certificate. This is done with Client's CreateOrderCert.
+	// Processing means the certificate is being issued.
+	// Valid indicates the CA has issued the certificate. It can be downloaded
+	// from the Order's CertURL. This is done with Client's FetchCert.
+	// Invalid means the certificate will not be issued. Users should consider this order
+	// abandoned.
 	Status string
 
-	// Error indicates the reason for an authorization failure
-	// when this challenge was used.
-	// The type of a non-nil value is *Error.
-	Error error
+	// Expires is the timestamp after which CA considers this order invalid.
+	Expires time.Time
+
+	// Identifiers contains all identifier objects which the order pertains to.
+	Identifiers []AuthzID
+
+	// NotBefore is the requested value of the notBefore field in the certificate.
+	NotBefore time.Time
+
+	// NotAfter is the requested value of the notAfter field in the certificate.
+	NotAfter time.Time
+
+	// AuthzURLs represents authorizations to complete before a certificate
+	// for identifiers specified in the order can be issued.
+	// It also contains unexpired authorizations that the client has completed
+	// in the past.
+	//
+	// Authorization objects can be fetched using Client's GetAuthorization method.
+	//
+	// The required authorizations are dictated by CA policies.
+	// There may not be a 1:1 relationship between the identifiers and required authorizations.
+	// Required authorizations can be identified by their StatusPending status.
+	//
+	// For orders in the StatusValid or StatusInvalid state these are the authorizations
+	// which were completed.
+	AuthzURLs []string
+
+	// FinalizeURL is the endpoint at which a CSR is submitted to obtain a certificate
+	// once all the authorizations are satisfied.
+	FinalizeURL string
+
+	// CertURL points to the certificate that has been issued in response to this order.
+	CertURL string
+
+	// The error that occurred while processing the order as received from a CA, if any.
+	Error *Error
 }
+
+// OrderOption allows customizing Client.AuthorizeOrder call.
+type OrderOption interface {
+	privateOrderOpt()
+}
+
+// WithOrderNotBefore sets order's NotBefore field.
+func WithOrderNotBefore(t time.Time) OrderOption {
+	return orderNotBeforeOpt(t)
+}
+
+// WithOrderNotAfter sets order's NotAfter field.
+func WithOrderNotAfter(t time.Time) OrderOption {
+	return orderNotAfterOpt(t)
+}
+
+type orderNotBeforeOpt time.Time
+
+func (orderNotBeforeOpt) privateOrderOpt() {}
+
+type orderNotAfterOpt time.Time
+
+func (orderNotAfterOpt) privateOrderOpt() {}
 
 // Authorization encodes an authorization response.
 type Authorization struct {
@@ -271,8 +344,34 @@ type Authorization struct {
 
 // AuthzID is an identifier that an account is authorized to represent.
 type AuthzID struct {
-	Type  string // The type of identifier, e.g. "dns".
+	Type  string // The type of identifier, "dns" or "ip".
 	Value string // The identifier itself, e.g. "example.org".
+}
+
+// DomainIDs creates a slice of AuthzID with "dns" identifier type.
+func DomainIDs(names ...string) []AuthzID {
+	a := make([]AuthzID, len(names))
+	for i, v := range names {
+		a[i] = AuthzID{Type: "dns", Value: v}
+	}
+	return a
+}
+
+// IPIDs creates a slice of AuthzID with "ip" identifier type.
+// Each element of addr is textual form of an address as defined
+// in RFC1123 Section 2.1 for IPv4 and in RFC5952 Section 4 for IPv6.
+func IPIDs(addr ...string) []AuthzID {
+	a := make([]AuthzID, len(addr))
+	for i, v := range addr {
+		a[i] = AuthzID{Type: "ip", Value: v}
+	}
+	return a
+}
+
+// wireAuthzID is ACME JSON representation of authorization identifier objects.
+type wireAuthzID struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
 }
 
 // wireAuthz is ACME JSON representation of Authorization objects.
@@ -280,10 +379,7 @@ type wireAuthz struct {
 	Status       string
 	Challenges   []wireChallenge
 	Combinations [][]int
-	Identifier   struct {
-		Type  string
-		Value string
-	}
+	Identifier   wireAuthzID
 }
 
 func (z *wireAuthz) authorization(uri string) *Authorization {
@@ -311,6 +407,28 @@ func (z *wireAuthz) error(uri string) *AuthorizationError {
 		}
 	}
 	return err
+}
+
+// Challenge encodes a returned CA challenge.
+// Its Error field may be non-nil if the challenge is part of an Authorization
+// with StatusInvalid.
+type Challenge struct {
+	// Type is the challenge type, e.g. "http-01", "tls-sni-02", "dns-01".
+	Type string
+
+	// URI is where a challenge response can be posted to.
+	URI string
+
+	// Token is a random value that uniquely identifies the challenge.
+	Token string
+
+	// Status identifies the status of this challenge.
+	Status string
+
+	// Error indicates the reason for an authorization failure
+	// when this challenge was used.
+	// The type of a non-nil value is *Error.
+	Error error
 }
 
 // wireChallenge is ACME JSON challenge representation.
