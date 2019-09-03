@@ -86,7 +86,7 @@ func (c *chanList) dropAll() []*channel {
 // mux represents the state for the SSH connection protocol, which
 // multiplexes many channels onto a single packet transport.
 type mux struct {
-	conn     packetConn
+	conn     Transport
 	chanList chanList
 
 	incomingChannels chan NewChannel
@@ -113,7 +113,7 @@ func (m *mux) Wait() error {
 }
 
 // newMux returns a mux that runs over the given connection.
-func newMux(p packetConn) *mux {
+func newMux(p Transport) *mux {
 	m := &mux{
 		conn:             p,
 		incomingChannels: make(chan NewChannel, chanSize),
@@ -134,7 +134,7 @@ func (m *mux) sendMessage(msg interface{}) error {
 	if debugMux {
 		log.Printf("send global(%d): %#v", m.chanList.offset, msg)
 	}
-	return m.conn.writePacket(p)
+	return m.conn.WritePacket(p)
 }
 
 func (m *mux) SendRequest(name string, wantReply bool, payload []byte) (bool, []byte, error) {
@@ -212,7 +212,7 @@ func (m *mux) loop() {
 
 // onePacket reads and processes one packet.
 func (m *mux) onePacket() error {
-	packet, err := m.conn.readPacket()
+	packet, err := m.conn.ReadPacket()
 	if err != nil {
 		return err
 	}

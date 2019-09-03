@@ -88,6 +88,13 @@ func NewClientConn(c net.Conn, addr string, config *ClientConfig) (Conn, <-chan 
 	return conn, conn.mux.incomingChannels, conn.mux.incomingRequests, nil
 }
 
+func NewClientConnFromTransport(t Transport) (Conn, <-chan NewChannel, <-chan *Request, error) {
+	conn := &connection{
+		mux: newMux(t),
+	}
+	return conn, conn.mux.incomingChannels, conn.mux.incomingRequests, nil
+}
+
 // clientHandshake performs the client side key exchange. See RFC 4253 Section
 // 7.
 func (c *connection) clientHandshake(dialAddress string, config *ClientConfig) error {

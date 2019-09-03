@@ -212,7 +212,7 @@ func (ch *channel) writePacket(packet []byte) error {
 		return io.EOF
 	}
 	ch.sentClose = (packet[0] == msgChannelClose)
-	err := ch.mux.conn.writePacket(packet)
+	err := ch.mux.conn.WritePacket(packet)
 	ch.writeMu.Unlock()
 	return err
 }
