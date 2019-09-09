@@ -6,8 +6,14 @@ package acme
 
 import (
 	"context"
+	"crypto"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
+	"errors"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"time"
 )
@@ -16,7 +22,7 @@ import (
 // A deactivated account can no longer request certificate issuance or access
 // resources related to the account, such as orders or authorizations.
 //
-// It works only with RFC8555 compliant CAs.
+// It only works with CAs implementing RFC 8555.
 func (c *Client) DeactivateReg(ctx context.Context) error {
 	url := string(c.accountKID(ctx))
 	if url == "" {
@@ -31,7 +37,7 @@ func (c *Client) DeactivateReg(ctx context.Context) error {
 	return nil
 }
 
-// registerRFC is quivalent to c.Register but for RFC-compliant CAs.
+// registerRFC is quivalent to c.Register but for CAs implementing RFC 8555.
 // It expects c.Discover to have already been called.
 // TODO: Implement externalAccountBinding.
 func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tosURL string) bool) (*Account, error) {
@@ -69,7 +75,7 @@ func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tos
 	return a, nil
 }
 
-// updateGegRFC is equivalent to c.UpdateReg but for RFC-compliant CAs.
+// updateGegRFC is equivalent to c.UpdateReg but for CAs implementing RFC 8555.
 // It expects c.Discover to have already been called.
 func (c *Client) updateRegRFC(ctx context.Context, a *Account) (*Account, error) {
 	url := string(c.accountKID(ctx))
@@ -89,7 +95,7 @@ func (c *Client) updateRegRFC(ctx context.Context, a *Account) (*Account, error)
 	return responseAccount(res)
 }
 
-// getGegRFC is equivalent to c.GetReg but for RFC-compliant CAs.
+// getGegRFC is equivalent to c.GetReg but for CAs implementing RFC 8555.
 // It expects c.Discover to have already been called.
 func (c *Client) getRegRFC(ctx context.Context) (*Account, error) {
 	req := json.RawMessage(`{"onlyReturnExisting": true}`)
@@ -124,10 +130,12 @@ func responseAccount(res *http.Response) (*Account, error) {
 
 // AuthorizeOrder initiates the order-based application for certificate issuance,
 // as opposed to pre-authorization in Authorize.
+// It is only supported by CAs implementing RFC 8555.
 //
-// The caller then needs to fetch each required authorization with GetAuthorization
-// and fulfill a challenge using Accept. Once all authorizations are satisfied,
-// the caller will typically want to poll order status using WaitOrder until it's in StatusReady state.
+// The caller then needs to fetch each authorization with GetAuthorization,
+// identify those with StatusPending status and fulfill a challenge using Accept.
+// Once all authorizations are satisfied, the caller will typically want to poll
+// order status using WaitOrder until it's in StatusReady state.
 // To finalize the order and obtain a certificate, the caller submits a CSR with CreateOrderCert.
 func (c *Client) AuthorizeOrder(ctx context.Context, id []AuthzID, opt ...OrderOption) (*Order, error) {
 	dir, err := c.Discover(ctx)
@@ -176,7 +184,7 @@ func (c *Client) GetOrder(ctx context.Context, url string) (*Order, error) {
 		return nil, err
 	}
 
-	res, err := c.post(ctx, nil, url, noPayload, wantStatus(http.StatusOK))
+	res, err := c.postAsGet(ctx, url, wantStatus(http.StatusOK))
 	if err != nil {
 		return nil, err
 	}
@@ -190,13 +198,13 @@ func (c *Client) GetOrder(ctx context.Context, url string) (*Order, error) {
 //
 // It returns a non-nil Order only if its Status is StatusReady or StatusValid.
 // In all other cases WaitOrder returns an error.
-// If the Status is StatusInvalid, the returned error is of type *WaitOrderError.
+// If the Status is StatusInvalid, the returned error is of type *OrderError.
 func (c *Client) WaitOrder(ctx context.Context, url string) (*Order, error) {
 	if _, err := c.Discover(ctx); err != nil {
 		return nil, err
 	}
 	for {
-		res, err := c.post(ctx, nil, url, noPayload, wantStatus(http.StatusOK))
+		res, err := c.postAsGet(ctx, url, wantStatus(http.StatusOK))
 		if err != nil {
 			return nil, err
 		}
@@ -206,7 +214,7 @@ func (c *Client) WaitOrder(ctx context.Context, url string) (*Order, error) {
 		case err != nil:
 			// Skip and retry.
 		case o.Status == StatusInvalid:
-			return nil, &WaitOrderError{OrderURL: o.URI, Status: o.Status}
+			return nil, &OrderError{OrderURL: o.URI, Status: o.Status}
 		case o.Status == StatusReady || o.Status == StatusValid:
 			return o, nil
 		}
@@ -260,4 +268,125 @@ func responseOrder(res *http.Response) (*Order, error) {
 		o.Error = v.Error.error(nil /* headers */)
 	}
 	return o, nil
+}
+
+// CreateOrderCert submits the CSR (Certificate Signing Request) to a CA at the specified URL.
+// The URL is the FinalizeURL field of an Order created with AuthorizeOrder.
+//
+// If the bundle argument is true, the returned value also contain the CA (issuer)
+// certificate chain. Otherwise, only a leaf certificate is returned.
+// The returned URL can be used to re-fetch the certificate using FetchCert.
+//
+// This method is only supported by CAs implementing RFC 8555. See CreateCert for pre-RFC CAs.
+//
+// CreateOrderCert returns an error if the CA's response is unreasonably large.
+// Callers are encouraged to parse the returned value to ensure the certificate is valid and has the expected features.
+func (c *Client) CreateOrderCert(ctx context.Context, url string, csr []byte, bundle bool) (der [][]byte, certURL string, err error) {
+	if _, err := c.Discover(ctx); err != nil { // required by c.accountKID
+		return nil, "", err
+	}
+
+	// RFC describes this as "finalize order" request.
+	req := struct {
+		CSR string `json:"csr"`
+	}{
+		CSR: base64.RawURLEncoding.EncodeToString(csr),
+	}
+	res, err := c.post(ctx, nil, url, req, wantStatus(http.StatusOK))
+	if err != nil {
+		return nil, "", err
+	}
+	defer res.Body.Close()
+	o, err := responseOrder(res)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// Wait for CA to issue the cert if they haven't.
+	if o.Status != StatusValid {
+		o, err = c.WaitOrder(ctx, o.URI)
+	}
+	if err != nil {
+		return nil, "", err
+	}
+	// The only acceptable status post finalize and WaitOrder is "valid".
+	if o.Status != StatusValid {
+		return nil, "", &OrderError{OrderURL: o.URI, Status: o.Status}
+	}
+	crt, err := c.fetchCertRFC(ctx, o.CertURL, bundle)
+	return crt, o.CertURL, err
+}
+
+// fetchCertRFC downloads issued certificate from the given URL.
+// It expects the CA to respond with PEM-encoded certificate chain.
+//
+// The URL argument is the CertURL field of Order.
+func (c *Client) fetchCertRFC(ctx context.Context, url string, bundle bool) ([][]byte, error) {
+	res, err := c.postAsGet(ctx, url, wantStatus(http.StatusOK))
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+
+	// Get all the bytes up to a sane maximum.
+	// Account very roughly for base64 overhead.
+	const max = maxCertChainSize + maxCertChainSize/33
+	b, err := ioutil.ReadAll(io.LimitReader(res.Body, max+1))
+	if err != nil {
+		return nil, fmt.Errorf("acme: fetch cert response stream: %v", err)
+	}
+	if len(b) > max {
+		return nil, errors.New("acme: certificate chain is too big")
+	}
+
+	// Decode PEM chain.
+	var chain [][]byte
+	for {
+		var p *pem.Block
+		p, b = pem.Decode(b)
+		if p == nil {
+			break
+		}
+		if p.Type != "CERTIFICATE" {
+			return nil, fmt.Errorf("acme: invalid PEM cert type %q", p.Type)
+		}
+
+		chain = append(chain, p.Bytes)
+		if !bundle {
+			return chain, nil
+		}
+		if len(chain) > maxChainLen {
+			return nil, errors.New("acme: certificate chain is too long")
+		}
+	}
+	if len(chain) == 0 {
+		return nil, errors.New("acme: certificate chain is empty")
+	}
+	return chain, nil
+}
+
+// sends a cert revocation request in either JWK form when key is non-nil or KID form otherwise.
+func (c *Client) revokeCertRFC(ctx context.Context, key crypto.Signer, cert []byte, reason CRLReasonCode) error {
+	req := &struct {
+		Cert   string `json:"certificate"`
+		Reason int    `json:"reason"`
+	}{
+		Cert:   base64.RawURLEncoding.EncodeToString(cert),
+		Reason: int(reason),
+	}
+	res, err := c.post(ctx, key, c.dir.RevokeURL, req, wantStatus(http.StatusOK))
+	if err != nil {
+		if isAlreadyRevoked(err) {
+			// Assume it is not an error to revoke an already revoked cert.
+			return nil
+		}
+		return err
+	}
+	defer res.Body.Close()
+	return nil
+}
+
+func isAlreadyRevoked(err error) bool {
+	e, ok := err.(*Error)
+	return ok && e.ProblemType == "urn:ietf:params:acme:error:alreadyRevoked"
 }

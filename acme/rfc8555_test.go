@@ -7,9 +7,14 @@ package acme
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io/ioutil"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -569,12 +574,12 @@ func TestRFC_GetOrder(t *testing.T) {
 func TestRFC_WaitOrder(t *testing.T) {
 	for _, st := range []string{StatusReady, StatusValid} {
 		t.Run(st, func(t *testing.T) {
-			testWaitOrder(t, st)
+			testWaitOrderStatus(t, st)
 		})
 	}
 }
 
-func testWaitOrder(t *testing.T, okStatus string) {
+func testWaitOrderStatus(t *testing.T, okStatus string) {
 	s := newACMEServer()
 	s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Location", s.url("/accounts/1"))
@@ -651,9 +656,9 @@ func TestRFC_WaitOrderError(t *testing.T) {
 		if err == nil {
 			t.Fatal("WaitOrder returned nil error")
 		}
-		e, ok := err.(*WaitOrderError)
+		e, ok := err.(*OrderError)
 		if !ok {
-			t.Fatalf("err = %v (%T); want WaitOrderError", err, err)
+			t.Fatalf("err = %v (%T); want OrderError", err, err)
 		}
 		if e.OrderURL != s.url("/orders/1") {
 			t.Errorf("e.OrderURL = %q; want %q", e.OrderURL, s.url("/orders/1"))
@@ -661,5 +666,78 @@ func TestRFC_WaitOrderError(t *testing.T) {
 		if e.Status != StatusInvalid {
 			t.Errorf("e.Status = %q; want %q", e.Status, StatusInvalid)
 		}
+	}
+}
+
+func TestRFC_CreateOrderCert(t *testing.T) {
+	q := &x509.CertificateRequest{
+		Subject: pkix.Name{CommonName: "example.org"},
+	}
+	csr, err := x509.CreateCertificateRequest(rand.Reader, q, testKeyEC)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpl := &x509.Certificate{SerialNumber: big.NewInt(1)}
+	leaf, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &testKeyEC.PublicKey, testKeyEC)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := newACMEServer()
+	s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/accounts/1"))
+		w.Write([]byte(`{"status": "valid"}`))
+	})
+	var count int
+	s.handle("/pleaseissue", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/pleaseissue"))
+		st := StatusProcessing
+		if count > 0 {
+			st = StatusValid
+		}
+		fmt.Fprintf(w, `{"status":%q, "certificate":%q}`, st, s.url("/crt"))
+		count++
+	})
+	s.handle("/crt", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pem-certificate-chain")
+		pem.Encode(w, &pem.Block{Type: "CERTIFICATE", Bytes: leaf})
+	})
+	s.start()
+	defer s.close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
+	cert, curl, err := cl.CreateOrderCert(ctx, s.url("/pleaseissue"), csr, true)
+	if err != nil {
+		t.Fatalf("CreateOrderCert: %v", err)
+	}
+	if _, err := x509.ParseCertificate(cert[0]); err != nil {
+		t.Errorf("ParseCertificate: %v", err)
+	}
+	if !reflect.DeepEqual(cert[0], leaf) {
+		t.Errorf("cert and leaf bytes don't match")
+	}
+	if u := s.url("/crt"); curl != u {
+		t.Errorf("curl = %q; want %q", curl, u)
+	}
+}
+
+func TestRFC_AlreadyRevokedCert(t *testing.T) {
+	s := newACMEServer()
+	s.handle("/acme/revoke-cert", func(w http.ResponseWriter, r *http.Request) {
+		s.error(w, &wireError{
+			Status: http.StatusBadRequest,
+			Type:   "urn:ietf:params:acme:error:alreadyRevoked",
+		})
+	})
+	s.start()
+	defer s.close()
+
+	cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
+	err := cl.RevokeCert(context.Background(), testKeyEC, []byte{0}, CRLReasonUnspecified)
+	if err != nil {
+		t.Fatalf("RevokeCert: %v", err)
 	}
 }

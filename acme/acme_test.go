@@ -484,7 +484,7 @@ func TestGetAuthorization(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cl := Client{Key: testKeyEC}
+	cl := Client{Key: testKeyEC, DirectoryURL: ts.URL}
 	auth, err := cl.GetAuthorization(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -614,7 +614,7 @@ func runWaitAuthorization(ctx context.Context, t *testing.T, h http.HandlerFunc)
 	}
 	ch := make(chan res, 1)
 	go func() {
-		var client Client
+		var client = Client{DirectoryURL: ts.URL}
 		a, err := client.WaitAuthorization(ctx, ts.URL)
 		ch <- res{a, err}
 	}()
@@ -684,7 +684,7 @@ func TestPollChallenge(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	cl := Client{Key: testKeyEC}
+	cl := Client{Key: testKeyEC, DirectoryURL: ts.URL}
 	chall, err := cl.GetChallenge(context.Background(), ts.URL)
 	if err != nil {
 		t.Fatal(err)
@@ -865,7 +865,8 @@ func TestFetchCert(t *testing.T) {
 		w.Write([]byte{count})
 	}))
 	defer ts.Close()
-	res, err := (&Client{}).FetchCert(context.Background(), ts.URL, true)
+	cl := &Client{dir: &Directory{}} // skip discovery
+	res, err := cl.FetchCert(context.Background(), ts.URL, true)
 	if err != nil {
 		t.Fatalf("FetchCert: %v", err)
 	}
@@ -887,7 +888,8 @@ func TestFetchCertRetry(t *testing.T) {
 		w.Write([]byte{1})
 	}))
 	defer ts.Close()
-	res, err := (&Client{}).FetchCert(context.Background(), ts.URL, false)
+	cl := &Client{dir: &Directory{}} // skip discovery
+	res, err := cl.FetchCert(context.Background(), ts.URL, false)
 	if err != nil {
 		t.Fatalf("FetchCert: %v", err)
 	}

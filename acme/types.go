@@ -18,10 +18,11 @@ import (
 // See https://tools.ietf.org/html/rfc8555#section-7.1.6 for details.
 const (
 	StatusDeactivated = "deactivated"
+	StatusExpired     = "expired"
 	StatusInvalid     = "invalid"
-	StatusReady       = "ready"
 	StatusPending     = "pending"
 	StatusProcessing  = "processing"
+	StatusReady       = "ready"
 	StatusRevoked     = "revoked"
 	StatusUnknown     = "unknown"
 	StatusValid       = "valid"
@@ -104,16 +105,19 @@ func (a *AuthorizationError) Error() string {
 	return fmt.Sprintf("acme: authorization error for %s: %s", a.Identifier, strings.Join(e, "; "))
 }
 
-// WaitOrderError is returned from Client's WaitOrder.
+// OrderError is returned from Client's order related methods.
 // It indicates the order is unusable and the clients should start over with
 // AuthorizeOrder.
-type WaitOrderError struct {
+//
+// The clients can still fetch the order object from CA using GetOrder
+// to inspect its state.
+type OrderError struct {
 	OrderURL string
 	Status   string
 }
 
-func (we *WaitOrderError) Error() string {
-	return fmt.Sprintf("acme: wait order %s: status %s", we.OrderURL, we.Status)
+func (oe *OrderError) Error() string {
+	return fmt.Sprintf("acme: order %s status: %s", oe.OrderURL, oe.Status)
 }
 
 // RateLimit reports whether err represents a rate limit error and
@@ -138,11 +142,11 @@ func RateLimit(err error) (time.Duration, bool) {
 }
 
 // Account is a user account. It is associated with a private key.
-// Non-RFC8555 fields are empty when interfacing with a compliant CA.
+// Non-RFC 8555 fields are empty when interfacing with a compliant CA.
 type Account struct {
 	// URI is the account unique ID, which is also a URL used to retrieve
 	// account data from the CA.
-	// When interfacing with RFC8555-compliant CAs, URI is the "kid" field
+	// When interfacing with RFC 8555-compliant CAs, URI is the "kid" field
 	// value in JWS signed requests.
 	URI string
 
@@ -163,32 +167,32 @@ type Account struct {
 	// A value not matching CurrentTerms indicates that the user hasn't agreed
 	// to the actual Terms of Service of the CA.
 	//
-	// It is non-RFC8555 compliant. Package users can store the ToS they agree to
+	// It is non-RFC 8555 compliant. Package users can store the ToS they agree to
 	// during Client's Register call in the prompt callback function.
 	AgreedTerms string
 
 	// Actual terms of a CA.
 	//
-	// It is non-RFC8555 compliant. Use Directory's Terms field.
+	// It is non-RFC 8555 compliant. Use Directory's Terms field.
 	// When a CA updates their terms and requires an account agreement,
 	// a URL at which instructions to do so is available in Error's Instance field.
 	CurrentTerms string
 
 	// Authz is the authorization URL used to initiate a new authz flow.
 	//
-	// It is non-RFC8555 compliant. Use Directory's AuthzURL or OrderURL.
+	// It is non-RFC 8555 compliant. Use Directory's AuthzURL or OrderURL.
 	Authz string
 
 	// Authorizations is a URI from which a list of authorizations
 	// granted to this account can be fetched via a GET request.
 	//
-	// It is non-RFC8555 compliant and is obsoleted by OrdersURL.
+	// It is non-RFC 8555 compliant and is obsoleted by OrdersURL.
 	Authorizations string
 
 	// Certificates is a URI from which a list of certificates
 	// issued for this account can be fetched via a GET request.
 	//
-	// It is non-RFC8555 compliant and is obsoleted by OrdersURL.
+	// It is non-RFC 8555 compliant and is obsoleted by OrdersURL.
 	Certificates string
 }
 
@@ -199,11 +203,11 @@ type Directory struct {
 	NonceURL string
 
 	// RegURL is an account endpoint URL, allowing for creating new accounts.
-	// Pre-RFC8555 CAs also allow modifying existing accounts at this URL.
+	// Pre-RFC 8555 CAs also allow modifying existing accounts at this URL.
 	RegURL string
 
 	// OrderURL is used to initiate the certificate issuance flow
-	// as described in RFC8555.
+	// as described in RFC 8555.
 	OrderURL string
 
 	// AuthzURL is used to initiate identifier pre-authorization flow.
@@ -211,7 +215,7 @@ type Directory struct {
 	AuthzURL string
 
 	// CertURL is a new certificate issuance endpoint URL.
-	// It is non-RFC8555 compliant and is obsoleted by OrderURL.
+	// It is non-RFC 8555 compliant and is obsoleted by OrderURL.
 	CertURL string
 
 	// RevokeURL is used to initiate a certificate revocation flow.
@@ -235,6 +239,14 @@ type Directory struct {
 	// ExternalAccountRequired indicates that the CA requires for all account-related
 	// requests to include external account binding information.
 	ExternalAccountRequired bool
+}
+
+// rfcCompliant reports whether the ACME server implements RFC 8555.
+// Note that some servers may have incomplete RFC implementation
+// even if the returned value is true.
+// If rfcCompliant reports false, the server most likely implements draft-02.
+func (d *Directory) rfcCompliant() bool {
+	return d.OrderURL != ""
 }
 
 // Order represents a client's request for a certificate.
@@ -323,15 +335,26 @@ type Authorization struct {
 	// URI uniquely identifies a authorization.
 	URI string
 
-	// Status identifies the status of an authorization.
+	// Status is the current status of an authorization.
+	// Possible values are StatusPending, StatusValid, StatusInvalid, StatusDeactivated,
+	// StatusExpired and StatusRevoked.
 	Status string
 
 	// Identifier is what the account is authorized to represent.
 	Identifier AuthzID
 
+	// The timestamp after which the CA considers the authorization invalid.
+	Expires time.Time
+
+	// Wildcard is true for authorizations of a wildcard domain name.
+	Wildcard bool
+
 	// Challenges that the client needs to fulfill in order to prove possession
 	// of the identifier (for pending authorizations).
-	// For final authorizations, the challenges that were used.
+	// For valid authorizations, the challenge that was validated.
+	// For invalid authorizations, the challenge that was attempted and failed.
+	//
+	// RFC 8555 compatible CAs require users to fuflfill only one of the challenges.
 	Challenges []*Challenge
 
 	// A collection of sets of challenges, each of which would be sufficient
@@ -339,6 +362,8 @@ type Authorization struct {
 	// Clients must complete a set of challenges that covers at least one set.
 	// Challenges are identified by their indices in the challenges array.
 	// If this field is empty, the client needs to complete all challenges.
+	//
+	// This field is unused in RFC 8555.
 	Combinations [][]int
 }
 
@@ -376,10 +401,12 @@ type wireAuthzID struct {
 
 // wireAuthz is ACME JSON representation of Authorization objects.
 type wireAuthz struct {
+	Identifier   wireAuthzID
 	Status       string
+	Expires      time.Time
+	Wildcard     bool
 	Challenges   []wireChallenge
 	Combinations [][]int
-	Identifier   wireAuthzID
 }
 
 func (z *wireAuthz) authorization(uri string) *Authorization {
@@ -387,8 +414,10 @@ func (z *wireAuthz) authorization(uri string) *Authorization {
 		URI:          uri,
 		Status:       z.Status,
 		Identifier:   AuthzID{Type: z.Identifier.Type, Value: z.Identifier.Value},
-		Combinations: z.Combinations, // shallow copy
+		Expires:      z.Expires,
+		Wildcard:     z.Wildcard,
 		Challenges:   make([]*Challenge, len(z.Challenges)),
+		Combinations: z.Combinations, // shallow copy
 	}
 	for i, v := range z.Challenges {
 		a.Challenges[i] = v.challenge()
@@ -413,7 +442,7 @@ func (z *wireAuthz) error(uri string) *AuthorizationError {
 // Its Error field may be non-nil if the challenge is part of an Authorization
 // with StatusInvalid.
 type Challenge struct {
-	// Type is the challenge type, e.g. "http-01", "tls-sni-02", "dns-01".
+	// Type is the challenge type, e.g. "http-01", "tls-alpn-01", "dns-01".
 	Type string
 
 	// URI is where a challenge response can be posted to.
@@ -423,7 +452,13 @@ type Challenge struct {
 	Token string
 
 	// Status identifies the status of this challenge.
+	// In RFC 8555, possible values are StatusPending, StatusProcessing, StatusValid,
+	// and StatusInvalid.
 	Status string
+
+	// Validated is the time at which the CA validated this challenge.
+	// Always zero value in pre-RFC 8555.
+	Validated time.Time
 
 	// Error indicates the reason for an authorization failure
 	// when this challenge was used.
@@ -433,19 +468,24 @@ type Challenge struct {
 
 // wireChallenge is ACME JSON challenge representation.
 type wireChallenge struct {
-	URI    string `json:"uri"`
-	Type   string
-	Token  string
-	Status string
-	Error  *wireError
+	URL       string `json:"url"` // RFC
+	URI       string `json:"uri"` // pre-RFC
+	Type      string
+	Token     string
+	Status    string
+	Validated time.Time
+	Error     *wireError
 }
 
 func (c *wireChallenge) challenge() *Challenge {
 	v := &Challenge{
-		URI:    c.URI,
+		URI:    c.URL,
 		Type:   c.Type,
 		Token:  c.Token,
 		Status: c.Status,
+	}
+	if v.URI == "" {
+		v.URI = c.URI // c.URL was empty; use legacy
 	}
 	if v.Status == "" {
 		v.Status = StatusPending
