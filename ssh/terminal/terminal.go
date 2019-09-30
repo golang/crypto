@@ -112,6 +112,7 @@ func NewTerminal(c io.ReadWriter, prompt string) *Terminal {
 }
 
 const (
+	keyCtrlC     = 3
 	keyCtrlD     = 4
 	keyCtrlU     = 21
 	keyEnter     = '\r'
@@ -538,6 +539,17 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 		}
 		t.line = t.line[:t.pos]
 		t.moveCursorToPos(t.pos)
+	case keyCtrlC:
+		t.queue([]rune("^C"))
+		t.moveCursorToPos(len(t.line))
+		t.queue([]rune("\r\n"))
+		line = ""
+		ok = true
+		t.line = t.line[:0]
+		t.pos = 0
+		t.cursorX = 0
+		t.cursorY = 0
+		t.maxLine = 0
 	case keyCtrlD:
 		// Erase the character under the current position.
 		// The EOF case when the line is empty is handled in
