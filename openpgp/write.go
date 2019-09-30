@@ -334,8 +334,19 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 	if err != nil {
 		return
 	}
+	literaldata := payload
+	if algo := config.Compression(); algo != packet.CompressionNone {
+		var compConfig *packet.CompressionConfig
+		if config != nil {
+			compConfig = config.CompressionConfig
+		}
+		literaldata, err = packet.SerializeCompressed(payload, algo, compConfig)
+		if err != nil {
+			return
+		}
+	}
 
-	return writeAndSign(payload, candidateHashes, signed, hints, config)
+	return writeAndSign(literaldata, candidateHashes, signed, hints, config)
 }
 
 // Sign signs a message. The resulting WriteCloser must be closed after the
