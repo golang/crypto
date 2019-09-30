@@ -174,6 +174,21 @@ var keyPressTests = []struct {
 		line:           "£",
 		throwAwayLines: 1,
 	},
+    {
+        // Ctrl-C at the end of the line should be cancle
+        in: "abc\003",
+        line: "",
+    },
+    {
+        // Ctrl-C at the middle of the line should be cancle
+        in: "abc\003def",
+        line: "",
+    },
+    {
+        // Ctrl-C at the beginning of the line should be cancle
+        in: "\003abc",
+        line: "",
+    },
 	{
 		// Ctrl-D at the end of the line should be ignored.
 		in:   "a\004\r",
