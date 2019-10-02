@@ -79,6 +79,7 @@ func (e *EncryptedKey) Decrypt(priv *PrivateKey, config *Config) error {
 	// padding oracle attacks.
 	switch priv.PubKeyAlgo {
 	case PubKeyAlgoRSA, PubKeyAlgoRSAEncryptOnly:
+		// Supports both *rsa.PrivateKey and crypto.Decrypter
 		k := priv.PrivateKey.(crypto.Decrypter)
 		b, err = k.Decrypt(config.Random(), padToKeySize(k.Public().(*rsa.PublicKey), e.encryptedMPI1.bytes), nil)
 	case PubKeyAlgoElGamal:

@@ -173,7 +173,7 @@ func TestRenewFromCache(t *testing.T) {
 	}
 
 	// trigger renew
-	hello := clientHelloInfo(exampleDomain, true)
+	hello := clientHelloInfo(exampleDomain, algECDSA)
 	if _, err := man.GetCertificate(hello); err != nil {
 		t.Fatal(err)
 	}
@@ -299,7 +299,7 @@ func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
 	}
 
 	// assert the expiring cert is returned from state
-	hello := clientHelloInfo(exampleDomain, true)
+	hello := clientHelloInfo(exampleDomain, algECDSA)
 	tlscert, err := man.GetCertificate(hello)
 	if err != nil {
 		t.Fatal(err)
@@ -317,7 +317,7 @@ func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
 		t.Fatal("renew took too long to occur")
 	case <-done:
 		// assert the new cert is returned from state after renew
-		hello := clientHelloInfo(exampleDomain, true)
+		hello := clientHelloInfo(exampleDomain, algECDSA)
 		tlscert, err := man.GetCertificate(hello)
 		if err != nil {
 			t.Fatal(err)
