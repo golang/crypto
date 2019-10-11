@@ -27,6 +27,16 @@ import (
 	"time"
 )
 
+// newTestClient creates a client with a non-nil Directory so that it skips
+// the discovery which is otherwise done on the first call of almost every
+// exported method.
+func newTestClient() *Client {
+	return &Client{
+		Key: testKeyEC,
+		dir: &Directory{}, // skip discovery
+	}
+}
+
 // Decodes a JWS-encoded request and unmarshals the decoded JSON into a provided
 // interface.
 func decodeJWSRequest(t *testing.T, v interface{}, r io.Reader) {
@@ -865,7 +875,7 @@ func TestFetchCert(t *testing.T) {
 		w.Write([]byte{count})
 	}))
 	defer ts.Close()
-	cl := &Client{dir: &Directory{}} // skip discovery
+	cl := newTestClient()
 	res, err := cl.FetchCert(context.Background(), ts.URL, true)
 	if err != nil {
 		t.Fatalf("FetchCert: %v", err)
@@ -888,7 +898,7 @@ func TestFetchCertRetry(t *testing.T) {
 		w.Write([]byte{1})
 	}))
 	defer ts.Close()
-	cl := &Client{dir: &Directory{}} // skip discovery
+	cl := newTestClient()
 	res, err := cl.FetchCert(context.Background(), ts.URL, false)
 	if err != nil {
 		t.Fatalf("FetchCert: %v", err)
@@ -909,7 +919,8 @@ func TestFetchCertCancel(t *testing.T) {
 	done := make(chan struct{})
 	var err error
 	go func() {
-		_, err = (&Client{}).FetchCert(ctx, ts.URL, false)
+		cl := newTestClient()
+		_, err = cl.FetchCert(ctx, ts.URL, false)
 		close(done)
 	}()
 	cancel()
@@ -932,7 +943,8 @@ func TestFetchCertDepth(t *testing.T) {
 		w.Write([]byte{count})
 	}))
 	defer ts.Close()
-	_, err := (&Client{}).FetchCert(context.Background(), ts.URL, true)
+	cl := newTestClient()
+	_, err := cl.FetchCert(context.Background(), ts.URL, true)
 	if err == nil {
 		t.Errorf("err is nil")
 	}
@@ -947,7 +959,8 @@ func TestFetchCertBreadth(t *testing.T) {
 		w.Write([]byte{1})
 	}))
 	defer ts.Close()
-	_, err := (&Client{}).FetchCert(context.Background(), ts.URL, true)
+	cl := newTestClient()
+	_, err := cl.FetchCert(context.Background(), ts.URL, true)
 	if err == nil {
 		t.Errorf("err is nil")
 	}
@@ -959,7 +972,8 @@ func TestFetchCertSize(t *testing.T) {
 		w.Write(b)
 	}))
 	defer ts.Close()
-	_, err := (&Client{}).FetchCert(context.Background(), ts.URL, false)
+	cl := newTestClient()
+	_, err := cl.FetchCert(context.Background(), ts.URL, false)
 	if err == nil {
 		t.Errorf("err is nil")
 	}
@@ -1044,7 +1058,7 @@ func TestNonce_fetch(t *testing.T) {
 	defer ts.Close()
 	for ; i < len(tests); i++ {
 		test := tests[i]
-		c := &Client{}
+		c := newTestClient()
 		n, err := c.fetchNonce(context.Background(), ts.URL)
 		if n != test.nonce {
 			t.Errorf("%d: n=%q; want %q", i, n, test.nonce)
@@ -1063,7 +1077,7 @@ func TestNonce_fetchError(t *testing.T) {
 		w.WriteHeader(http.StatusTooManyRequests)
 	}))
 	defer ts.Close()
-	c := &Client{}
+	c := newTestClient()
 	_, err := c.fetchNonce(context.Background(), ts.URL)
 	e, ok := err.(*Error)
 	if !ok {
@@ -1210,8 +1224,7 @@ func TestTLSSNI01ChallengeCert(t *testing.T) {
 		san = "dbbd5eefe7b4d06eb9d1d9f5acb4c7cd.a27d320e4b30332f0b6cb441734ad7b0.acme.invalid"
 	)
 
-	client := &Client{Key: testKeyEC}
-	tlscert, name, err := client.TLSSNI01ChallengeCert(token)
+	tlscert, name, err := newTestClient().TLSSNI01ChallengeCert(token)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1243,8 +1256,7 @@ func TestTLSSNI02ChallengeCert(t *testing.T) {
 		sanB = "dbbd5eefe7b4d06eb9d1d9f5acb4c7cd.a27d320e4b30332f0b6cb441734ad7b0.ka.acme.invalid"
 	)
 
-	client := &Client{Key: testKeyEC}
-	tlscert, name, err := client.TLSSNI02ChallengeCert(token)
+	tlscert, name, err := newTestClient().TLSSNI02ChallengeCert(token)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1284,8 +1296,7 @@ func TestTLSALPN01ChallengeCert(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	client := &Client{Key: testKeyEC}
-	tlscert, err := client.TLSALPN01ChallengeCert(token, domain)
+	tlscert, err := newTestClient().TLSALPN01ChallengeCert(token, domain)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1334,7 +1345,7 @@ func TestTLSChallengeCertOpt(t *testing.T) {
 	}
 	opts := []CertOption{WithKey(key), WithTemplate(tmpl)}
 
-	client := &Client{Key: testKeyEC}
+	client := newTestClient()
 	cert1, _, err := client.TLSSNI01ChallengeCert("token", opts...)
 	if err != nil {
 		t.Fatal(err)
@@ -1392,7 +1403,7 @@ func TestHTTP01Challenge(t *testing.T) {
 		value   = token + "." + testKeyECThumbprint
 		urlpath = "/.well-known/acme-challenge/" + token
 	)
-	client := &Client{Key: testKeyEC}
+	client := newTestClient()
 	val, err := client.HTTP01ChallengeResponse(token)
 	if err != nil {
 		t.Fatal(err)
@@ -1411,8 +1422,7 @@ func TestDNS01ChallengeRecord(t *testing.T) {
 	//      base64 | tr -d '=' | tr '/+' '_-'
 	const value = "8DERMexQ5VcdJ_prpPiA0mVdp7imgbCgjsG4SqqNMIo"
 
-	client := &Client{Key: testKeyEC}
-	val, err := client.DNS01ChallengeRecord("xxx")
+	val, err := newTestClient().DNS01ChallengeRecord("xxx")
 	if err != nil {
 		t.Fatal(err)
 	}
