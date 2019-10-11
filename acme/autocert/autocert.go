@@ -178,8 +178,8 @@ type Manager struct {
 	renewalMu sync.Mutex
 	renewal   map[certKey]*domainRenewal
 
-	// tokensMu guards the rest of the fields: tryHTTP01, certTokens and httpTokens.
-	tokensMu sync.RWMutex
+	// challengeMu guards tryHTTP01, certTokens and httpTokens.
+	challengeMu sync.RWMutex
 	// tryHTTP01 indicates whether the Manager should try "http-01" challenge type
 	// during the authorization flow.
 	tryHTTP01 bool
@@ -192,6 +192,7 @@ type Manager struct {
 	// and is keyed by the domain name which matches the ClientHello server name.
 	// The entries are stored for the duration of the authorization flow.
 	certTokens map[string]*tls.Certificate
+
 	// nowFunc, if not nil, returns the current time. This may be set for
 	// testing purposes.
 	nowFunc func() time.Time
@@ -271,8 +272,8 @@ func (m *Manager) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, 
 
 	// Check whether this is a token cert requested for TLS-ALPN challenge.
 	if wantsTokenCert(hello) {
-		m.tokensMu.RLock()
-		defer m.tokensMu.RUnlock()
+		m.challengeMu.RLock()
+		defer m.challengeMu.RUnlock()
 		if cert := m.certTokens[name]; cert != nil {
 			return cert, nil
 		}
@@ -380,8 +381,8 @@ func supportsECDSA(hello *tls.ClientHelloInfo) bool {
 // If HTTPHandler is never called, the Manager will only use the "tls-alpn-01"
 // challenge for domain verification.
 func (m *Manager) HTTPHandler(fallback http.Handler) http.Handler {
-	m.tokensMu.Lock()
-	defer m.tokensMu.Unlock()
+	m.challengeMu.Lock()
+	defer m.challengeMu.Unlock()
 	m.tryHTTP01 = true
 
 	if fallback == nil {
@@ -837,8 +838,8 @@ func pickChallenge(typ string, chal []*acme.Challenge) *acme.Challenge {
 }
 
 func (m *Manager) supportedChallengeTypes() []string {
-	m.tokensMu.RLock()
-	defer m.tokensMu.RUnlock()
+	m.challengeMu.RLock()
+	defer m.challengeMu.RUnlock()
 	typ := []string{"tls-alpn-01"}
 	if m.tryHTTP01 {
 		typ = append(typ, "http-01")
@@ -894,8 +895,8 @@ func (m *Manager) fulfill(ctx context.Context, client *acme.Client, chal *acme.C
 // putCertToken stores the token certificate with the specified name
 // in both m.certTokens map and m.Cache.
 func (m *Manager) putCertToken(ctx context.Context, name string, cert *tls.Certificate) {
-	m.tokensMu.Lock()
-	defer m.tokensMu.Unlock()
+	m.challengeMu.Lock()
+	defer m.challengeMu.Unlock()
 	if m.certTokens == nil {
 		m.certTokens = make(map[string]*tls.Certificate)
 	}
@@ -906,8 +907,8 @@ func (m *Manager) putCertToken(ctx context.Context, name string, cert *tls.Certi
 // deleteCertToken removes the token certificate with the specified name
 // from both m.certTokens map and m.Cache.
 func (m *Manager) deleteCertToken(name string) {
-	m.tokensMu.Lock()
-	defer m.tokensMu.Unlock()
+	m.challengeMu.Lock()
+	defer m.challengeMu.Unlock()
 	delete(m.certTokens, name)
 	if m.Cache != nil {
 		ck := certKey{domain: name, isToken: true}
@@ -918,8 +919,8 @@ func (m *Manager) deleteCertToken(name string) {
 // httpToken retrieves an existing http-01 token value from an in-memory map
 // or the optional cache.
 func (m *Manager) httpToken(ctx context.Context, tokenPath string) ([]byte, error) {
-	m.tokensMu.RLock()
-	defer m.tokensMu.RUnlock()
+	m.challengeMu.RLock()
+	defer m.challengeMu.RUnlock()
 	if v, ok := m.httpTokens[tokenPath]; ok {
 		return v, nil
 	}
@@ -934,8 +935,8 @@ func (m *Manager) httpToken(ctx context.Context, tokenPath string) ([]byte, erro
 //
 // It ignores any error returned from Cache.Put.
 func (m *Manager) putHTTPToken(ctx context.Context, tokenPath, val string) {
-	m.tokensMu.Lock()
-	defer m.tokensMu.Unlock()
+	m.challengeMu.Lock()
+	defer m.challengeMu.Unlock()
 	if m.httpTokens == nil {
 		m.httpTokens = make(map[string][]byte)
 	}
@@ -951,8 +952,8 @@ func (m *Manager) putHTTPToken(ctx context.Context, tokenPath, val string) {
 //
 // If m.Cache is non-nil, it blocks until Cache.Delete returns without a timeout.
 func (m *Manager) deleteHTTPToken(tokenPath string) {
-	m.tokensMu.Lock()
-	defer m.tokensMu.Unlock()
+	m.challengeMu.Lock()
+	defer m.challengeMu.Unlock()
 	delete(m.httpTokens, tokenPath)
 	if m.Cache != nil {
 		m.Cache.Delete(context.Background(), httpTokenCacheKey(tokenPath))
