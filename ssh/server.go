@@ -99,6 +99,11 @@ type ServerConfig struct {
 	// unknown.
 	KeyboardInteractiveCallback func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error)
 
+	// NextAuthMethodsCallback if non-nil, is called when auth methods
+	// return PartialSuccess error, then these methods will be
+	// methods auth can continue
+	NextAuthMethodsCallback func(conn ConnMetadata) []string
+
 	// AuthLogCallback, if non-nil, is called to log all authentication
 	// attempts.
 	AuthLogCallback func(conn ConnMetadata, method string, err error)
@@ -395,6 +400,11 @@ func (l ServerAuthError) Error() string {
 // It is returned in ServerAuthError.Errors from NewServerConn.
 var ErrNoAuth = errors.New("ssh: no auth passed yet")
 
+// ErrPartialSuccess is the error some auth method partially successful
+// but need more auth method confirm, If return, then config.NextAuthMethodsCallback
+// will be call, and check it
+var ErrPartialSuccess = errors.New("authenticated with partial success")
+
 func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, error) {
 	sessionID := s.transport.getSessionID()
 	var cache pubKeyCache
@@ -403,6 +413,9 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 	authFailures := 0
 	var authErrs []error
 	var displayedBanner bool
+	var nextAuthMethods []string
+	var nextAuthMethodsPlain string
+	var nextAuthLoaded bool
 
 userAuthLoop:
 	for {
@@ -450,6 +463,11 @@ userAuthLoop:
 
 		perms = nil
 		authErr := ErrNoAuth
+		// get next auth methods
+		if config.NextAuthMethodsCallback != nil && len(nextAuthMethods) == 0 {
+			nextAuthMethods = config.NextAuthMethodsCallback(s)
+			nextAuthMethodsPlain = strings.Join(nextAuthMethods, ",")
+		}
 
 		switch userAuthReq.Method {
 		case "none":
@@ -631,13 +649,17 @@ userAuthLoop:
 		authFailures++
 
 		var failureMsg userAuthFailureMsg
-		if config.PasswordCallback != nil {
+
+		// if password in next auth methods, should not be tell client
+		if config.PasswordCallback != nil && !strings.Contains(nextAuthMethodsPlain, "password") {
 			failureMsg.Methods = append(failureMsg.Methods, "password")
 		}
-		if config.PublicKeyCallback != nil {
+		// if publickey in next auth methods, should not be tell client
+		if config.PublicKeyCallback != nil && !strings.Contains(nextAuthMethodsPlain, "publickey") {
 			failureMsg.Methods = append(failureMsg.Methods, "publickey")
 		}
-		if config.KeyboardInteractiveCallback != nil {
+		// if keyboard-interactive in next auth methods, should not be tell client
+		if config.KeyboardInteractiveCallback != nil && !strings.Contains(nextAuthMethodsPlain, "keyboard-interactive") {
 			failureMsg.Methods = append(failureMsg.Methods, "keyboard-interactive")
 		}
 		if config.GSSAPIWithMICConfig != nil && config.GSSAPIWithMICConfig.Server != nil &&
@@ -647,6 +669,20 @@ userAuthLoop:
 
 		if len(failureMsg.Methods) == 0 {
 			return nil, errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
+		}
+		if nextAuthLoaded {
+			failureMsg.Methods = nextAuthMethods
+		}
+
+		// if auth error is partial success, so need next auth
+		if authErr == ErrPartialSuccess {
+			if len(nextAuthMethods) > 0 {
+				nextAuthLoaded = true
+				failureMsg.PartialSuccess = true
+				failureMsg.Methods = nextAuthMethods
+			} else {
+				return nil, errors.New("ssh: no next authentication methods configured but first auth return partial success")
+			}
 		}
 
 		if err := s.transport.writePacket(Marshal(&failureMsg)); err != nil {
