@@ -453,7 +453,7 @@ func Normalize(address string) string {
 
 // Line returns a line to add append to the known_hosts files.
 func Line(addresses []string, key ssh.PublicKey) string {
-	var trimmed []string
+	trimmed := make([]string, 0, len(addresses))
 	for _, a := range addresses {
 		trimmed = append(trimmed, Normalize(a))
 	}

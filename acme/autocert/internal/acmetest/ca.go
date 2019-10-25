@@ -64,7 +64,7 @@ type CAServer struct {
 // If domainsWhitelist is non-empty, the certs will be issued only for the specified
 // list of domains. Otherwise, any domain name is allowed.
 func NewCAServer(challengeTypes []string, domainsWhitelist []string) *CAServer {
-	var whitelist []string
+	whitelist := make([]string, 0, len(domainsWhitelist))
 	for _, name := range domainsWhitelist {
 		whitelist = append(whitelist, name)
 	}

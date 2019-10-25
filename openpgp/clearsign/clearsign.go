@@ -347,8 +347,8 @@ func EncodeMulti(w io.Writer, privateKeys []*packet.PrivateKey, config *packet.C
 	if !hashType.Available() {
 		return nil, errors.UnsupportedError("unsupported hash type: " + strconv.Itoa(int(hashType)))
 	}
-	var hashers []hash.Hash
-	var ws []io.Writer
+	hashers := make([]hash.Hash, 0, len(privateKeys))
+	ws := make([]io.Writer, 0, len(privateKeys))
 	for range privateKeys {
 		h := hashType.New()
 		hashers = append(hashers, h)
