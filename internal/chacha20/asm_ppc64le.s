@@ -72,13 +72,13 @@ DATA consts<>+0x90(SB)/8, $0x0000000100000000
 DATA consts<>+0x98(SB)/8, $0x0000000300000002
 GLOBL consts<>(SB), RODATA, $0xa0
 
-//func chaCha20_ctr32_vsx(out, inp []byte, len int, key *[32]byte, counter *[16]byte)
+//func chaCha20_ctr32_vsx(out, inp *byte, len int, key *[8]uint32, counter *uint32)
 TEXT ·chaCha20_ctr32_vsx(SB),NOSPLIT,$64-40
 	MOVD out+0(FP), OUT
 	MOVD inp+8(FP), INP
 	MOVD len+16(FP), LEN
 	MOVD key+24(FP), KEY
-	MOVD cnt+32(FP), CNT
+	MOVD counter+32(FP), CNT
 
 	// Addressing for constants
 	MOVD $consts<>+0x00(SB), CONSTBASE

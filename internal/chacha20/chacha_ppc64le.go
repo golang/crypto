@@ -10,9 +10,10 @@ import (
 	"encoding/binary"
 )
 
-var haveAsm = true
-
-const bufSize = 256
+const (
+	bufSize = 256
+	haveAsm = true
+)
 
 //go:noescape
 func chaCha20_ctr32_vsx(out, inp *byte, len int, key *[8]uint32, counter *uint32)
