@@ -225,6 +225,21 @@ IiHM7GBn+0nJoKTXsOGMIBe3ulKlKVxLjEuk9yivh/8=
 -----END DSA PRIVATE KEY-----
 `),
 	},
+
+	2: {
+		Name:              "ed25519-encrypted",
+		EncryptionKey:     "password",
+		IncludesPublicKey: true,
+		PEMBytes: []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jdHIAAAAGYmNyeXB0AAAAGAAAABDKj29BlC
+ocEWuVhQ94/RjoAAAAEAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIIw1gSurPTDwZidA
+2AIjQZgoQi3IFn9jBtFdP10/Jj7DAAAAoFGkQbB2teSU7ikUsnc7ct2aH3pitM359lNVUh
+7DQbJWMjbQFbrBYyDJP+ALj1/RZmP2yoIf7/wr99q53/pm28Xp1gGP5V2RGRJYCA6kgFIH
+xdB6KEw1Ce7Bz8JaDIeagAGd3xtQTH3cuuleVxCZZnk9NspsPxigADKCls/RUiK7F+z3Qf
+Lvs9+PH8nIuhFMYZgo3liqZbVS5z4Fqhyzyq4=
+-----END OPENSSH PRIVATE KEY-----
+`),
+	},
 }
 
 // SKData contains a list of PubKeys backed by U2F/FIDO2 Security Keys and their test data.
