@@ -164,9 +164,10 @@ var SSHCertificates = map[string][]byte{
 }
 
 var PEMEncryptedKeys = []struct {
-	Name          string
-	EncryptionKey string
-	PEMBytes      []byte
+	Name              string
+	EncryptionKey     string
+	IncludesPublicKey bool
+	PEMBytes          []byte
 }{
 	0: {
 		Name:          "rsa-encrypted",
