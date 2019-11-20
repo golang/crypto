@@ -20,6 +20,7 @@ var (
 )
 
 
+// TODO: Improve this.
 func TestEncryptDecrypt(t *testing.T) {
 	kdf := KDF{
 		Hash:   algorithm.SHA512,

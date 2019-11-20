@@ -225,21 +225,14 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 	return
 }
 
+// TODO: Write a description
 // SerializeUnEncrypted ..
 func (pk *PrivateKey) SerializeUnEncrypted(w io.Writer) (err error) {
 	buf := bytes.NewBuffer(nil)
 	buf.Write([]byte{uint8(S2KNON)} /* no encryption */)
-	switch priv := pk.PrivateKey.(type) {
-	case *rsa.PrivateKey:
-		err = serializeRSAPrivateKey(buf, priv)
-	case *dsa.PrivateKey:
-		err = serializeDSAPrivateKey(buf, priv)
-	case *elgamal.PrivateKey:
-		err = serializeElGamalPrivateKey(buf, priv)
-	case *ecdsa.PrivateKey:
-		err = serializeECDSAPrivateKey(buf, priv)
-	default:
-		err = errors.InvalidArgumentError("unknown private key type")
+	err = pk.serializePrivateKey(buf)
+	if err != nil {
+		return err
 	}
 	privateKeyBytes := buf.Bytes()
 	if pk.sha1Checksum {
