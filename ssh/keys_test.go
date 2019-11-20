@@ -13,6 +13,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/pem"
 	"fmt"
 	"io"
@@ -569,6 +570,48 @@ func TestInvalidKeys(t *testing.T) {
 			// This test is just to ensure that the function
 			// doesn't panic so the return value is ignored.
 			ParseRawPrivateKey(buf.Bytes())
+		}
+	}
+}
+
+func TestSKKeys(t *testing.T) {
+	for _, d := range testdata.SKData {
+		pk, _, _, _, err := ParseAuthorizedKey(d.PubKey)
+		if err != nil {
+			t.Fatalf("parseAuthorizedKey returned error: %v", err)
+		}
+
+		sigBuf := make([]byte, hex.DecodedLen(len(d.HexSignature)))
+		if _, err := hex.Decode(sigBuf, d.HexSignature); err != nil {
+			t.Fatalf("hex.Decode() failed: %v", err)
+		}
+
+		dataBuf := make([]byte, hex.DecodedLen(len(d.HexData)))
+		if _, err := hex.Decode(dataBuf, d.HexData); err != nil {
+			t.Fatalf("hex.Decode() failed: %v", err)
+		}
+
+		sig, _, ok := parseSignature(sigBuf)
+		if !ok {
+			t.Fatalf("parseSignature(%v) failed", sigBuf)
+		}
+
+		// Test that good data and signature pass verification
+		if err := pk.Verify(dataBuf, sig); err != nil {
+			t.Errorf("%s: PublicKey.Verify(%v, %v) failed: %v", d.Name, dataBuf, sig, err)
+		}
+
+		// Invalid data being passed in
+		invalidData := []byte("INVALID DATA")
+		if err := pk.Verify(invalidData, sig); err == nil {
+			t.Errorf("%s with invalid data: PublicKey.Verify(%v, %v) passed unexpectedly", d.Name, invalidData, sig)
+		}
+
+		// Change byte in blob to corrup signature
+		sig.Blob[5] = byte('A')
+		// Corrupted data being passed in
+		if err := pk.Verify(dataBuf, sig); err == nil {
+			t.Errorf("%s with corrupted signature: PublicKey.Verify(%v, %v) passed unexpectedly", d.Name, dataBuf, sig)
 		}
 	}
 }
