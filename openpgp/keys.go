@@ -7,6 +7,7 @@ package openpgp
 import (
 	"io"
 	"time"
+	goerrors "errors"
 
 	"golang.org/x/crypto/openpgp/armor"
 	"golang.org/x/crypto/openpgp/errors"
@@ -504,6 +505,10 @@ func shouldReplaceSubkeySig(existingSig, potentialNewSig *packet.Signature) bool
 // Identities and subkeys are re-signed in case they changed since NewEntry.
 // If config is nil, sensible defaults will be used.
 func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error) {
+	if e.PrivateKey == nil {
+		return goerrors.New("openpgp: private key is missing")
+	}
+
 	err = e.PrivateKey.Serialize(w)
 	if err != nil {
 		return
@@ -540,11 +545,13 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 }
 
 // SerializePrivate serializes an Entity, including private key material, to
-// the given Writer. For now, it must only be used on an Entity returned from
-// NewEntity.
+// the given Writer.
 // If config is nil, sensible defaults will be used.
-// TODO::notes this is a temp function to avoid break other things
 func (e *Entity) SerializePrivateNoSign(w io.Writer, config *packet.Config) (err error) {
+	if e.PrivateKey == nil {
+		return goerrors.New("openpgp: private key is missing")
+	}
+
 	err = e.PrivateKey.Serialize(w)
 	if err != nil {
 		return

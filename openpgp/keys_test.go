@@ -488,10 +488,50 @@ func TestNewEntityPublicSerialization(t *testing.T) {
 		t.Fatal(err)
 	}
 	serializedEntity := bytes.NewBuffer(nil)
-	entity.Serialize(serializedEntity)
+	err = entity.Serialize(serializedEntity)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	_, err = ReadEntity(packet.NewReader(bytes.NewBuffer(serializedEntity.Bytes())))
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestNewEntityPrivateSerialization(t *testing.T) {
+	entity, err := NewEntity("Golang Gopher", "Test Key", "no-reply@golang.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serializedEntity := bytes.NewBuffer(nil)
+	err = entity.SerializePrivateNoSign(serializedEntity, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = ReadEntity(packet.NewReader(bytes.NewBuffer(serializedEntity.Bytes())))
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestEntityPrivateSerialization(t *testing.T) {
+	keys, err := ReadArmoredKeyRing(bytes.NewBufferString(armoredPrivateKeyBlock))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, entity := range keys {
+		serializedEntity := bytes.NewBuffer(nil)
+		err = entity.SerializePrivateNoSign(serializedEntity, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err := ReadEntity(packet.NewReader(bytes.NewBuffer(serializedEntity.Bytes())))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 }

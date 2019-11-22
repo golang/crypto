@@ -39,10 +39,12 @@ type PrivateKey struct {
 	sha1Checksum  bool
 	iv            []byte
 
-	// s2k related
-	salt      []byte
-	s2kConfig s2k.Config
-	s2kType   S2KType
+	// Type of encryption of the S2K packet
+	// Allowed values are 0 (Not encrypted), 254 (SHA1), or
+	// 255 (2-byte checksum)
+	s2kType       S2KType
+	// Full parameters of the S2K packet
+	s2kParams     *s2k.Params
 }
 
 //S2KType s2k packet type
@@ -134,26 +136,31 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 		return
 	}
 
-	s2kType := buf[0]
+	pk.s2kType = S2KType(buf[0])
 
-	switch s2kType {
-	case 0:
+	switch pk.s2kType {
+	case S2KNON:
 		pk.s2k = nil
 		pk.Encrypted = false
-	case 254, 255:
+	case S2KSHA1, S2KCHECKSUM:
 		_, err = readFull(r, buf[:])
 		if err != nil {
 			return
 		}
 		pk.cipher = CipherFunction(buf[0])
 		pk.Encrypted = true
-		pk.s2k, err = s2k.Parse(r)
+		pk.s2kParams, err = s2k.ParseIntoParams(r)
 		if err != nil {
 			return
 		}
-		if s2kType == 254 {
+		pk.s2k, err = pk.s2kParams.Function()
+		if err != nil {
+			return
+		}
+		if pk.s2kType == S2KSHA1 {
 			pk.sha1Checksum = true
 		}
+
 	default:
 		return errors.UnsupportedError("deprecated s2k function in private key")
 	}
@@ -199,9 +206,13 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 
 	privateKeyBuf := bytes.NewBuffer(nil)
 	if pk.Encrypted {
-		pk.SerializeEncrypted(privateKeyBuf)
+		err = pk.SerializeEncrypted(privateKeyBuf)
 	} else {
-		pk.SerializeUnEncrypted(privateKeyBuf)
+		err = pk.SerializeUnEncrypted(privateKeyBuf)
+	}
+
+	if err != nil {
+		return
 	}
 
 	ptype := packetTypePrivateKey
@@ -257,14 +268,10 @@ func (pk *PrivateKey) SerializeEncrypted(w io.Writer) error {
 	encodedKeyBuf := bytes.NewBuffer(nil)
 	encodedKeyBuf.Write([]byte{uint8(pk.s2kType)})
 	encodedKeyBuf.Write([]byte{uint8(pk.cipher)})
-	encodedKeyBuf.Write([]byte{pk.s2kConfig.S2KMode})
-	hashID, ok := s2k.HashToHashId(pk.s2kConfig.Hash)
-	if !ok {
-		return errors.UnsupportedError("no such hash")
+	err := pk.s2kParams.Serialize(encodedKeyBuf)
+	if err != nil {
+		return err
 	}
-	encodedKeyBuf.Write([]byte{hashID})
-	encodedKeyBuf.Write(pk.salt)
-	encodedKeyBuf.Write([]byte{pk.s2kConfig.EncodedCount()})
 
 	privateKeyBuf.Write(pk.encryptedData)
 
@@ -373,24 +380,28 @@ func (pk *PrivateKey) Encrypt(passphrase []byte) error {
 
 	//Default config of private key encryption
 	pk.cipher = CipherAES256
-	pk.s2kConfig = s2k.Config{
+	s2kConfig := &s2k.Config{
 		S2KMode:  3, //Iterated
 		S2KCount: 65536,
 		Hash:     crypto.SHA256,
 	}
 
+	pk.s2kParams, err = s2k.Generate(rand.Reader, s2kConfig)
 	privateKeyBytes := privateKeyBuf.Bytes()
 	key := make([]byte, pk.cipher.KeySize())
-	pk.salt = make([]byte, 8)
-	rand.Read(pk.salt)
+
 	pk.sha1Checksum = true
-	pk.s2k = func(out, in []byte) {
-		s2k.Iterated(out, pk.s2kConfig.Hash.New(), in, pk.salt, pk.s2kConfig.S2KCount)
+	pk.s2k, err = pk.s2kParams.Function()
+	if err != nil {
+		return err
 	}
 	pk.s2k(key, passphrase)
 	block := pk.cipher.new(key)
 	pk.iv = make([]byte, pk.cipher.blockSize())
-	rand.Read(pk.iv)
+	_, err = rand.Read(pk.iv)
+	if err != nil {
+		return err
+	}
 	cfb := cipher.NewCFBEncrypter(block, pk.iv)
 
 	if pk.sha1Checksum {
