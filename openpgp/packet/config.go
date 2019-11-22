@@ -48,10 +48,19 @@ type Config struct {
 	// RSABits is the number of bits in new RSA keys made with NewEntity.
 	// If zero, then 2048 bit keys are created.
 	RSABits int
-	// The public key algorithm to use - will always create a signing primary key and encryption subkey.
+	// The public key algorithm to use - will always create a signing primary
+	// key and encryption subkey.
 	Algorithm PublicKeyAlgorithm
 	// Some known primes that are optionally prepopulated by the caller
 	RSAPrimes []*big.Int
+	// AEADConfig configures the use of the new AEAD Encrypted Data Packet,
+	// defined in the draft of the next version of the OpenPGP specification.
+	// If a non-nil AEADConfig is passed, usage of this packet is enabled. By
+	// default, it is disabled. See the documentation of AEADConfig for more
+	// configuration options related to AEAD.
+	// **Note: using this option may break compatibility with other OpenPGP
+	// implementations, as well as future versions of this library.**
+	AEADConfig *AEADConfig
 }
 
 func (c *Config) Random() io.Reader {
@@ -94,4 +103,11 @@ func (c *Config) PasswordHashIterations() int {
 		return 0
 	}
 	return c.S2KCount
+}
+
+func (c *Config) AEAD() *AEADConfig {
+	if c == nil {
+		return nil
+	}
+	return c.AEADConfig
 }

@@ -14,6 +14,12 @@ import (
 	"testing"
 )
 
+const (
+	iterations         = 500
+	iterationsSlow     = 10
+	iterationsVerySlow = 5
+)
+
 func TestReadFull(t *testing.T) {
 	var out [4]byte
 

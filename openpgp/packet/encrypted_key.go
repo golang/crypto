@@ -167,8 +167,6 @@ func (e *EncryptedKey) Serialize(w io.Writer) error {
 	default:
 		panic("internal error")
 	}
-
-	return nil
 }
 
 // SerializeEncryptedKey serializes an encrypted key packet to w that contains

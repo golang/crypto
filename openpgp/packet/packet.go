@@ -7,8 +7,8 @@
 package packet // import "golang.org/x/crypto/openpgp/packet"
 
 import (
-	"bytes"
 	"bufio"
+	"bytes"
 	"crypto/cipher"
 	"golang.org/x/crypto/openpgp/errors"
 	"golang.org/x/crypto/openpgp/internal/algorithm"
@@ -316,7 +316,14 @@ const (
 	packetTypePublicSubkey              packetType = 14
 	packetTypeUserAttribute             packetType = 17
 	packetTypeSymmetricallyEncryptedMDC packetType = 18
+	packetTypeAEADEncrypted             packetType = 20
 )
+
+// EncryptedDataPacket holds encrypted data. It is currently implemented by
+// SymmetricallyEncrypted and AEADEncrypted.
+type EncryptedDataPacket interface {
+	Decrypt(CipherFunction, []byte) (io.ReadCloser, error)
+}
 
 // peekVersion detects the version of a public key packet about to
 // be read. A bufio.Reader at the original position of the io.Reader
@@ -388,6 +395,8 @@ func Read(r io.Reader) (p Packet, err error) {
 		se := new(SymmetricallyEncrypted)
 		se.MDC = true
 		p = se
+	case packetTypeAEADEncrypted:
+		p = new(AEADEncrypted)
 	default:
 		err = errors.UnknownPacketTypeError(tag)
 	}
@@ -507,3 +516,26 @@ const (
 	CompressionZIP  CompressionAlgo = 1
 	CompressionZLIB CompressionAlgo = 2
 )
+
+// AEADMode represents the different Authenticated Encryption with Associated
+// Data specified for OpenPGP.
+type AEADMode algorithm.AEADMode
+
+const (
+	AEADModeEAX             AEADMode = 1
+	AEADModeOCB             AEADMode = 2
+	AEADModeExperimentalGCM AEADMode = 100
+)
+
+func (mode AEADMode) NonceLength() int {
+	return algorithm.AEADMode(mode).NonceLength()
+}
+
+func (mode AEADMode) TagLength() int {
+	return algorithm.AEADMode(mode).TagLength()
+}
+
+// new returns a fresh instance of the given mode.
+func (mode AEADMode) new(block cipher.Block) cipher.AEAD {
+	return algorithm.AEADMode(mode).New(block)
+}

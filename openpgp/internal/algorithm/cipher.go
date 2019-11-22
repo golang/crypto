@@ -91,13 +91,17 @@ func (cipher CipherFunction) BlockSize() int {
 
 // New returns a fresh instance of the given cipher.
 func (cipher CipherFunction) New(key []byte) (block cipher.Block) {
+	var err error
 	switch cipher {
 	case TripleDES:
-		block, _ = des.NewTripleDESCipher(key)
+		block, err = des.NewTripleDESCipher(key)
 	case CAST5:
-		block, _ = cast5.NewCipher(key)
+		block, err = cast5.NewCipher(key)
 	case AES128, AES192, AES256:
-		block, _ = aes.NewCipher(key)
+		block, err = aes.NewCipher(key)
+	}
+	if err != nil {
+		panic(err.Error())
 	}
 	return
 }

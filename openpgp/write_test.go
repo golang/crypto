@@ -6,12 +6,22 @@ package openpgp
 
 import (
 	"bytes"
+	"crypto/rand"
 	"io"
 	"io/ioutil"
+	mathrand "math/rand"
 	"testing"
 	"time"
 
 	"golang.org/x/crypto/openpgp/packet"
+)
+
+const (
+	iterations         = 200
+	iterationsSlow     = 10
+	iterationsVerySlow = 5
+	maxPlaintextLen    = 1 << 12
+	maxPassLen         = 1 << 6
 )
 
 func TestSignDetached(t *testing.T) {
@@ -65,9 +75,6 @@ func TestSignDetachedP256(t *testing.T) {
 }
 
 func TestNewEntity(t *testing.T) {
-	if testing.Short() {
-		return
-	}
 
 	// Check bit-length with no config.
 	e, err := NewEntity("Test User", "test", "test@example.com", nil)
@@ -159,6 +166,81 @@ func TestSymmetricEncryption(t *testing.T) {
 	}
 }
 
+func TestSymmetricEncryptionV5(t *testing.T) {
+	var modes = []packet.AEADMode{
+		packet.AEADModeEAX,
+		packet.AEADModeOCB,
+		packet.AEADModeExperimentalGCM,
+	}
+	aeadConf := packet.AEADConfig{
+		DefaultMode: modes[mathrand.Intn(len(modes))],
+	}
+	config := &packet.Config{AEADConfig: &aeadConf}
+	for i := 0; i < iterationsVerySlow; i++ {
+		buf := new(bytes.Buffer)
+		passphrase := make([]byte, mathrand.Intn(maxPassLen))
+		_, err := rand.Read(passphrase)
+		if err != nil {
+			panic(err)
+		}
+		plaintext, err := SymmetricallyEncrypt(buf, passphrase, nil, config)
+		if err != nil {
+			t.Errorf("error writing headers: %s", err)
+			return
+		}
+		message := make([]byte, mathrand.Intn(maxPlaintextLen))
+		_, errR := rand.Read(message)
+		if errR != nil {
+			panic(errR)
+		}
+		_, err = plaintext.Write(message)
+		if err != nil {
+			t.Errorf("error writing to plaintext writer: %s", err)
+		}
+		err = plaintext.Close()
+		if err != nil {
+			t.Errorf("error closing plaintext writer: %s", err)
+		}
+
+		// Check if the packet is AEADEncrypted
+		copiedCiph := make([]byte, len(buf.Bytes()))
+		copy(copiedCiph, buf.Bytes())
+		copiedBuf := bytes.NewBuffer(copiedCiph)
+		packets := packet.NewReader(copiedBuf)
+		// First a SymmetricKeyEncrypted packet
+		p, err := packets.Next()
+		switch tp := p.(type) {
+		case *packet.SymmetricKeyEncrypted:
+		default:
+			t.Errorf("Didn't find a SymmetricKeyEncrypted packet (found %T instead)", tp)
+		}
+		// Then an AEADEncrypted packet
+		p, err = packets.Next()
+		switch tp := p.(type) {
+		case *packet.AEADEncrypted:
+		default:
+			t.Errorf("Didn't find an AEADEncrypted packet (found %T instead)", tp)
+		}
+
+		promptFunc := func(keys []Key, symmetric bool) ([]byte, error) {
+			return passphrase, nil
+		}
+		md, err := ReadMessage(buf, nil, promptFunc, config)
+		if err != nil {
+			t.Errorf("error rereading message: %s", err)
+		}
+		messageBuf := bytes.NewBuffer(nil)
+		_, err = io.Copy(messageBuf, md.UnverifiedBody)
+		if err != nil {
+			t.Errorf("error rereading message: %s", err)
+		}
+		if !bytes.Equal(message, messageBuf.Bytes()) {
+			t.Errorf("recovered message incorrect got '%s', want '%s'",
+				messageBuf.Bytes(), message)
+		}
+	}
+}
+
 var testEncryptionTests = []struct {
 	keyRingHex string
 	isSigned   bool
@@ -209,7 +291,24 @@ func TestEncryption(t *testing.T) {
 		}
 
 		buf := new(bytes.Buffer)
-		w, err := Encrypt(buf, kring[:1], signed, nil /* no hints */, nil)
+
+		// Flip coin to enable AEAD mode
+		var modes = []packet.AEADMode{
+			packet.AEADModeEAX,
+			packet.AEADModeOCB,
+			packet.AEADModeExperimentalGCM,
+		}
+		var config *packet.Config
+		if mathrand.Int()%2 == 0 {
+			aeadConf := packet.AEADConfig{
+				DefaultMode: modes[mathrand.Intn(len(modes))],
+			}
+			config = &packet.Config{
+				AEADConfig:  &aeadConf,
+			}
+		}
+
+		w, err := Encrypt(buf, kring[:1], signed, nil /* no hints */, config)
 		if err != nil {
 			t.Errorf("#%d: error in Encrypt: %s", i, err)
 			continue
@@ -227,7 +326,7 @@ func TestEncryption(t *testing.T) {
 			continue
 		}
 
-		md, err := ReadMessage(buf, kring, nil /* no prompt */, nil)
+		md, err := ReadMessage(buf, kring, nil /* no prompt */, config)
 		if err != nil {
 			t.Errorf("#%d: error reading message: %s", i, err)
 			continue

@@ -482,6 +482,46 @@ func TestNewEntityWithoutPreferredSymmetric(t *testing.T) {
 	}
 }
 
+func TestNewEntityWithPreferredAead(t *testing.T) {
+	cfg := &packet.Config{
+		AEADConfig: &packet.AEADConfig{
+			DefaultMode: packet.AEADModeEAX,
+		},
+	}
+	entity, err := NewEntity("Botvinnik", "1.e4", "tal@chess.com", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, identity := range entity.Identities {
+		if len(identity.SelfSignature.PreferredAEAD) == 0 {
+			t.Fatal("didn't find a preferred mode in self signature")
+		}
+		mode := identity.SelfSignature.PreferredAEAD[0]
+		if mode != uint8(cfg.AEAD().DefaultMode) {
+			t.Fatalf(
+				"Expected preferred mode to be %d, got %d",
+				uint8(cfg.AEAD().DefaultMode),
+				identity.SelfSignature.PreferredAEAD[0])
+		}
+	}
+}
+
+func TestNewEntityWithoutPreferredAead(t *testing.T) {
+	entity, err := NewEntity("Botvinnik", "1.e4", "tal@chess.com", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, identity := range entity.Identities {
+		if len(identity.SelfSignature.PreferredAEAD) != 0 {
+			t.Fatalf(
+				"Expected preferred mode to be empty but got length %d",
+				len(identity.SelfSignature.PreferredSymmetric))
+		}
+	}
+}
+
 func TestNewEntityPublicSerialization(t *testing.T) {
 	entity, err := NewEntity("Golang Gopher", "Test Key", "no-reply@golang.com", nil)
 	if err != nil {

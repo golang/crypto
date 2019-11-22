@@ -174,7 +174,7 @@ func randPassword() string {
 }
 
 func randMessage() string {
-	maxMessageLength := 1 << 12
+	maxMessageLength := 1 << 20
 	message := make([]byte, 1+mathrand.Intn(maxMessageLength-1))
 	if _, err := rand.Read(message); err != nil {
 		panic(err)
@@ -222,6 +222,14 @@ func randConfig() *packet.Config {
 	}
 	pkAlgo := pkAlgos[mathrand.Intn(len(pkAlgos))]
 
+	aeadModes := []packet.AEADMode {
+		packet.AEADModeEAX,
+		packet.AEADModeOCB,
+		packet.AEADModeExperimentalGCM,
+	}
+	var aeadConf = packet.AEADConfig{
+		DefaultMode: aeadModes[mathrand.Intn(len(aeadModes))],
+	}
 
 	var rsaBits int
 	if pkAlgo == packet.PubKeyAlgoRSA {
@@ -240,7 +248,6 @@ func randConfig() *packet.Config {
 	level := mathrand.Intn(11)-1
 	compConf := &packet.CompressionConfig{level}
 
-	// Define AEAD mode when it's implemented
 	return &packet.Config{
 		Rand: rand.Reader,
 		DefaultHash: hash,
@@ -250,5 +257,6 @@ func randConfig() *packet.Config {
 		S2KCount: 1024 + mathrand.Intn(65010689),
 		RSABits: rsaBits,
 		Algorithm: pkAlgo,
+		AEADConfig: &aeadConf,
 	}
 }

@@ -188,7 +188,7 @@ func TestEncryptDecryptRandomVectorsWithPreviousData(t *testing.T) {
 			header := make([]byte, mathrand.Intn(maxLength))
 			key := make([]byte, keyLength)
 			nonce := make([]byte, 1+mathrand.Intn(blockLength))
-			previousData := make([]byte, mathrand.Intn(maxLength)-2*blockLength)
+			previousData := make([]byte, mathrand.Intn(maxLength-2*blockLength))
 			// Populate items with crypto/rand
 			itemsToRandomize := [][]byte{pt, header, key, nonce, previousData}
 			for _, item := range itemsToRandomize {

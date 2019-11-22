@@ -78,3 +78,11 @@ type UnknownPacketTypeError uint8
 func (upte UnknownPacketTypeError) Error() string {
 	return "openpgp: unknown packet type: " + strconv.Itoa(int(upte))
 }
+
+// AEADError indicates that there is a problem when initializing or using a
+// AEAD instance, configuration struct, nonces or index values.
+type AEADError string
+
+func (ae AEADError) Error() string {
+	return "openpgp: aead error: " + string(ae)
+}

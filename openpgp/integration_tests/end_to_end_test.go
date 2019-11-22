@@ -226,7 +226,7 @@ func encDecTest(t *testing.T, from testVector, testVectors []testVector) {
 			}
 			// Test decrypted message
 			if string(plaintext) != message {
-				t.Errorf("got: %s, want: %s", string(plaintext), message)
+				t.Error("decrypted and expected message do not match")
 			}
 
 			if md.SignatureError != nil {
