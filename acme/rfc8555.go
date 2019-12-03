@@ -7,6 +7,7 @@ package acme
 import (
 	"context"
 	"crypto"
+	"crypto/hmac"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -37,23 +38,44 @@ func (c *Client) DeactivateReg(ctx context.Context) error {
 	return nil
 }
 
-// registerRFC is quivalent to c.Register but for CAs implementing RFC 8555.
+// registerRFC is equivalent to c.Register but for CAs implementing RFC 8555.
 // It expects c.Discover to have already been called.
-// TODO: Implement externalAccountBinding.
 func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tosURL string) bool) (*Account, error) {
 	c.cacheMu.Lock() // guard c.kid access
 	defer c.cacheMu.Unlock()
 
+	type encodedEAB struct {
+		Protected string `json:"protected,omitempty"`
+		Payload   string `json:"payload,omitempty"`
+		Sig       string `json:"signature,omitempty"`
+	}
+
 	req := struct {
-		TermsAgreed bool     `json:"termsOfServiceAgreed,omitempty"`
-		Contact     []string `json:"contact,omitempty"`
+		TermsAgreed            bool        `json:"termsOfServiceAgreed,omitempty"`
+		Contact                []string    `json:"contact,omitempty"`
+		ExternalAccountBinding *encodedEAB `json:"externalAccountBinding,omitempty"`
 	}{
 		Contact: acct.Contact,
 	}
 	if c.dir.Terms != "" {
 		req.TermsAgreed = prompt(c.dir.Terms)
 	}
-	res, err := c.post(ctx, c.Key, c.dir.RegURL, req, wantStatus(
+	regURL := c.dir.RegURL
+	// set 'externalAccountBinding' field if requested
+	if acct.ExternalAccountBinding != nil {
+		protected, payload, sig, err := c.encodeExternalAccountBinding(c.Key, regURL, acct.ExternalAccountBinding)
+		if err != nil {
+			return nil, fmt.Errorf("acme: failed to encode external account binding: %v", err)
+		}
+
+		req.ExternalAccountBinding = &encodedEAB{
+			Protected: protected,
+			Payload:   payload,
+			Sig:       sig,
+		}
+	}
+
+	res, err := c.post(ctx, c.Key, regURL, req, wantStatus(
 		http.StatusOK,      // account with this key already registered
 		http.StatusCreated, // new account created
 	))
@@ -73,6 +95,43 @@ func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tos
 		return nil, ErrAccountAlreadyExists
 	}
 	return a, nil
+}
+
+// encodeExternalAccountBinding will encode an external account binding stanza
+// as described in https://tools.ietf.org/html/rfc8555#section-7.3.4.
+// It will return the base64 encoded protected and payload fields, as well as
+// the payload signature as a []byte.
+func (c *Client) encodeExternalAccountBinding(key crypto.Signer, url string, eab *ExternalAccountBinding) (string, string, string, error) {
+	jwk, err := jwkEncode(key.Public())
+	if err != nil {
+		return "", "", "", err
+	}
+
+	payload := base64.RawURLEncoding.EncodeToString([]byte(jwk))
+	phead := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"alg":%q,"kid":%q,"url":%q}`, eab.KeyAlgorithm, eab.KID, url)))
+
+	h, err := jwsMacHasher(eab.KeyAlgorithm)
+	if err != nil {
+		return "", "", "", err
+	}
+	hmac := hmac.New(h, eab.Key)
+
+	if _, err := hmac.Write([]byte(phead + "." + payload)); err != nil {
+		return "", "", "", err
+	}
+	mac := hmac.Sum(nil)
+
+	enc := struct {
+		Protected string `json:"protected"`
+		Payload   string `json:"payload"`
+		Sig       string `json:"signature"`
+	}{
+		Protected: phead,
+		Payload:   payload,
+		Sig:       base64.RawURLEncoding.EncodeToString(mac),
+	}
+
+	return enc.Protected, enc.Payload, enc.Sig, nil
 }
 
 // updateGegRFC is equivalent to c.UpdateReg but for CAs implementing RFC 8555.
