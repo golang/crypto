@@ -28,7 +28,17 @@ func (c *chacha20poly1305) sealGeneric(dst, nonce, plaintext, additionalData []b
 	s.XORKeyStream(discardBuf[:], discardBuf[:]) // skip the next 32 bytes
 	s.XORKeyStream(out, plaintext)
 
-	polyInput := make([]byte, roundTo16(len(additionalData))+roundTo16(len(plaintext))+8+8)
+	lenMessage := roundTo16(len(additionalData)) + roundTo16(len(plaintext)) + 8 + 8
+	buffer := c.pool.Get().([]byte)
+	if len(buffer) < lenMessage {
+		panic("Too small buffer allocated")
+	}
+
+	polyInput := buffer[:lenMessage]
+	for i := range polyInput {
+		polyInput[i] = 0
+	}
+
 	copy(polyInput, additionalData)
 	copy(polyInput[roundTo16(len(additionalData)):], out[:len(plaintext)])
 	binary.LittleEndian.PutUint64(polyInput[len(polyInput)-16:], uint64(len(additionalData)))
@@ -37,6 +47,8 @@ func (c *chacha20poly1305) sealGeneric(dst, nonce, plaintext, additionalData []b
 	var tag [poly1305.TagSize]byte
 	poly1305.Sum(&tag, polyInput, &polyKey)
 	copy(out[len(plaintext):], tag[:])
+	// We are done with the buffer put it back to the pool
+	c.pool.Put(buffer)
 
 	return ret
 }
