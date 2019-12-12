@@ -19,14 +19,14 @@ func roundTo16(n int) int {
 
 type syncpool struct{ sync.Pool }
 
-func (s *syncpool) GetBuf(n int) []byte {
+func (s *syncpool) get(n int) []byte {
 	if b, _ := s.Pool.Get().([]byte); cap(b) >= n {
 		return b[:n]
 	}
-	return make([]byte, n) // pool allocation mis-sized
+	return make([]byte, n)
 }
 
-func (s *syncpool) PutBuf(b []byte) {
+func (s *syncpool) put(b []byte) {
 	for i := range b {
 		b[i] = 0
 	}
@@ -48,7 +48,7 @@ func (c *chacha20poly1305) sealGeneric(dst, nonce, plaintext, additionalData []b
 	s.XORKeyStream(out, plaintext)
 
 	lenMessage := roundTo16(len(additionalData)) + roundTo16(len(plaintext)) + 8 + 8
-	polyInput := pool.GetBuf(lenMessage)
+	polyInput := pool.get(lenMessage)
 
 	copy(polyInput, additionalData)
 	copy(polyInput[roundTo16(len(additionalData)):], out[:len(plaintext)])
@@ -58,8 +58,8 @@ func (c *chacha20poly1305) sealGeneric(dst, nonce, plaintext, additionalData []b
 	var tag [poly1305.TagSize]byte
 	poly1305.Sum(&tag, polyInput, &polyKey)
 	copy(out[len(plaintext):], tag[:])
-	// We are done with the buffer put it back to the pool
-	pool.PutBuf(polyInput)
+
+	pool.put(polyInput)
 
 	return ret
 }
