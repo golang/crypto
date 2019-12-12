@@ -6,6 +6,7 @@ package chacha20poly1305
 
 import (
 	"encoding/binary"
+	"sync"
 
 	"golang.org/x/crypto/chacha20"
 	"golang.org/x/crypto/internal/subtle"
@@ -15,6 +16,24 @@ import (
 func roundTo16(n int) int {
 	return 16 * ((n + 15) / 16)
 }
+
+type syncpool struct{ sync.Pool }
+
+func (s *syncpool) GetBuf(n int) []byte {
+	if b, _ := s.Pool.Get().([]byte); && cap(b) >= n {
+		return b[:n]
+	}
+	return make([]byte, n) // pool allocation mis-sized
+}
+
+func (s *syncpool) PutBuf(b []byte) {
+	for i := range b {
+		b[i] = 0
+	}
+	s.Pool.Put(b)
+}
+
+var pool = syncpool{}
 
 func (c *chacha20poly1305) sealGeneric(dst, nonce, plaintext, additionalData []byte) []byte {
 	ret, out := sliceForAppend(dst, len(plaintext)+poly1305.TagSize)
@@ -29,15 +48,7 @@ func (c *chacha20poly1305) sealGeneric(dst, nonce, plaintext, additionalData []b
 	s.XORKeyStream(out, plaintext)
 
 	lenMessage := roundTo16(len(additionalData)) + roundTo16(len(plaintext)) + 8 + 8
-	buffer := c.pool.Get().([]byte)
-	if len(buffer) < lenMessage {
-		panic("Too small buffer allocated")
-	}
-
-	polyInput := buffer[:lenMessage]
-	for i := range polyInput {
-		polyInput[i] = 0
-	}
+	polyInput := pool.GetBuf(lenMessage)
 
 	copy(polyInput, additionalData)
 	copy(polyInput[roundTo16(len(additionalData)):], out[:len(plaintext)])
@@ -48,7 +59,7 @@ func (c *chacha20poly1305) sealGeneric(dst, nonce, plaintext, additionalData []b
 	poly1305.Sum(&tag, polyInput, &polyKey)
 	copy(out[len(plaintext):], tag[:])
 	// We are done with the buffer put it back to the pool
-	c.pool.Put(buffer)
+	pool.PutBuf(polyInput)
 
 	return ret
 }

@@ -10,7 +10,6 @@ package chacha20poly1305 // import "golang.org/x/crypto/chacha20poly1305"
 import (
 	"crypto/cipher"
 	"errors"
-	"sync"
 )
 
 const (
@@ -27,14 +26,10 @@ const (
 	// NonceSizeX is the size of the nonce used with the XChaCha20-Poly1305
 	// variant of this AEAD, in bytes.
 	NonceSizeX = 24
-
-	// The max size of a package
-	maxRecordSize = 2 << 17
 )
 
 type chacha20poly1305 struct {
-	key  [KeySize]byte
-	pool sync.Pool
+	key [KeySize]byte
 }
 
 // New returns a ChaCha20-Poly1305 AEAD that uses the given 256-bit key.
@@ -44,10 +39,6 @@ func New(key []byte) (cipher.AEAD, error) {
 	}
 	ret := new(chacha20poly1305)
 	copy(ret.key[:], key)
-	f := func() interface{} {
-		return make([]byte, maxRecordSize)
-	}
-	ret.pool = sync.Pool{New: f}
 	return ret, nil
 }
 
