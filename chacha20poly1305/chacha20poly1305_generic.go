@@ -20,7 +20,7 @@ func roundTo16(n int) int {
 type syncpool struct{ sync.Pool }
 
 func (s *syncpool) GetBuf(n int) []byte {
-	if b, _ := s.Pool.Get().([]byte); && cap(b) >= n {
+	if b, _ := s.Pool.Get().([]byte); cap(b) >= n {
 		return b[:n]
 	}
 	return make([]byte, n) // pool allocation mis-sized
