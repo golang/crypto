@@ -34,7 +34,7 @@ func TestMain(m *testing.M) {
 		log.Printf("skipping test because 'go' command is unavailable: %v", err)
 		os.Exit(0)
 	}
-	if runtime.GOARCH == "386" {
+	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" {
 		os.Exit(0) // skip tests
 	}
 
