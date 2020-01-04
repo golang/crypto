@@ -283,3 +283,86 @@ func phi(rand, m, s uint64, lane, lanes uint32) uint32 {
 	p = (p * m) >> 32
 	return lane*lanes + uint32((s+m-(p+1))%uint64(lanes))
 }
+
+type Pool struct {
+	pool       chan []block
+	blockCount uint
+	memory     uint32
+	syncPoints uint32
+	threads    uint32
+}
+
+func (pool *Pool) Key(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+	return pool.deriveKey(argon2i, password, salt, nil, nil, time, memory, threads, keyLen)
+}
+
+func (pool *Pool) IDKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+	return pool.deriveKey(argon2id, password, salt, nil, nil, time, memory, threads, keyLen)
+}
+
+func (pool *Pool) deriveKey(mode int, password, salt, secret, data []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+	if time < 1 {
+		panic("argon2: number of rounds too small")
+	}
+	if threads < 1 {
+		panic("argon2: parallelism degree too low")
+	}
+	if pool.blockCount <= 0 {
+		panic("argon2: invalid pool block count")
+	}
+
+	if (pool.memory != 0 && memory != pool.memory) ||
+		(pool.syncPoints != 0 && memory != pool.syncPoints) ||
+		(pool.threads != 0 && memory != pool.threads) {
+		panic("argon2: pool already initialized and called with inconsistent parameters")
+	}
+
+	if pool.pool == nil {
+		memory = memory / (syncPoints * uint32(threads)) * (syncPoints * uint32(threads))
+		if memory < 2*syncPoints*uint32(threads) {
+			memory = 2 * syncPoints * uint32(threads)
+		}
+
+		pool.pool = make(chan []block, pool.blockCount)
+		for i := uint(0); i < pool.blockCount; i++ {
+			b := make([]block, memory)
+			pool.pool <- b
+		}
+	}
+	B := <-pool.pool
+	defer func() {
+		pool.pool <- B
+	}()
+	h0 := initHash(password, salt, secret, data, time, memory, uint32(threads), keyLen, mode)
+	pool.initBlocks(B, &h0, memory, uint32(threads))
+	processBlocks(B, time, memory, uint32(threads), mode)
+	result := extractKey(B, memory, uint32(threads), keyLen)
+	return result
+}
+func (pool *Pool) initBlocks(B []block, h0 *[blake2b.Size + 8]byte, memory, threads uint32) {
+	var block0 [1024]byte
+	wipeBlocks(B)
+	for lane := uint32(0); lane < threads; lane++ {
+		j := lane * (memory / threads)
+		binary.LittleEndian.PutUint32(h0[blake2b.Size+4:], lane)
+
+		binary.LittleEndian.PutUint32(h0[blake2b.Size:], 0)
+		blake2bHash(block0[:], h0[:])
+		for i := range B[j+0] {
+			B[j+0][i] = binary.LittleEndian.Uint64(block0[i*8:])
+		}
+
+		binary.LittleEndian.PutUint32(h0[blake2b.Size:], 1)
+		blake2bHash(block0[:], h0[:])
+		for i := range B[j+1] {
+			B[j+1][i] = binary.LittleEndian.Uint64(block0[i*8:])
+		}
+	}
+}
+func wipeBlocks(B []block) {
+	for i := range B {
+		for j := 0; j < blockLength; j++ {
+			B[i][j] = uint64(0)
+		}
+	}
+}

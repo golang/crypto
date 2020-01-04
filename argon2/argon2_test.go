@@ -22,6 +22,22 @@ var (
 	genKatAAD    = []byte{0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}
 )
 
+func TestPoolArgon2(t *testing.T) {
+	iHashWant := deriveKey(argon2i, genKatPassword, genKatSalt, nil, nil, 3, 32, 4, 32)
+	idHashWant := deriveKey(argon2id, genKatPassword, genKatSalt, nil, nil, 3, 32, 4, 32)
+
+	pool := &Pool{blockCount: 2}
+	hash := pool.Key(genKatPassword, genKatSalt, 3, 32, 4, 32)
+	if !bytes.Equal(hash, iHashWant) {
+		t.Errorf("derived key does not match - got: %s , want: %s", hex.EncodeToString(hash), hex.EncodeToString(iHashWant))
+	}
+
+	hash = pool.IDKey(genKatPassword, genKatSalt, 3, 32, 4, 32)
+	if !bytes.Equal(hash, idHashWant) {
+		t.Errorf("derived key does not match - got: %s , want: %s", hex.EncodeToString(hash), hex.EncodeToString(idHashWant))
+	}
+}
+
 func TestArgon2(t *testing.T) {
 	defer func(sse4 bool) { useSSE4 = sse4 }(useSSE4)
 
