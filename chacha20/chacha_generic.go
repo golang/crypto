@@ -150,14 +150,17 @@ func (s *Cipher) Advance(counter uint32) {
 	if counter < outputCounter {
 		panic("chacha20: Advance attempted to rollback counter")
 	}
-	// We may be Advancing to within a buffered set of blocks. To make things
-	// simple, set the counter to the nearest multiple, then discard output as
-	// necessary.
-	off := counter % (bufSize / blockSize)
-	s.counter = counter - off
-	s.len = 0
-	skip := make([]byte, bufSize)[:off*blockSize]
-	s.XORKeyStream(skip, skip)
+
+	// In the general case, we set the new counter value and reset s.len to 0,
+	// causing the next call to XORKeyStream to refill the buffer. However, if
+	// we're Advancing within the existing buffer, we can save work by simply
+	// setting s.len.
+	if counter < s.counter {
+		s.len = int(s.counter-counter) * blockSize
+	} else {
+		s.counter = counter
+		s.len = 0
+	}
 }
 
 // XORKeyStream XORs each byte in the given slice with a byte from the
