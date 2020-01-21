@@ -146,7 +146,7 @@ func (s *Cipher) Advance(counter uint32) {
 	// implementation slightly. When checking whether the counter has rolled
 	// back, we must use both s.counter and s.len to determine how many blocks
 	// we have already output.
-	outputCounter := s.counter - uint32(s.len+(blockSize-1))/blockSize
+	outputCounter := s.counter - uint32(s.len)/blockSize
 	if counter < outputCounter {
 		panic("chacha20: Advance attempted to rollback counter")
 	}
