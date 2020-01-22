@@ -17,7 +17,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	_ "crypto/sha1"
@@ -33,9 +32,6 @@ func TestMain(m *testing.M) {
 	if _, err := exec.LookPath("go"); err != nil {
 		log.Printf("skipping test because 'go' command is unavailable: %v", err)
 		os.Exit(0)
-	}
-	if runtime.GOARCH == "386" || runtime.GOARCH == "arm" {
-		os.Exit(0) // skip tests
 	}
 
 	// Download the JSON test files from github.com/google/wycheproof
