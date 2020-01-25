@@ -345,6 +345,8 @@ func (req *Request) Marshal() ([]byte, error) {
 // Response represents an OCSP response containing a single SingleResponse. See
 // RFC 6960.
 type Response struct {
+	// Raw is the DER encoded ASN.1 response data
+	Raw asn1.RawContent
 	// Status is one of {Good, Revoked, Unknown}
 	Status                                        int
 	SerialNumber                                  *big.Int
@@ -513,6 +515,7 @@ func ParseResponseForCert(bytes []byte, cert, issuer *x509.Certificate) (*Respon
 	}
 
 	ret := &Response{
+		Raw:                bytes,
 		TBSResponseData:    basicResp.TBSResponseData.Raw,
 		Signature:          basicResp.Signature.RightAlign(),
 		SignatureAlgorithm: getSignatureAlgorithmFromOID(basicResp.SignatureAlgorithm.Algorithm),

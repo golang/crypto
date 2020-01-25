@@ -71,6 +71,43 @@ func TestOCSPDecode(t *testing.T) {
 	}
 }
 
+func TestOCSPResponseRaw(t *testing.T) {
+	for _, tData := range []struct {
+		name        string
+		ocspRespHex string
+		certHex     string
+	}{
+		{"Resp", ocspResponseHex, ""},
+		{"RespWithoutCert", ocspResponseWithoutCertHex, ""},
+		{"RespWithExt", ocspResponseWithExtensionHex, ""},
+		{"MultiResp", ocspMultiResponseHex, ocspMultiResponseCertHex},
+	} {
+		t.Run(tData.name, func(t *testing.T) {
+			responseBytes, _ := hex.DecodeString(tData.ocspRespHex)
+			var crt *x509.Certificate
+			if len(tData.certHex) > 0 {
+				crtBytes, _ := hex.DecodeString(tData.certHex)
+				var err error
+				crt, err = x509.ParseCertificate(crtBytes)
+				if err != nil {
+					t.Errorf("error parsing certificate: %s", err)
+					return
+				}
+			}
+			resp, err := ParseResponseForCert(responseBytes, crt, nil)
+			if err != nil {
+				t.Errorf("unexpected parse error: %s", err)
+				return
+			}
+
+			if !bytes.Equal(responseBytes, resp.Raw) {
+				t.Errorf("bytes not equal on marshal")
+			}
+		})
+	}
+
+}
+
 func TestOCSPDecodeWithoutCert(t *testing.T) {
 	responseBytes, _ := hex.DecodeString(ocspResponseWithoutCertHex)
 	_, err := ParseResponse(responseBytes, nil)
