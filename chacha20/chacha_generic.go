@@ -52,6 +52,9 @@ type Cipher struct {
 	p1, p5, p9, p13  uint32
 	p2, p6, p10, p14 uint32
 	p3, p7, p11, p15 uint32
+
+	// Once the counter has overflowed, no more blocks can be crypted.
+	overflow bool
 }
 
 var _ cipher.Stream = (*Cipher)(nil)
@@ -147,7 +150,7 @@ func (s *Cipher) SetCounter(counter uint32) {
 	// back, we must use both s.counter and s.len to determine how many blocks
 	// we have already output.
 	outputCounter := s.counter - uint32(s.len)/blockSize
-	if counter < outputCounter {
+	if s.overflow || counter < outputCounter {
 		panic("chacha20: SetCounter attempted to rollback counter")
 	}
 
@@ -198,12 +201,17 @@ func (s *Cipher) XORKeyStream(dst, src []byte) {
 		s.len -= len(keyStream)
 		src = src[len(keyStream):]
 		dst = dst[len(keyStream):]
+		if len(src) == 0 {
+			return
+		}
 	}
 
-	const blocksPerBuf = bufSize / blockSize
-	numBufs := (uint64(len(src)) + bufSize - 1) / bufSize
-	if uint64(s.counter)+numBufs*blocksPerBuf >= 1<<32 {
+	// Determine how many blocks we are crypting and check for overflow.
+	numBlocks := (uint64(len(src)) + blockSize - 1) / blockSize
+	if s.overflow || uint64(s.counter)+numBlocks > 1<<32 {
 		panic("chacha20: counter overflow")
+	} else if uint64(s.counter)+numBlocks == 1<<32 {
+		s.overflow = true
 	}
 
 	// xorKeyStreamBlocks implementations expect input lengths that are a
@@ -220,10 +228,22 @@ func (s *Cipher) XORKeyStream(dst, src []byte) {
 	// If we have a partial (multi-)block, pad it for xorKeyStreamBlocks, and
 	// keep the leftover keystream for the next XORKeyStream invocation.
 	if rem > 0 {
+		if uint64(s.counter)+(bufSize/blockSize) >= 1<<32 {
+			s.overflow = true
+		}
+
 		s.buf = [bufSize]byte{}
 		copy(s.buf[:], src[full:])
 		s.xorKeyStreamBlocks(s.buf[:], s.buf[:])
 		s.len = bufSize - copy(dst[full:], s.buf[:])
+
+		// If the counter overflowed, we need to adjust the buffer so that we
+		// don't output blocks with overflowed counter values.
+		if s.overflow {
+			overflowBytes := int(s.counter * blockSize)
+			copy(s.buf[overflowBytes:], s.buf[:])
+			s.len -= overflowBytes
+		}
 	}
 }
 
@@ -303,10 +323,7 @@ func (s *Cipher) xorKeyStreamBlocksGeneric(dst, src []byte) {
 		x14 += c14
 		x15 += c15
 
-		s.counter += 1
-		if s.counter == 0 {
-			panic("chacha20: internal error: counter overflow")
-		}
+		s.counter++
 
 		in, out := src[i:], dst[i:]
 		in, out = in[:blockSize], out[:blockSize] // bounds check elimination hint
