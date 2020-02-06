@@ -1370,7 +1370,7 @@ func parseOpenSSHPrivateKey(key []byte, decrypt openSSHDecryptFunc) (crypto.Priv
 		key := struct {
 			Curve   string
 			Pub     []byte
-			Priv    []byte
+			D       *big.Int
 			Comment string
 			Pad     []byte `ssh:"rest"`
 		}{}
@@ -1400,12 +1400,11 @@ func parseOpenSSHPrivateKey(key []byte, decrypt openSSHDecryptFunc) (crypto.Priv
 			return nil, errors.New("ssh: failed to unmarshal public key")
 		}
 
-		D := new(big.Int).SetBytes(key.Priv)
-		if D.Cmp(curve.Params().N) >= 0 {
+		if key.D.Cmp(curve.Params().N) >= 0 {
 			return nil, errors.New("ssh: scalar is out of range")
 		}
 
-		x, y := curve.ScalarBaseMult(key.Priv)
+		x, y := curve.ScalarBaseMult(key.D.Bytes())
 		if x.Cmp(X) != 0 || y.Cmp(Y) != 0 {
 			return nil, errors.New("ssh: public key does not match private key")
 		}
@@ -1416,7 +1415,7 @@ func parseOpenSSHPrivateKey(key []byte, decrypt openSSHDecryptFunc) (crypto.Priv
 				X:     X,
 				Y:     Y,
 			},
-			D: D,
+			D: key.D,
 		}, nil
 	default:
 		return nil, errors.New("ssh: unhandled key type")
