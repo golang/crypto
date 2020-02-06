@@ -1392,23 +1392,22 @@ func parseOpenSSHPrivateKey(key []byte, decrypt openSSHDecryptFunc) (crypto.Priv
 		case "nistp521":
 			curve = elliptic.P521()
 		default:
-			return nil, errors.New("ssh: unhandled elliptic curve")
+			return nil, errors.New("ssh: unhandled elliptic curve: " + key.Curve)
 		}
 
-		N := curve.Params().N
 		X, Y := elliptic.Unmarshal(curve, key.Pub)
 		if X == nil || Y == nil {
-			return nil, errors.New("ssh: failed to unmarshal elliptic curve")
+			return nil, errors.New("ssh: failed to unmarshal public key")
 		}
 
 		D := new(big.Int).SetBytes(key.Priv)
-		if D.Cmp(N) >= 0 {
+		if D.Cmp(curve.Params().N) >= 0 {
 			return nil, errors.New("ssh: scalar is out of range")
 		}
 
 		x, y := curve.ScalarBaseMult(key.Priv)
 		if x.Cmp(X) != 0 || y.Cmp(Y) != 0 {
-			return nil, errors.New("ssh: public key does not match")
+			return nil, errors.New("ssh: public key does not match private key")
 		}
 
 		return &ecdsa.PrivateKey{
