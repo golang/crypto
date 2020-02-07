@@ -110,6 +110,52 @@ func TestStep(t *testing.T) {
 	}
 }
 
+func TestSetCounter(t *testing.T) {
+	newCipher := func() *Cipher {
+		s, _ := NewUnauthenticatedCipher(make([]byte, KeySize), make([]byte, NonceSize))
+		return s
+	}
+	s := newCipher()
+	src := bytes.Repeat([]byte("test"), 32) // two 64-byte blocks
+	dst1 := make([]byte, len(src))
+	s.XORKeyStream(dst1, src)
+	// advance counter to 1 and xor second block
+	s = newCipher()
+	s.SetCounter(1)
+	dst2 := make([]byte, len(src))
+	s.XORKeyStream(dst2[64:], src[64:])
+	if !bytes.Equal(dst1[64:], dst2[64:]) {
+		t.Error("failed to produce identical output using SetCounter")
+	}
+
+	// test again with unaligned blocks; SetCounter should reset the buffer
+	s = newCipher()
+	s.XORKeyStream(dst1[:70], src[:70])
+	s = newCipher()
+	s.XORKeyStream([]byte{0}, []byte{0})
+	s.SetCounter(1)
+	s.XORKeyStream(dst2[64:70], src[64:70])
+	if !bytes.Equal(dst1[64:70], dst2[64:70]) {
+		t.Error("SetCounter did not reset buffer")
+	}
+
+	// advancing to a lower counter value should cause a panic
+	panics := func(fn func()) (p bool) {
+		defer func() { p = recover() != nil }()
+		fn()
+		return
+	}
+	if !panics(func() { s.SetCounter(0) }) {
+		t.Error("counter decreasing should trigger a panic")
+	}
+	// advancing to ^uint32(0) and then calling XORKeyStream should cause a panic
+	s = newCipher()
+	s.SetCounter(^uint32(0))
+	if !panics(func() { s.XORKeyStream([]byte{0}, []byte{0}) }) {
+		t.Error("counter overflowing should trigger a panic")
+	}
+}
+
 func benchmarkChaCha20(b *testing.B, step, count int) {
 	tot := step * count
 	src := make([]byte, tot)
