@@ -136,24 +136,24 @@ func quarterRound(a, b, c, d uint32) (uint32, uint32, uint32, uint32) {
 	return a, b, c, d
 }
 
-// Advance sets the Cipher counter. The next invocation of XORKeyStream will
+// SetCounter sets the Cipher counter. The next invocation of XORKeyStream will
 // behave as if (64 * counter) bytes had been encrypted so far.
 //
-// To prevent accidental counter reuse, Advance panics if counter is
+// To prevent accidental counter reuse, SetCounter panics if counter is
 // less than the current value.
-func (s *Cipher) Advance(counter uint32) {
+func (s *Cipher) SetCounter(counter uint32) {
 	// Internally, s may buffer multiple blocks, which complicates this
 	// implementation slightly. When checking whether the counter has rolled
 	// back, we must use both s.counter and s.len to determine how many blocks
 	// we have already output.
 	outputCounter := s.counter - uint32(s.len)/blockSize
 	if counter < outputCounter {
-		panic("chacha20: Advance attempted to rollback counter")
+		panic("chacha20: SetCounter attempted to rollback counter")
 	}
 
 	// In the general case, we set the new counter value and reset s.len to 0,
 	// causing the next call to XORKeyStream to refill the buffer. However, if
-	// we're Advancing within the existing buffer, we can save work by simply
+	// we're advancing within the existing buffer, we can save work by simply
 	// setting s.len.
 	if counter < s.counter {
 		s.len = int(s.counter-counter) * blockSize
