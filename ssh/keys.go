@@ -1366,6 +1366,57 @@ func parseOpenSSHPrivateKey(key []byte, decrypt openSSHDecryptFunc) (crypto.Priv
 		pk := ed25519.PrivateKey(make([]byte, ed25519.PrivateKeySize))
 		copy(pk, key.Priv)
 		return &pk, nil
+	case KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521:
+		key := struct {
+			Curve   string
+			Pub     []byte
+			D       *big.Int
+			Comment string
+			Pad     []byte `ssh:"rest"`
+		}{}
+
+		if err := Unmarshal(pk1.Rest, &key); err != nil {
+			return nil, err
+		}
+
+		if err := checkOpenSSHKeyPadding(key.Pad); err != nil {
+			return nil, err
+		}
+
+		var curve elliptic.Curve
+		switch key.Curve {
+		case "nistp256":
+			curve = elliptic.P256()
+		case "nistp384":
+			curve = elliptic.P384()
+		case "nistp521":
+			curve = elliptic.P521()
+		default:
+			return nil, errors.New("ssh: unhandled elliptic curve: " + key.Curve)
+		}
+
+		X, Y := elliptic.Unmarshal(curve, key.Pub)
+		if X == nil || Y == nil {
+			return nil, errors.New("ssh: failed to unmarshal public key")
+		}
+
+		if key.D.Cmp(curve.Params().N) >= 0 {
+			return nil, errors.New("ssh: scalar is out of range")
+		}
+
+		x, y := curve.ScalarBaseMult(key.D.Bytes())
+		if x.Cmp(X) != 0 || y.Cmp(Y) != 0 {
+			return nil, errors.New("ssh: public key does not match private key")
+		}
+
+		return &ecdsa.PrivateKey{
+			PublicKey: ecdsa.PublicKey{
+				Curve: curve,
+				X:     X,
+				Y:     Y,
+			},
+			D: key.D,
+		}, nil
 	default:
 		return nil, errors.New("ssh: unhandled key type")
 	}
