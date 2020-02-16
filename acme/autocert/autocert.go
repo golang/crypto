@@ -625,7 +625,7 @@ func (m *Manager) certState(ck certKey) (*certState, error) {
 		key crypto.Signer
 	)
 	if ck.isRSA {
-		key, err = rsa.GenerateKey(rand.Reader, 2048)
+		key, err = rsa.GenerateKey(rand.Reader, 4096)
 	} else {
 		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	}
