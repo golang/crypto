@@ -167,6 +167,12 @@ type Manager struct {
 	// The field value is passed to crypto/x509.CreateCertificateRequest
 	// in the template's ExtraExtensions field as is.
 	ExtraExtensions []pkix.Extension
+	
+	// RSAKeypairBitSize specifies the size of the RSA keypair.
+	//
+	// If the size that's specified is less than 2048 bits,
+	// RSAKeypairBitSize will be set to 2048.
+	RSAKeypairBitSize int
 
 	clientMu sync.Mutex
 	client   *acme.Client // initialized by acmeClient method
@@ -625,7 +631,11 @@ func (m *Manager) certState(ck certKey) (*certState, error) {
 		key crypto.Signer
 	)
 	if ck.isRSA {
-		key, err = rsa.GenerateKey(rand.Reader, 4096)
+		if m.RSAKeypairBitSize < 2048 {
+			m.RSAKeypairBitSize = 2048
+		}
+
+		key, err = rsa.GenerateKey(rand.Reader, m.RSAKeypairBitSize)
 	} else {
 		key, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	}
