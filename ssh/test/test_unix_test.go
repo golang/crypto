@@ -35,7 +35,7 @@ Banner {{.Dir}}/banner
 HostKey {{.Dir}}/id_rsa
 HostKey {{.Dir}}/id_dsa
 HostKey {{.Dir}}/id_ecdsa
-HostCertificate {{.Dir}}/id_rsa-cert.pub
+HostCertificate {{.Dir}}/id_rsa-sha2-512-cert.pub
 Pidfile {{.Dir}}/sshd.pid
 #UsePrivilegeSeparation no
 KeyRegenerationInterval 3600

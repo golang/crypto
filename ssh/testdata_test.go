@@ -34,6 +34,14 @@ func init() {
 			panic(fmt.Sprintf("Unable to parse test key %s: %v", t, err))
 		}
 		testSigners[t], err = NewSignerFromKey(testPrivateKeys[t])
+		if v, ok := testSigners[t].(*rsaSigner); ok {
+			switch t {
+			case "rsa-sha2-256":
+				testSigners[t] = &rsaSigner{v, SigAlgoRSASHA2256}
+			case "rsa-sha2-512":
+				testSigners[t] = &rsaSigner{v, SigAlgoRSASHA2512}
+			}
+		}
 		if err != nil {
 			panic(fmt.Sprintf("Unable to create signer for test key %s: %v", t, err))
 		}

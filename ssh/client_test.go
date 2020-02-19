@@ -5,6 +5,8 @@
 package ssh
 
 import (
+	"bytes"
+	"crypto/rand"
 	"strings"
 	"testing"
 )
@@ -112,6 +114,45 @@ func TestHostKeyCheck(t *testing.T) {
 			}
 		} else if tt.wantError != "" {
 			t.Errorf("%s: succeeded, but want error string %q", tt.name, tt.wantError)
+		}
+	}
+}
+
+func TestVerifyHostKeySignature(t *testing.T) {
+	for _, tt := range []struct {
+		key        string
+		signAlgo   string
+		verifyAlgo string
+		wantError  string
+	}{
+		{"rsa", SigAlgoRSA, SigAlgoRSA, ""},
+		{"rsa", SigAlgoRSASHA2256, SigAlgoRSASHA2256, ""},
+		{"rsa", SigAlgoRSA, SigAlgoRSASHA2512, `ssh: invalid signature algorithm "ssh-rsa", expected "rsa-sha2-512"`},
+		{"ed25519", KeyAlgoED25519, KeyAlgoED25519, ""},
+	} {
+		key := testSigners[tt.key].PublicKey()
+		s, ok := testSigners[tt.key].(AlgorithmSigner)
+		if !ok {
+			t.Fatalf("needed an AlgorithmSigner")
+		}
+		sig, err := s.SignWithAlgorithm(rand.Reader, []byte("test"), tt.signAlgo)
+		if err != nil {
+			t.Fatalf("couldn't sign: %q", err)
+		}
+
+		b := bytes.Buffer{}
+		writeString(&b, []byte(sig.Format))
+		writeString(&b, sig.Blob)
+
+		result := kexResult{Signature: b.Bytes(), H: []byte("test")}
+
+		err = verifyHostKeySignature(key, tt.verifyAlgo, &result)
+		if err != nil {
+			if tt.wantError == "" || !strings.Contains(err.Error(), tt.wantError) {
+				t.Errorf("got error %q, expecting %q", err.Error(), tt.wantError)
+			}
+		} else if tt.wantError != "" {
+			t.Errorf("succeeded, but want error string %q", tt.wantError)
 		}
 	}
 }
