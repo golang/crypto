@@ -61,3 +61,46 @@ func TestRateLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestAuthorizationError(t *testing.T) {
+	tests := []struct {
+		desc string
+		err  *AuthorizationError
+		msg  string
+	}{
+		{
+			desc: "when auth error identifier is set",
+			err: &AuthorizationError{
+				Identifier: "domain.com",
+				Errors: []error{
+					(&wireError{
+						Status: 403,
+						Type:   "urn:ietf:params:acme:error:caa",
+						Detail: "CAA record for domain.com prevents issuance",
+					}).error(nil),
+				},
+			},
+			msg: "acme: authorization error for domain.com: 403 urn:ietf:params:acme:error:caa: CAA record for domain.com prevents issuance",
+		},
+
+		{
+			desc: "when auth error identifier is unset",
+			err: &AuthorizationError{
+				Errors: []error{
+					(&wireError{
+						Status: 403,
+						Type:   "urn:ietf:params:acme:error:caa",
+						Detail: "CAA record for domain.com prevents issuance",
+					}).error(nil),
+				},
+			},
+			msg: "acme: authorization error: 403 urn:ietf:params:acme:error:caa: CAA record for domain.com prevents issuance",
+		},
+	}
+
+	for _, tt := range tests {
+		if tt.err.Error() != tt.msg {
+			t.Errorf("got: %s\nwant: %s", tt.err, tt.msg)
+		}
+	}
+}
