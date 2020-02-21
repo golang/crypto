@@ -445,10 +445,17 @@ func ParseRequest(bytes []byte) (*Request, error) {
 	}, nil
 }
 
-// ParseResponse parses an OCSP response in DER form. It only supports
-// responses for a single certificate. If the response contains a certificate
-// then the signature over the response is checked. If issuer is not nil then
-// it will be used to validate the signature or embedded certificate.
+// ParseResponse parses an OCSP response in DER form. Response must contain
+// only one certificate statuses. To parse the status of a specific Certificate,
+// use ParseResponseForCert instead.
+//
+// If the response contains an embedded certificate, then that certificate will
+// be used to verify the response signature. If the response contains an
+// embedded certificate and issuer is not nil, then issuer will be used to verify
+// the certificate signature.
+//
+// If the response does not contain an embedded certificate and issuer is not
+// nil, then issuer will be used to verify the response signature.
 //
 // Invalid responses and parse failures will result in a ParseError.
 // Error responses will result in a ResponseError.
@@ -456,11 +463,18 @@ func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
 	return ParseResponseForCert(bytes, nil, issuer)
 }
 
-// ParseResponseForCert parses an OCSP response in DER form and searches for a
-// Response relating to cert. If such a Response is found and the OCSP response
-// contains a certificate then the signature over the response is checked. If
-// issuer is not nil then it will be used to validate the signature or embedded
-// certificate.
+// ParseResponseForCert parses an OCSP response in DER form. If cert is not nil
+// ParseResponseForCert will look for a certificate status in the response that
+// has a serial matching cert. If cert is nil the first certificate status in
+// the response is returned.
+//
+// If the response contains a embedded certificate then that certificate will
+// be used to verify the response signature. If the response contains an
+// embedded certificate and issuer is not nil then issuer will be used to verify
+// the certificate signature.
+//
+// If the response does not contain an embedded certificate and issuer is not
+// nil then issuer will be used to verify the response signature.
 //
 // Invalid responses and parse failures will result in a ParseError.
 // Error responses will result in a ResponseError.
