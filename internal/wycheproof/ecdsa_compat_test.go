@@ -1,10 +1,12 @@
-// Copyright 2019 The Go Authors. All rights reserved.
+// Copyright 2020 The Go Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package ecdsa provides an internal version of ecdsa.Verify
-// that is used for the Wycheproof tests.
-package ecdsa
+// +build !go1.15
+
+// ecdsa.VerifyASN1 was added in Go 1.15.
+
+package wycheproof
 
 import (
 	"crypto/ecdsa"
@@ -14,9 +16,7 @@ import (
 	"golang.org/x/crypto/cryptobyte/asn1"
 )
 
-// VerifyASN1 verifies the ASN1 encoded signature, sig, of hash using the
-// public key, pub. Its return value records whether the signature is valid.
-func VerifyASN1(pub *ecdsa.PublicKey, hash, sig []byte) bool {
+func verifyASN1(pub *ecdsa.PublicKey, hash, sig []byte) bool {
 	var (
 		r, s  = &big.Int{}, &big.Int{}
 		inner cryptobyte.String
