@@ -103,7 +103,7 @@ func (a *AuthorizationError) Error() string {
 		e[i] = err.Error()
 	}
 
-	if len(a.Identifier) > 0 {
+	if a.Identifier != "" {
 		return fmt.Sprintf("acme: authorization error for %s: %s", a.Identifier, strings.Join(e, "; "))
 	}
 
