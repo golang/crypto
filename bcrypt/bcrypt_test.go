@@ -241,14 +241,3 @@ func TestNoSideEffectsFromCompare(t *testing.T) {
 		t.Errorf("got=%q want=%q", got, want)
 	}
 }
-
-func ExampleBcrypting() {
-	password := []byte("mypassword")
-	securedPassword, err := GenerateFromPassword(password, DefaultCost)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(CompareHashAndPassword(securedPassword, password))
-	// Output: <nil>
-}
