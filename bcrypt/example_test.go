@@ -1,3 +1,7 @@
+// Copyright 2011 The Go Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package bcrypt_test
 
 import (
@@ -7,11 +11,13 @@ import (
 
 func ExampleGenerateFromPassword() {
 	password := []byte("mypassword")
-	securedPassword, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
+	storedPassword, err := bcrypt.GenerateFromPassword(password, bcrypt.DefaultCost)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
-	fmt.Println(bcrypt.CompareHashAndPassword(securedPassword, password))
+	if err := bcrypt.CompareHashAndPassword(storedPassword, password); err != nil {
+        	log.Fatal("invalid password!")
+    	}
 	// Output: <nil>
 }
