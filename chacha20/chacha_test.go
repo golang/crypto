@@ -148,11 +148,66 @@ func TestSetCounter(t *testing.T) {
 	if !panics(func() { s.SetCounter(0) }) {
 		t.Error("counter decreasing should trigger a panic")
 	}
-	// advancing to ^uint32(0) and then calling XORKeyStream should cause a panic
-	s = newCipher()
-	s.SetCounter(^uint32(0))
-	if !panics(func() { s.XORKeyStream([]byte{0}, []byte{0}) }) {
-		t.Error("counter overflowing should trigger a panic")
+}
+
+func TestLastBlock(t *testing.T) {
+	panics := func(fn func()) (p bool) {
+		defer func() { p = recover() != nil }()
+		fn()
+		return
+	}
+
+	checkLastBlock := func(b []byte) {
+		t.Helper()
+		// Hardcoded result to check all implementations generate the same output.
+		lastBlock := "ace4cd09e294d1912d4ad205d06f95d9c2f2bfcf453e8753f128765b62215f4d" +
+			"92c74f2f626c6a640c0b1284d839ec81f1696281dafc3e684593937023b58b1d"
+		if got := hex.EncodeToString(b); got != lastBlock {
+			t.Errorf("wrong output for the last block, got %q, want %q", got, lastBlock)
+		}
+	}
+
+	// setting the counter to 0xffffffff and crypting multiple blocks should
+	// trigger a panic
+	s, _ := NewUnauthenticatedCipher(make([]byte, KeySize), make([]byte, NonceSize))
+	s.SetCounter(0xffffffff)
+	blocks := make([]byte, blockSize*2)
+	if !panics(func() { s.XORKeyStream(blocks, blocks) }) {
+		t.Error("crypting multiple blocks should trigger a panic")
+	}
+
+	// setting the counter to 0xffffffff - 1 and crypting two blocks should not
+	// trigger a panic
+	s, _ = NewUnauthenticatedCipher(make([]byte, KeySize), make([]byte, NonceSize))
+	s.SetCounter(0xffffffff - 1)
+	if panics(func() { s.XORKeyStream(blocks, blocks) }) {
+		t.Error("crypting the last blocks should not trigger a panic")
+	}
+	checkLastBlock(blocks[blockSize:])
+	// once all the keystream is spent, setting the counter should panic
+	if !panics(func() { s.SetCounter(0xffffffff) }) {
+		t.Error("setting the counter after overflow should trigger a panic")
+	}
+	// crypting a subsequent block *should* panic
+	block := make([]byte, blockSize)
+	if !panics(func() { s.XORKeyStream(block, block) }) {
+		t.Error("crypting after overflow should trigger a panic")
+	}
+
+	// if we crypt less than a full block, we should be able to crypt the rest
+	// in a subsequent call without panicking
+	s, _ = NewUnauthenticatedCipher(make([]byte, KeySize), make([]byte, NonceSize))
+	s.SetCounter(0xffffffff)
+	if panics(func() { s.XORKeyStream(block[:7], block[:7]) }) {
+		t.Error("crypting part of the last block should not trigger a panic")
+	}
+	if panics(func() { s.XORKeyStream(block[7:], block[7:]) }) {
+		t.Error("crypting part of the last block should not trigger a panic")
+	}
+	checkLastBlock(block)
+	// as before, a third call should trigger a panic because all keystream is spent
+	if !panics(func() { s.XORKeyStream(block[:1], block[:1]) }) {
+		t.Error("crypting after overflow should trigger a panic")
 	}
 }
 
