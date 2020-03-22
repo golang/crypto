@@ -271,6 +271,21 @@ Lvs9+PH8nIuhFMYZgo3liqZbVS5z4Fqhyzyq4=
 -----END OPENSSH PRIVATE KEY-----
 `),
 	},
+
+	3: {
+		Name:              "ed25519-encrypted-cbc",
+		EncryptionKey:     "password",
+		IncludesPublicKey: true,
+		PEMBytes: []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAACmFlczI1Ni1jYmMAAAAGYmNyeXB0AAAAGAAAABDzGKF3uX
+G1gXALZKFd6Ir4AAAAEAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIDne4/teO42zTDdj
+NwxUMNpbfmp/dxgU4ZNkC3ydgcugAAAAoJ3J/oA7+iqVOz0CIUUk9ufdP1VP4jDf2um+0s
+Sgs7x6Gpyjq67Ps7wLRdSmxr/G5b+Z8dRGFYS/wUCQEe3whwuImvLyPwWjXLzkAyMzc01f
+ywBGSrHnvP82ppenc2HuTI+E05Xc02i6JVyI1ShiekQL5twoqtR6pEBZnD17UonIx7cRzZ
+gbDGyT3bXMQtagvCwoW+/oMTKXiZP5jCJpEO8=
+-----END OPENSSH PRIVATE KEY-----
+`),
+	},
 }
 
 // SKData contains a list of PubKeys backed by U2F/FIDO2 Security Keys and their test data.
