@@ -279,8 +279,8 @@ func Encrypt(ciphertext io.Writer, to []*Entity, signed *Entity, hints *FileHint
 	// In the event that a recipient doesn't specify any supported ciphers
 	// or hash functions, these are the ones that we assume that every
 	// implementation supports.
-	defaultCiphers := candidateCiphers[len(candidateCiphers)-1:]
-	defaultHashes := candidateHashes[len(candidateHashes)-1:]
+	defaultCiphers := candidateCiphers[:1]
+	defaultHashes := candidateHashes[:1]
 
 	encryptKeys := make([]Key, len(to))
 	for i := range to {
@@ -355,7 +355,7 @@ func Sign(output io.Writer, signed *Entity, hints *FileHints, config *packet.Con
 		hashToHashId(crypto.SHA1),
 		hashToHashId(crypto.RIPEMD160),
 	}
-	defaultHashes := candidateHashes[len(candidateHashes)-1:]
+	defaultHashes := candidateHashes[:1]
 	preferredHashes := signed.primaryIdentity().SelfSignature.PreferredHash
 	if len(preferredHashes) == 0 {
 		preferredHashes = defaultHashes
