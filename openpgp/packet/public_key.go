@@ -57,6 +57,7 @@ type PublicKey struct {
 // signingKey provides a convenient abstraction over signature verification
 // for v3 and v4 public keys.
 type signingKey interface {
+	SerializeForHash(io.Writer) error
 	SerializeSignaturePrefix(io.Writer)
 	serializeWithoutHeaders(io.Writer) error
 }
@@ -205,11 +206,16 @@ func (pk *PublicKey) parse(r io.Reader) (err error) {
 	return
 }
 
+// SerializeForHash serializes the part of the key for the fingerprinting hash
+func (pk *PublicKey) SerializeForHash(h io.Writer) error {
+	pk.SerializeSignaturePrefix(h)
+	return pk.serializeWithoutHeaders(h)
+}
+
 func (pk *PublicKey) setFingerPrintAndKeyId() {
 	// RFC 4880, section 12.2
 	fingerPrint := sha1.New()
-	pk.SerializeSignaturePrefix(fingerPrint)
-	pk.serializeWithoutHeaders(fingerPrint)
+	pk.SerializeForHash(fingerPrint)
 	copy(pk.Fingerprint[:], fingerPrint.Sum(nil))
 	pk.KeyId = binary.BigEndian.Uint64(pk.Fingerprint[12:20])
 }
@@ -676,10 +682,12 @@ func keySignatureHash(pk, signed signingKey, hashFunc crypto.Hash) (h hash.Hash,
 	h = hashFunc.New()
 
 	// RFC 4880, section 5.2.4
-	pk.SerializeSignaturePrefix(h)
-	pk.serializeWithoutHeaders(h)
-	signed.SerializeSignaturePrefix(h)
-	signed.serializeWithoutHeaders(h)
+	err = pk.SerializeForHash(h)
+	if err != nil {
+		return nil, err
+	}
+
+	err = signed.SerializeForHash(h)
 	return
 }
 
@@ -721,8 +729,7 @@ func keyRevocationHash(pk signingKey, hashFunc crypto.Hash) (h hash.Hash, err er
 	h = hashFunc.New()
 
 	// RFC 4880, section 5.2.4
-	pk.SerializeSignaturePrefix(h)
-	pk.serializeWithoutHeaders(h)
+	err = pk.SerializeForHash(h)
 
 	return
 }

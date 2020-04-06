@@ -254,8 +254,7 @@ func userIdSignatureV3Hash(id string, pk signingKey, hfn crypto.Hash) (h hash.Ha
 	h = hfn.New()
 
 	// RFC 4880, section 5.2.4
-	pk.SerializeSignaturePrefix(h)
-	pk.serializeWithoutHeaders(h)
+	err = pk.SerializeForHash(h)
 
 	h.Write([]byte(id))
 
