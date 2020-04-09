@@ -78,6 +78,9 @@ type ServerConfig struct {
 
 	// PasswordCallback, if non-nil, is called when a user
 	// attempts to authenticate using a password.
+	// If this is a step of a multi-step authentication
+	// "PartialSuccessMethods()", available in ConnMetadata,
+	// can be used to find the steps sequence.
 	PasswordCallback func(conn ConnMetadata, password []byte) (*Permissions, error)
 
 	// PublicKeyCallback, if non-nil, is called when a client
@@ -88,6 +91,9 @@ type ServerConfig struct {
 	// offered is in fact used to authenticate. To record any data
 	// depending on the public key, store it inside a
 	// Permissions.Extensions entry.
+	// If this is a step of a multi-step authentication
+	// "PartialSuccessMethods()", available in ConnMetadata,
+	// can be used to find the steps sequence.
 	PublicKeyCallback func(conn ConnMetadata, key PublicKey) (*Permissions, error)
 
 	// KeyboardInteractiveCallback, if non-nil, is called when
@@ -97,7 +103,19 @@ type ServerConfig struct {
 	// Challenge rounds. To avoid information leaks, the client
 	// should be presented a challenge even if the user is
 	// unknown.
+	// If this is a step of a multi-step authentication
+	// "PartialSuccessMethods()", available in ConnMetadata,
+	// can be used to find the steps sequence.
 	KeyboardInteractiveCallback func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error)
+
+	// NextAuthMethodsCallback, if not-nil, is called when another
+	// authentication callback returns ErrPartialSuccess or if, after an
+	// initial partial success, an authentication step fails.
+	// This callback must return the list of authentications methods
+	// that can continue.
+	// An empty list means no supported methods remain and so the
+	// multi-step authentication will fail
+	NextAuthMethodsCallback func(conn ConnMetadata) []string
 
 	// AuthLogCallback, if non-nil, is called to log all authentication
 	// attempts.
@@ -395,6 +413,11 @@ func (l ServerAuthError) Error() string {
 // It is returned in ServerAuthError.Errors from NewServerConn.
 var ErrNoAuth = errors.New("ssh: no auth passed yet")
 
+// ErrPartialSuccess defines the error value that authentication
+// callbacks must return for multi-step authentication when a
+// specific authentication step succeed
+var ErrPartialSuccess = errors.New("ssh: authenticated with partial success")
+
 func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, error) {
 	sessionID := s.transport.getSessionID()
 	var cache pubKeyCache
@@ -433,6 +456,20 @@ userAuthLoop:
 			return nil, errors.New("ssh: client attempted to negotiate for unknown service: " + userAuthReq.Service)
 		}
 
+		// RFC 4252 section 5 says:
+		//
+		// """
+		// The 'user name' and 'service name' are repeated in every new
+		// authentication attempt, and MAY change.  The server implementation
+		// MUST carefully check them in every message, and MUST flush any
+		// accumulated authentication states if they change.
+		// """
+		//
+		// So we reset partialSuccessMethods if the user changes
+		//
+		if s.user != userAuthReq.User {
+			s.partialSuccessMethods = nil
+		}
 		s.user = userAuthReq.User
 
 		if !displayedBanner && config.BannerCallback != nil {
@@ -643,6 +680,30 @@ userAuthLoop:
 		if config.GSSAPIWithMICConfig != nil && config.GSSAPIWithMICConfig.Server != nil &&
 			config.GSSAPIWithMICConfig.AllowLogin != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "gssapi-with-mic")
+		}
+
+		if authErr == ErrPartialSuccess && config.NextAuthMethodsCallback != nil {
+			// if the current callback returns partial success we update the list of methods
+			// that returned partial success and we call NextAuthMethodsCallback.
+			// We set the methods allowed to continue from the NextAuthMethodsCallback
+			// response, an empty list means no supported methods remain and so the
+			// multi-step auth fails
+			s.partialSuccessMethods = append(s.partialSuccessMethods, userAuthReq.Method)
+			allowedMethods := config.NextAuthMethodsCallback(s)
+			if len(allowedMethods) > 0 {
+				failureMsg.PartialSuccess = true
+				failureMsg.Methods = allowedMethods
+				// a partial success response isn't an auth failure
+				authFailures--
+			} else {
+				return nil, errors.New("ssh: no authentication methods can continue for Multi-Step Authentication")
+			}
+		} else if len(s.partialSuccessMethods) > 0 && config.NextAuthMethodsCallback != nil {
+			// If we are doing a multi-step auth and a step fails we must only return the
+			// allowed methods and not the ones already completed as required in RFC 4252.
+			// The application can use "PartialSuccessMethods()" available in ConnMetadata
+			// to know which authentication methods were already completed.
+			failureMsg.Methods = config.NextAuthMethodsCallback(s)
 		}
 
 		if len(failureMsg.Methods) == 0 {
