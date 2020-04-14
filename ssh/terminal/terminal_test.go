@@ -82,6 +82,14 @@ var keyPressTests = []struct {
 		line: "ba",
 	},
 	{
+		in:   "a\006b\r", // ^F
+		line: "ab",
+	},
+	{
+		in:   "a\002b\r", // ^B
+		line: "ba",
+	},
+	{
 		in:   "a\177b\r", // backspace
 		line: "b",
 	},
@@ -207,6 +215,16 @@ var keyPressTests = []struct {
 		in:   "\x1b[200~a\r",
 		line: "a",
 		err:  ErrPasteIndicator,
+	},
+	{
+		// Ctrl-C terminates readline
+		in:  "\003",
+		err: io.EOF,
+	},
+	{
+		// Ctrl-C at the end of line also terminates readline
+		in:  "a\003\r",
+		err: io.EOF,
 	},
 }
 
