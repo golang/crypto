@@ -35,7 +35,7 @@ type PrivateKey struct {
 	encryptedData []byte
 	cipher        CipherFunction
 	s2k           func(out, in []byte)
-	PrivateKey    interface{} // An *{rsa|dsa|ecdsa}.PrivateKey or a crypto.Signer.
+	PrivateKey    interface{} // An *{rsa|dsa|ecdsa}.PrivateKey or crypto.Signer/crypto.Decrypter (Decryptor RSA only).
 	sha1Checksum  bool
 	iv            []byte
 

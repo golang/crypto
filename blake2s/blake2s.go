@@ -5,6 +5,8 @@
 // Package blake2s implements the BLAKE2s hash algorithm defined by RFC 7693
 // and the extendable output function (XOF) BLAKE2Xs.
 //
+// BLAKE2s is optimized for 8- to 32-bit platforms and produces digests of any
+// size between 1 and 32 bytes.
 // For a detailed specification of BLAKE2s see https://blake2.net/blake2.pdf
 // and for BLAKE2Xs see https://blake2.net/blake2x.pdf
 //

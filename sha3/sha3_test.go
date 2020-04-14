@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash"
+	"math/rand"
 	"os"
 	"strings"
 	"testing"
@@ -306,8 +307,14 @@ func TestSqueezing(t *testing.T) {
 }
 
 // sequentialBytes produces a buffer of size consecutive bytes 0x00, 0x01, ..., used for testing.
+//
+// The alignment of each slice is intentionally randomized to detect alignment
+// issues in the implementation. See https://golang.org/issue/37644.
+// Ideally, the compiler should fuzz the alignment itself.
+// (See https://golang.org/issue/35128.)
 func sequentialBytes(size int) []byte {
-	result := make([]byte, size)
+	alignmentOffset := rand.Intn(8)
+	result := make([]byte, size+alignmentOffset)[alignmentOffset:]
 	for i := range result {
 		result[i] = byte(i)
 	}
