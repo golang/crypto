@@ -192,7 +192,9 @@ func Generate(rand io.Reader, c *Config) (*Params, error) {
 }
 
 // Parse reads a binary specification for a string-to-key transformation from r
-// and returns a function which performs that transform.
+// and returns a function which performs that transform. If the S2K is a special
+// GNU extension that indicates that the private key is missing, then the error
+// returned is errors.ErrDummyPrivateKey.
 func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	params, err := ParseIntoParams(r)
 	if err != nil {
@@ -237,12 +239,29 @@ func ParseIntoParams(r io.Reader) (params *Params, err error) {
 		params.salt = buf[:8]
 		params.countByte = buf[8]
 		return params, nil
+	case 101:
+		// This is a GNU extension. See
+		// https://git.gnupg.org/cgi-bin/gitweb.cgi?p=gnupg.git;a=blob;f=doc/DETAILS;h=fe55ae16ab4e26d8356dc574c9e8bc935e71aef1;hb=23191d7851eae2217ecdac6484349849a24fd94a#l1109
+		if _, err = io.ReadFull(r, buf[:4]); err != nil {
+			return nil, err
+		}
+		if buf[0] == 'G' && buf[1] == 'N' && buf[2] == 'U' && buf[3] == 1 {
+			return params, nil
+		}
+		return nil, errors.UnsupportedError("GNU S2K extension")
 	}
 
 	return nil, errors.UnsupportedError("S2K function")
 }
 
+func (params *Params) Dummy() bool {
+	return params != nil && params.mode == 101
+}
+
 func (params *Params) Function() (f func(out, in []byte), err error) {
+	if params.Dummy() {
+		return nil, errors.ErrDummyPrivateKey("dummy key found")
+	}
 	hashObj, ok := HashIdToHash(params.hashId)
 	if !ok {
 		return nil, errors.UnsupportedError("hash for S2K function: " + strconv.Itoa(int(params.hashId)))
@@ -280,6 +299,10 @@ func (params *Params) Serialize(w io.Writer) (err error) {
 		return
 	}
 	if _, err = w.Write([]byte{params.hashId}); err != nil {
+		return
+	}
+	if params.Dummy() {
+		_, err = w.Write(append([]byte("GNU"), 1))
 		return
 	}
 	if params.mode > 0 {

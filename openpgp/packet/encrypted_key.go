@@ -91,6 +91,9 @@ func (e *EncryptedKey) Decrypt(priv *PrivateKey, config *Config) error {
 	if e.Algo != priv.PubKeyAlgo {
 		return errors.InvalidArgumentError("cannot decrypt encrypted session key of type " + strconv.Itoa(int(e.Algo)) + " with private key of type " + strconv.Itoa(int(priv.PubKeyAlgo)))
 	}
+	if priv.Dummy() {
+		return errors.ErrDummyPrivateKey("dummy key found")
+	}
 
 	var err error
 	var b []byte

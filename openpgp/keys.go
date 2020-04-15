@@ -505,10 +505,25 @@ func shouldReplaceSubkeySig(existingSig, potentialNewSig *packet.Signature) bool
 // Identities and subkeys are re-signed in case they changed since NewEntry.
 // If config is nil, sensible defaults will be used.
 func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error) {
+	if e.PrivateKey.Dummy() {
+		return errors.ErrDummyPrivateKey("dummy private key cannot re-sign identities")
+	}
+	return e.serializePrivate(w, config, true)
+}
+
+// SerializePrivateWithoutSigning serializes an Entity, including private key
+// material, but excluding signatures from other entities, to the given Writer.
+// Self-signatures of identities and subkeys are not re-signed. This is useful
+// when serializing GNU dummy keys, among other things.
+// If config is nil, sensible defaults will be used.
+func (e *Entity) SerializePrivateWithoutSigning(w io.Writer, config *packet.Config) (err error) {
+	return e.serializePrivate(w, config, false)
+}
+
+func (e *Entity) serializePrivate(w io.Writer, config *packet.Config, reSign bool) (err error) {
 	if e.PrivateKey == nil {
 		return goerrors.New("openpgp: private key is missing")
 	}
-
 	err = e.PrivateKey.Serialize(w)
 	if err != nil {
 		return
@@ -518,9 +533,11 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 		if err != nil {
 			return
 		}
-		err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
-		if err != nil {
-			return
+		if reSign {
+			err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
+			if err != nil {
+				return
+			}
 		}
 		err = ident.SelfSignature.Serialize(w)
 		if err != nil {
@@ -532,74 +549,13 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 		if err != nil {
 			return
 		}
-		err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
-		if err != nil {
-			return
-		}
-		err = subkey.Sig.Serialize(w)
-		if err != nil {
-			return
-		}
-	}
-	return nil
-}
-
-// SerializePrivate serializes an Entity, including private key material, to
-// the given Writer.
-// If config is nil, sensible defaults will be used.
-func (e *Entity) SerializePrivateNoSign(w io.Writer, config *packet.Config) (err error) {
-	if e.PrivateKey == nil {
-		return goerrors.New("openpgp: private key is missing")
-	}
-
-	err = e.PrivateKey.Serialize(w)
-	if err != nil {
-		return
-	}
-	err = e.serializeIdentities(w)
-	if err != nil {
-		return err
-	}
-	for _, subkey := range e.Subkeys {
-		err = subkey.PrivateKey.Serialize(w)
-		if err != nil {
-			return
-		}
-		err = subkey.Sig.Serialize(w)
-		if err != nil {
-			return
-		}
-	}
-	return nil
-}
-
-func (e *Entity) serializeIdentities(w io.Writer) (err error) {
-	for _, ident := range e.Identities {
-		err = ident.UserId.Serialize(w)
-		if err != nil {
-			return err
-		}
-		for _, sig := range ident.Signatures {
-			err = sig.Serialize(w)
+		if reSign {
+			err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
 			if err != nil {
-				return err
+				return
 			}
 		}
-	}
-	return
-}
-
-// SelfSign sign an Entity, on both Identities and Subkeys
-//TODO:: temp fucntion self sign call first before encrypt keys
-func (e *Entity) SelfSign(config *packet.Config) (err error) {
-	for _, ident := range e.Identities {
-		err = ident.SelfSignature.SignUserId(ident.UserId.Id, e.PrimaryKey, e.PrivateKey, config)
-		if err != nil {
-			return
-		}
-	}
-	for _, subkey := range e.Subkeys {
-		err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
+		err = subkey.Sig.Serialize(w)
 		if err != nil {
 			return
 		}

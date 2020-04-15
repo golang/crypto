@@ -148,15 +148,18 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 			return
 		}
 		pk.cipher = CipherFunction(buf[0])
-		pk.Encrypted = true
 		pk.s2kParams, err = s2k.ParseIntoParams(r)
 		if err != nil {
+			return
+		}
+		if pk.s2kParams.Dummy() {
 			return
 		}
 		pk.s2k, err = pk.s2kParams.Function()
 		if err != nil {
 			return
 		}
+		pk.Encrypted = true
 		if pk.s2kType == S2KSHA1 {
 			pk.sha1Checksum = true
 		}
@@ -189,6 +192,11 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 	return
 }
 
+// Dummy returns true if the private key is a dummy key. This is a GNU extension.
+func (pk *PrivateKey) Dummy() bool {
+	return pk.s2kParams.Dummy()
+}
+
 func mod64kHash(d []byte) uint16 {
 	var h uint16
 	for _, b := range d {
@@ -205,12 +213,14 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 	}
 
 	privateKeyBuf := bytes.NewBuffer(nil)
-	if pk.Encrypted {
-		err = pk.SerializeEncrypted(privateKeyBuf)
+	if pk.Dummy() {
+		err = pk.serializeDummy(privateKeyBuf)
+	} else if pk.Encrypted {
+		err = pk.serializeEncrypted(privateKeyBuf)
 	} else {
-		err = pk.SerializeUnEncrypted(privateKeyBuf)
+		err = pk.serializeUnencrypted(privateKeyBuf)
 	}
-
+	
 	if err != nil {
 		return
 	}
@@ -236,9 +246,35 @@ func (pk *PrivateKey) Serialize(w io.Writer) (err error) {
 	return
 }
 
-// TODO: Write a description
-// SerializeUnEncrypted ..
-func (pk *PrivateKey) SerializeUnEncrypted(w io.Writer) (err error) {
+func (pk *PrivateKey) serializeDummy(w io.Writer) error {
+	w.Write([]byte{uint8(pk.s2kType)})
+	w.Write([]byte{uint8(pk.cipher)})
+	return pk.s2kParams.Serialize(w)
+}
+
+func (pk *PrivateKey) serializeEncrypted(w io.Writer) error {
+	privateKeyBuf := bytes.NewBuffer(nil)
+	encodedKeyBuf := bytes.NewBuffer(nil)
+	encodedKeyBuf.Write([]byte{uint8(pk.s2kType)})
+	encodedKeyBuf.Write([]byte{uint8(pk.cipher)})
+	err := pk.s2kParams.Serialize(encodedKeyBuf)
+	if err != nil {
+		return err
+	}
+
+	privateKeyBuf.Write(pk.encryptedData)
+
+	encodedKey := encodedKeyBuf.Bytes()
+	privateKeyBytes := privateKeyBuf.Bytes()
+
+	w.Write(encodedKey)
+	w.Write(pk.iv)
+	w.Write(privateKeyBytes)
+
+	return nil
+}
+
+func (pk *PrivateKey) serializeUnencrypted(w io.Writer) (err error) {
 	buf := bytes.NewBuffer(nil)
 	buf.Write([]byte{uint8(S2KNON)} /* no encryption */)
 	err = pk.serializePrivateKey(buf)
@@ -260,29 +296,6 @@ func (pk *PrivateKey) SerializeUnEncrypted(w io.Writer) (err error) {
 	}
 	w.Write(privateKeyBytes)
 	return
-}
-
-//SerializeEncrypted serializes an encrypted privatekey
-func (pk *PrivateKey) SerializeEncrypted(w io.Writer) error {
-	privateKeyBuf := bytes.NewBuffer(nil)
-	encodedKeyBuf := bytes.NewBuffer(nil)
-	encodedKeyBuf.Write([]byte{uint8(pk.s2kType)})
-	encodedKeyBuf.Write([]byte{uint8(pk.cipher)})
-	err := pk.s2kParams.Serialize(encodedKeyBuf)
-	if err != nil {
-		return err
-	}
-
-	privateKeyBuf.Write(pk.encryptedData)
-
-	encodedKey := encodedKeyBuf.Bytes()
-	privateKeyBytes := privateKeyBuf.Bytes()
-
-	w.Write(encodedKey)
-	w.Write(pk.iv)
-	w.Write(privateKeyBytes)
-
-	return nil
 }
 
 func serializeRSAPrivateKey(w io.Writer, priv *rsa.PrivateKey) error {
@@ -325,10 +338,11 @@ func serializeECDHPrivateKey(w io.Writer, priv *ecdh.PrivateKey) error {
 	return err
 }
 
-
-
 // Decrypt decrypts an encrypted private key using a passphrase.
 func (pk *PrivateKey) Decrypt(passphrase []byte) error {
+	if pk.Dummy() {
+		return errors.ErrDummyPrivateKey("dummy key found")
+	}
 	if !pk.Encrypted {
 		return nil
 	}
@@ -431,7 +445,6 @@ func (pk *PrivateKey) Encrypt(passphrase []byte) error {
 }
 
 func (pk *PrivateKey) serializePrivateKey(w io.Writer) (err error) {
-
 	switch priv := pk.PrivateKey.(type) {
 	case *rsa.PrivateKey:
 		err = serializeRSAPrivateKey(w, priv)

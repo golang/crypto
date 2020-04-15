@@ -41,9 +41,6 @@ func generateFreshTestVectors() (vectors []testVector, err error) {
 		if errKG != nil {
 			panic(errKG)
 		}
-		if err = newEntity.SelfSign(nil); err != nil {
-			panic(err)
-		}
 
 		// Encrypt private key of entity
 		rawPwd := []byte(password)
@@ -63,7 +60,7 @@ func generateFreshTestVectors() (vectors []testVector, err error) {
 		}
 
 		w := bytes.NewBuffer(nil)
-		if err = newEntity.SerializePrivateNoSign(w, nil); err != nil {
+		if err = newEntity.SerializePrivateWithoutSigning(w, nil); err != nil {
 			return nil, err
 		}
 
