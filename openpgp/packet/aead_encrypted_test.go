@@ -17,7 +17,7 @@ import (
 var maxChunkSizeExp = 62
 
 const (
-	keyLength = 16
+	keyLength          = 16
 	maxPlaintextLength = 1 << 18
 )
 
@@ -141,181 +141,172 @@ func TestAeadNilConfigStream(t *testing.T) {
 }
 
 // Encrypts and decrypts a random stream, checking correctness and integrity
-func TestAeadRandomStream(t *testing.T) {
-	for i := 0; i < iterations; i++ {
-		key := randomKey(16)
-		config := randomConfig()
-		randomLength := mathrand.Intn(maxPlaintextLength) + 1
-		raw, plain, err := randomStream(key, randomLength, config)
-		if err != nil {
-			t.Error(err)
-		}
-		// Packet is ready in 'raw'
+func TestAeadStreamRandomizeSlow(t *testing.T) {
+	key := randomKey(16)
+	config := randomConfig()
+	randomLength := mathrand.Intn(maxPlaintextLength) + 1
+	raw, plain, err := randomStream(key, randomLength, config)
+	if err != nil {
+		t.Error(err)
+	}
+	// Packet is ready in 'raw'
 
-		packet := new(AEADEncrypted)
-		ptype, _, contentsReader, err := readHeader(raw)
-		if ptype != packetTypeAEADEncrypted || err != nil {
-			t.Error("Error reading packet header")
-		}
+	packet := new(AEADEncrypted)
+	ptype, _, contentsReader, err := readHeader(raw)
+	if ptype != packetTypeAEADEncrypted || err != nil {
+		t.Error("Error reading packet header")
+	}
 
-		if err = packet.parse(contentsReader); err != nil {
-			t.Error(err)
-		}
-		// decrypted plaintext can be read from 'rc'
-		rc, err := packet.decrypt(key)
+	if err = packet.parse(contentsReader); err != nil {
+		t.Error(err)
+	}
+	// decrypted plaintext can be read from 'rc'
+	rc, err := packet.decrypt(key)
 
-		got, err := readDecryptedStream(rc)
-		if err != nil {
-			t.Error(err)
-		}
-		// Close MUST be called - it checks if the final chunk was witnessed
-		if err = rc.Close(); err != nil {
-			t.Error(err)
-		}
-		want := plain
-		if !bytes.Equal(got, want) {
-			t.Errorf("Error encrypting/decrypting random stream")
-		}
+	got, err := readDecryptedStream(rc)
+	if err != nil {
+		t.Error(err)
+	}
+	// Close MUST be called - it checks if the final chunk was witnessed
+	if err = rc.Close(); err != nil {
+		t.Error(err)
+	}
+	want := plain
+	if !bytes.Equal(got, want) {
+		t.Errorf("Error encrypting/decrypting random stream")
 	}
 }
 
 // Encrypts a random stream, corrupt some bytes, and check if it fails
-func TestAeadRandomCorruptStream(t *testing.T) {
-	for i := 0; i < iterations; i++ {
-		key := randomKey(16)
-		config := randomConfig()
-		randomLength := mathrand.Intn(maxPlaintextLength) + 1
-		raw, plain, err := randomStream(key, randomLength, config)
-		if err != nil {
-			t.Error(err)
-		}
+func TestAeadCorruptStreamRandomizeSlow(t *testing.T) {
+	key := randomKey(16)
+	config := randomConfig()
+	randomLength := mathrand.Intn(maxPlaintextLength) + 1
+	raw, plain, err := randomStream(key, randomLength, config)
+	if err != nil {
+		t.Error(err)
+	}
 
-		// Corrupt some bytes of the stream
-		for j := 0; j < 10; j++ {
-			index := mathrand.Intn(len(raw.Bytes()))
-			if index < 8 || len(plain) == 0 {
-				// avoid corrupting header or nonce, that's useless
-				continue
-			}
-			raw.Bytes()[index] = 255 - raw.Bytes()[index]
-		}
-		packet := new(AEADEncrypted)
-		ptype, _, contentsReader, err := readHeader(raw)
-		if ptype != packetTypeAEADEncrypted || err != nil {
-			t.Error("Error reading packet header")
-		}
-
-		if err = packet.parse(contentsReader); err != nil {
-			// Header was corrupted
+	// Corrupt some bytes of the stream
+	for j := 0; j < 10; j++ {
+		index := mathrand.Intn(len(raw.Bytes()))
+		if index < 8 || len(plain) == 0 {
+			// avoid corrupting header or nonce, that's useless
 			continue
 		}
-		rc, err := packet.decrypt(key)
-		got, err := readDecryptedStream(rc)
-		if err == nil || err == io.EOF {
-			t.Errorf("No error raised when decrypting corrupt stream")
-		}
-		if bytes.Equal(got, plain) {
-			t.Errorf("Error: Succesfully decrypted corrupt stream")
-		}
+		raw.Bytes()[index] = 255 - raw.Bytes()[index]
+	}
+	packet := new(AEADEncrypted)
+	ptype, _, contentsReader, err := readHeader(raw)
+	if ptype != packetTypeAEADEncrypted || err != nil {
+		t.Error("Error reading packet header")
+	}
+
+	if err = packet.parse(contentsReader); err != nil {
+		// Header was corrupted
+		return
+	}
+	rc, err := packet.decrypt(key)
+	got, err := readDecryptedStream(rc)
+	if err == nil || err == io.EOF {
+		t.Errorf("No error raised when decrypting corrupt stream")
+	}
+	if bytes.Equal(got, plain) {
+		t.Errorf("Error: Succesfully decrypted corrupt stream")
 	}
 }
 
 // Encrypts a random stream, truncate the end, and check if it fails
-func TestAeadRandomTruncatedStream(t *testing.T) {
-	for i := 0; i < iterations; i++ {
-		key := randomKey(16)
-		config := randomConfig()
-		randomLength := mathrand.Intn(maxPlaintextLength)
-		if randomLength < 16 {
-			continue
-		}
+func TestAeadTruncatedStreamRandomizeSlow(t *testing.T) {
+	key := randomKey(16)
+	config := randomConfig()
+	randomLength := mathrand.Intn(maxPlaintextLength)
+	if randomLength < 16 {
+		return
+	}
 
-		raw, plain, err := randomStream(key, randomLength, config)
-		if err != nil {
-			t.Error(err)
-		}
+	raw, plain, err := randomStream(key, randomLength, config)
+	if err != nil {
+		t.Error(err)
+	}
 
-		// Truncate the packet by some bytes
-		var truncatedRaw []byte
-		cut := 0
-		for cut == 0 {
-			cut = mathrand.Intn(randomLength/2)
-		}
-		truncatedRaw = raw.Bytes()[:len(raw.Bytes())-cut]
-		truncated := bytes.NewBuffer(truncatedRaw)
+	// Truncate the packet by some bytes
+	var truncatedRaw []byte
+	cut := 0
+	for cut == 0 {
+		cut = mathrand.Intn(randomLength / 2)
+	}
+	truncatedRaw = raw.Bytes()[:len(raw.Bytes())-cut]
+	truncated := bytes.NewBuffer(truncatedRaw)
 
-		packet := new(AEADEncrypted)
-		ptype, _, truncatedContentsReader, err := readHeader(truncated)
-		if ptype != packetTypeAEADEncrypted || err != nil {
-			t.Error("Error reading packet header")
-		}
+	packet := new(AEADEncrypted)
+	ptype, _, truncatedContentsReader, err := readHeader(truncated)
+	if ptype != packetTypeAEADEncrypted || err != nil {
+		t.Error("Error reading packet header")
+	}
 
-		if err = packet.parse(truncatedContentsReader); err != nil {
-			t.Error(err)
-		}
-		rc, err := packet.decrypt(key)
-		if err != nil {
-			continue
-		}
-		got, err := readDecryptedStream(rc)
-		if err == nil || err == io.EOF {
-			t.Errorf("No truncate error raised when decrypting truncated stream")
-		}
-		if bytes.Equal(got, plain) {
-			t.Errorf("Error: Succesfully decrypted truncated stream")
-		}
+	if err = packet.parse(truncatedContentsReader); err != nil {
+		t.Error(err)
+	}
+	rc, err := packet.decrypt(key)
+	if err != nil {
+		return
+	}
+	got, err := readDecryptedStream(rc)
+	if err == nil || err == io.EOF {
+		t.Errorf("No truncate error raised when decrypting truncated stream")
+	}
+	if bytes.Equal(got, plain) {
+		t.Errorf("Error: Succesfully decrypted truncated stream")
 	}
 }
 
 // Encrypts a random stream, truncate the end, and check if it fails
-func TestAeadRandomUnclosedStream(t *testing.T) {
-	for i := 0; i < iterations; i++ {
-		key := randomKey(16)
-		config := randomConfig()
-		ptLen := mathrand.Intn(maxPlaintextLength)
-		// Sample random plaintext of given length
-		plain := make([]byte, ptLen)
-		_, err := rand.Read(plain)
-		if err != nil {
-			t.Error(err)
-		}
-		// 'writeCloser' encrypts and writes the plaintext bytes.
-		rawCipher := bytes.NewBuffer(nil)
-		writeCloser, err := SerializeAEADEncrypted(
-			rawCipher, key, config.Cipher(), config.AEAD().Mode(), config,
-		)
-		if err != nil {
-			t.Error(err)
-		}
-		// Write the partial lengths packet into 'raw'
-		if _, err = writeCloser.Write(plain); err != nil {
-			t.Error(err)
-		}
-		// Don't call Close
+func TestAeadUnclosedStreamRandomizeSlow(t *testing.T) {
+	key := randomKey(16)
+	config := randomConfig()
+	ptLen := mathrand.Intn(maxPlaintextLength)
+	// Sample random plaintext of given length
+	plain := make([]byte, ptLen)
+	_, err := rand.Read(plain)
+	if err != nil {
+		t.Error(err)
+	}
+	// 'writeCloser' encrypts and writes the plaintext bytes.
+	rawCipher := bytes.NewBuffer(nil)
+	writeCloser, err := SerializeAEADEncrypted(
+		rawCipher, key, config.Cipher(), config.AEAD().Mode(), config,
+	)
+	if err != nil {
+		t.Error(err)
+	}
+	// Write the partial lengths packet into 'raw'
+	if _, err = writeCloser.Write(plain); err != nil {
+		t.Error(err)
+	}
+	// Don't call Close
 
-		packet := new(AEADEncrypted)
-		_, _, contentsReader, err := readHeader(rawCipher)
-		if err != nil {
-			continue
-		}
+	packet := new(AEADEncrypted)
+	_, _, contentsReader, err := readHeader(rawCipher)
+	if err != nil {
+		return
+	}
 
-		if err = packet.parse(contentsReader); err != nil {
-			continue
-		}
-		rc, err := packet.decrypt(key)
-		if err != nil {
-			continue
-		}
-		got, err := readDecryptedStream(rc)
-		if err == nil || err == io.EOF {
-			t.Errorf("No error raised when decrypting unclosed stream")
-		}
-		if bytes.Equal(got, plain) {
-			t.Errorf("Error: Succesfully decrypted unclosed stream")
-		}
+	if err = packet.parse(contentsReader); err != nil {
+		return
+	}
+	rc, err := packet.decrypt(key)
+	if err != nil {
+		return
+	}
+	got, err := readDecryptedStream(rc)
+	if err == nil || err == io.EOF {
+		t.Errorf("No error raised when decrypting unclosed stream")
+	}
+	if bytes.Equal(got, plain) {
+		t.Errorf("Error: Succesfully decrypted unclosed stream")
 	}
 }
-
 
 // ----------------------------------- //
 // -------       UTILS       --------- //

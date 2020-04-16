@@ -46,39 +46,37 @@ func TestCompressed(t *testing.T) {
 const compressedHex = "a3013b2d90c4e02b72e25f727e5e496a5e49b11e1700"
 const compressedExpectedHex = "cb1062004d14c8fe636f6e74656e74732e0a"
 
-func TestCompressDecompress(t *testing.T) {
+func TestCompressDecompressRandomizeFast(t *testing.T) {
 	algorithms := []CompressionAlgo{
 		CompressionZIP,
 		CompressionZLIB,
 	}
-	for i := 0; i < iterations; i++ {
-		plaintext := make([]byte, mathrand.Intn(maxMessageLen))
-		rand.Read(plaintext)
-		algo := algorithms[mathrand.Intn(len(algorithms))]
-		compConfig := &CompressionConfig{
-			Level: -1 + mathrand.Intn(11),
-		}
-		w := bytes.NewBuffer(nil)
-		wc := &noOpCloser{w: w}
-		wcomp, err := SerializeCompressed(wc, algo, compConfig)
-		if err != nil {
-			t.Fatal(err)
-		}
-		// Compress to w
-		wcomp.Write(plaintext)
-		wcomp.Close()
-		// Read the packet and decompress
-		p, err := Read(w)
-		c, ok := p.(*Compressed)
-		if !ok {
-			t.Error("didn't find Compressed packet")
-		}
-		contents, err := ioutil.ReadAll(c.Body)
-		if err != nil && err != io.EOF {
-			t.Error(err)
-		}
-		if !bytes.Equal(contents, plaintext) {
-			t.Error("Could not retrieve original after decompress")
-		}
+	plaintext := make([]byte, mathrand.Intn(maxMessageLen))
+	rand.Read(plaintext)
+	algo := algorithms[mathrand.Intn(len(algorithms))]
+	compConfig := &CompressionConfig{
+		Level: -1 + mathrand.Intn(11),
+	}
+	w := bytes.NewBuffer(nil)
+	wc := &noOpCloser{w: w}
+	wcomp, err := SerializeCompressed(wc, algo, compConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Compress to w
+	wcomp.Write(plaintext)
+	wcomp.Close()
+	// Read the packet and decompress
+	p, err := Read(w)
+	c, ok := p.(*Compressed)
+	if !ok {
+		t.Error("didn't find Compressed packet")
+	}
+	contents, err := ioutil.ReadAll(c.Body)
+	if err != nil && err != io.EOF {
+		t.Error(err)
+	}
+	if !bytes.Equal(contents, plaintext) {
+		t.Error("Could not retrieve original after decompress")
 	}
 }

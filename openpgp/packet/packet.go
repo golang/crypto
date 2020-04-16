@@ -10,10 +10,11 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/cipher"
+	"io"
+
 	"golang.org/x/crypto/openpgp/errors"
 	"golang.org/x/crypto/openpgp/internal/algorithm"
 	"golang.org/x/crypto/rsa"
-	"io"
 )
 
 // readFull is the same as io.ReadFull except that reading zero bytes returns

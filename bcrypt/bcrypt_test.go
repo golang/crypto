@@ -6,12 +6,19 @@ package bcrypt
 
 import (
 	"bytes"
+	"crypto/rand"
 	"fmt"
+	mathrand "math/rand"
 	"testing"
 )
 
-func TestBcryptingIsEasy(t *testing.T) {
-	pass := []byte("mypassword")
+const (
+	maxPasswordLength = 80
+)
+
+func TestRandomBcryptMismatchRandomizeSlow(t *testing.T) {
+	pass := make([]byte, mathrand.Intn(maxPasswordLength))
+	rand.Read(pass)
 	hp, err := GenerateFromPassword(pass, 0)
 	if err != nil {
 		t.Fatalf("GenerateFromPassword error: %s", err)
@@ -21,72 +28,55 @@ func TestBcryptingIsEasy(t *testing.T) {
 		t.Errorf("%v should hash %s correctly", hp, pass)
 	}
 
-	notPass := "notthepass"
-	err = CompareHashAndPassword(hp, []byte(notPass))
+	notPass := make([]byte, mathrand.Intn(maxPasswordLength))
+	for rand.Read(notPass); bytes.Equal(notPass, pass); {
+		rand.Read(notPass)
+	}
+
+	err = CompareHashAndPassword(hp, notPass)
 	if err != ErrMismatchedHashAndPassword {
 		t.Errorf("%v and %s should be mismatched", hp, notPass)
 	}
 }
 
-func TestBcryptingIsCorrect(t *testing.T) {
-	pass := []byte("allmine")
-	salt := []byte("XajjQvNhvvRt5GSeFk1xFe")
-	expectedHash := []byte("$2a$10$XajjQvNhvvRt5GSeFk1xFeyqRrsxkhBkUiQeg0dt.wU1qD4aFDcga")
+func TestExternalBcryptingCorrectness(t *testing.T) {
+	for _, sample := range externalBcryptHashes {
+		pass := []byte(sample.pass)
+		salt := []byte(sample.salt)
+		expectedHash := []byte(sample.hash)
+		cost := sample.cost
 
-	hash, err := bcrypt(pass, 10, salt)
-	if err != nil {
-		t.Fatalf("bcrypt blew up: %v", err)
-	}
-	if !bytes.HasSuffix(expectedHash, hash) {
-		t.Errorf("%v should be the suffix of %v", hash, expectedHash)
-	}
+		hash, err := bcrypt(pass, cost, salt)
+		if err != nil {
+			t.Fatalf("bcrypt blew up: %v", err)
+		}
+		if !bytes.HasSuffix(expectedHash, hash) {
+			fmt.Println(sample.pass)
+			t.Errorf("%v should be the suffix of %v", hash, expectedHash)
+		}
 
-	h, err := newFromHash(expectedHash)
-	if err != nil {
-		t.Errorf("Unable to parse %s: %v", string(expectedHash), err)
-	}
+		h, err := newFromHash(expectedHash)
+		if err != nil {
+			t.Errorf("Unable to parse %s: %v", string(expectedHash), err)
+		}
 
-	// This is not the safe way to compare these hashes. We do this only for
-	// testing clarity. Use bcrypt.CompareHashAndPassword()
-	if err == nil && !bytes.Equal(expectedHash, h.Hash()) {
-		t.Errorf("Parsed hash %v should equal %v", h.Hash(), expectedHash)
+		// This is not the safe way to compare these hashes. We do this only for
+		// testing clarity. Use bcrypt.CompareHashAndPassword()
+		if err == nil && !bytes.Equal(expectedHash, h.Hash()) {
+			t.Errorf("Parsed hash %v should equal %v", h.Hash(), expectedHash)
+		}
 	}
 }
 
 func TestVeryShortPasswords(t *testing.T) {
-	key := []byte("k")
-	salt := []byte("XajjQvNhvvRt5GSeFk1xFe")
-	_, err := bcrypt(key, 10, salt)
-	if err != nil {
-		t.Errorf("One byte key resulted in error: %s", err)
+	for _, salt := range randomSalts {
+		key := make([]byte, mathrand.Intn(5))
+		rand.Read(key)
+		_, err := bcrypt(key, 10, []byte(salt))
+		if err != nil {
+			t.Errorf("One byte key resulted in error: %s", err)
+		}
 	}
-}
-
-func TestTooLongPasswordsWork(t *testing.T) {
-	salt := []byte("XajjQvNhvvRt5GSeFk1xFe")
-	// One byte over the usual 56 byte limit that blowfish has
-	tooLongPass := []byte("012345678901234567890123456789012345678901234567890123456")
-	tooLongExpected := []byte("$2a$10$XajjQvNhvvRt5GSeFk1xFe5l47dONXg781AmZtd869sO8zfsHuw7C")
-	hash, err := bcrypt(tooLongPass, 10, salt)
-	if err != nil {
-		t.Fatalf("bcrypt blew up on long password: %v", err)
-	}
-	if !bytes.HasSuffix(tooLongExpected, hash) {
-		t.Errorf("%v should be the suffix of %v", hash, tooLongExpected)
-	}
-}
-
-type InvalidHashTest struct {
-	err  error
-	hash []byte
-}
-
-var invalidTests = []InvalidHashTest{
-	{ErrHashTooShort, []byte("$2a$10$fooo")},
-	{ErrHashTooShort, []byte("$2a")},
-	{HashVersionTooNewError('3'), []byte("$3a$10$sssssssssssssssssssssshhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")},
-	{InvalidHashPrefixError('%'), []byte("%2a$10$sssssssssssssssssssssshhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")},
-	{InvalidCostError(32), []byte("$2a$32$sssssssssssssssssssssshhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")},
 }
 
 func TestInvalidHashErrors(t *testing.T) {
@@ -149,11 +139,8 @@ func TestCost(t *testing.T) {
 }
 
 func TestCostValidationInHash(t *testing.T) {
-	if testing.Short() {
-		return
-	}
-
-	pass := []byte("mypassword")
+	pass := make([]byte, maxPasswordLength)
+	rand.Read(pass)
 
 	for c := 0; c < MinCost; c++ {
 		p, _ := newFromPassword(pass, c)
@@ -182,7 +169,9 @@ func TestCostValidationInHash(t *testing.T) {
 }
 
 func TestCostReturnsWithLeadingZeroes(t *testing.T) {
-	hp, _ := newFromPassword([]byte("abcdefgh"), 7)
+	pass := make([]byte, maxPasswordLength)
+	rand.Read(pass)
+	hp, _ := newFromPassword(pass, 7)
 	cost := hp.Hash()[4:7]
 	expected := []byte("07$")
 
@@ -206,6 +195,23 @@ func TestMinorNotRequired(t *testing.T) {
 	}
 }
 
+// See Issue https://github.com/golang/go/issues/20425.
+func TestNoSideEffectsFromCompare(t *testing.T) {
+	source := []byte("passw0rd123456")
+	password := source[:len(source)-6]
+	token := source[len(source)-6:]
+	want := make([]byte, len(source))
+	copy(want, source)
+
+	wantHash := []byte("$2a$10$LK9XRuhNxHHCvjX3tdkRKei1QiCDUKrJRhZv7WWZPuQGRUM92rOUa")
+	_ = CompareHashAndPassword(wantHash, password)
+
+	got := bytes.Join([][]byte{password, token}, []byte(""))
+	if !bytes.Equal(got, want) {
+		t.Errorf("got=%q want=%q", got, want)
+	}
+}
+
 func BenchmarkEqual(b *testing.B) {
 	b.StopTimer()
 	passwd := []byte("somepasswordyoulike")
@@ -222,22 +228,5 @@ func BenchmarkDefaultCost(b *testing.B) {
 	b.StartTimer()
 	for i := 0; i < b.N; i++ {
 		GenerateFromPassword(passwd, DefaultCost)
-	}
-}
-
-// See Issue https://github.com/golang/go/issues/20425.
-func TestNoSideEffectsFromCompare(t *testing.T) {
-	source := []byte("passw0rd123456")
-	password := source[:len(source)-6]
-	token := source[len(source)-6:]
-	want := make([]byte, len(source))
-	copy(want, source)
-
-	wantHash := []byte("$2a$10$LK9XRuhNxHHCvjX3tdkRKei1QiCDUKrJRhZv7WWZPuQGRUM92rOUa")
-	_ = CompareHashAndPassword(wantHash, password)
-
-	got := bytes.Join([][]byte{password, token}, []byte(""))
-	if !bytes.Equal(got, want) {
-		t.Errorf("got=%q want=%q", got, want)
 	}
 }

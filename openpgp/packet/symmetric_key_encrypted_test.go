@@ -7,10 +7,10 @@ package packet
 import (
 	"bytes"
 	"crypto/rand"
-	mathrand "math/rand"
 	"encoding/hex"
 	"io"
 	"io/ioutil"
+	mathrand "math/rand"
 	"testing"
 )
 
@@ -65,7 +65,7 @@ func TestDecryptSymmetricKeyAndEncryptedDataPacket(t *testing.T) {
 	}
 }
 
-func TestRandomSerializeSymmetricKeyEncryptedV5(t *testing.T) {
+func TestRandomSerializeSymmetricKeyEncryptedV5RandomizeSlow(t *testing.T) {
 	var ciphers = []CipherFunction{
 		CipherAES128,
 		CipherAES192,
@@ -77,38 +77,35 @@ func TestRandomSerializeSymmetricKeyEncryptedV5(t *testing.T) {
 		AEADModeExperimentalGCM,
 	}
 
+	var buf bytes.Buffer
+	passphrase := make([]byte, mathrand.Intn(maxPassLen))
+	_, err := rand.Read(passphrase)
+	if err != nil {
+		panic(err)
+	}
+	aeadConf := AEADConfig{
+		DefaultMode: modes[mathrand.Intn(len(modes))],
+	}
+	config := &Config{
+		DefaultCipher: ciphers[mathrand.Intn(len(ciphers))],
+		AEADConfig:    &aeadConf,
+	}
+	key, err := SerializeSymmetricKeyEncrypted(&buf, passphrase, config)
+	p, err := Read(&buf)
+	if err != nil {
+		t.Errorf("failed to reparse %s", err)
+	}
+	ske, ok := p.(*SymmetricKeyEncrypted)
+	if !ok {
+		t.Errorf("parsed a different packet type: %#v", p)
+	}
 
-	for i := 0; i < iterationsSlow; i++ {
-		var buf bytes.Buffer
-		passphrase := make([]byte, mathrand.Intn(maxPassLen))
-		_, err := rand.Read(passphrase)
-		if err != nil {
-			panic(err)
-		}
-		aeadConf := AEADConfig{
-			DefaultMode: modes[mathrand.Intn(len(modes))],
-		}
-		config := &Config{
-			DefaultCipher: ciphers[mathrand.Intn(len(ciphers))],
-			AEADConfig: &aeadConf,
-		}
-		key, err := SerializeSymmetricKeyEncrypted(&buf, passphrase, config)
-		p, err := Read(&buf)
-		if err != nil {
-			t.Errorf("failed to reparse %s", err)
-		}
-		ske, ok := p.(*SymmetricKeyEncrypted)
-		if !ok {
-			t.Errorf("parsed a different packet type: %#v", p)
-		}
-
-		parsedKey, _, err := ske.Decrypt(passphrase)
-		if err != nil {
-			t.Errorf("failed to decrypt reparsed SKE: %s", err)
-		}
-		if !bytes.Equal(key, parsedKey) {
-			t.Errorf("keys don't match after Decrypt: %x (original) vs %x (parsed)", key, parsedKey)
-		}
+	parsedKey, _, err := ske.Decrypt(passphrase)
+	if err != nil {
+		t.Errorf("failed to decrypt reparsed SKE: %s", err)
+	}
+	if !bytes.Equal(key, parsedKey) {
+		t.Errorf("keys don't match after Decrypt: %x (original) vs %x (parsed)", key, parsedKey)
 	}
 }
 
@@ -165,7 +162,7 @@ func TestSerializeSymmetricKeyEncryptedCiphersV4(t *testing.T) {
 		}
 		if parsedCipherFunc != test.cipherFunc {
 			t.Errorf("cipher(%s) cipher function doesn't match after Decrypt: %d (original) vs %d (parsed)",
-			test.name, test.cipherFunc, parsedCipherFunc)
+				test.name, test.cipherFunc, parsedCipherFunc)
 		}
 	}
 }

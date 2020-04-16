@@ -78,7 +78,9 @@ func detachSign(w io.Writer, signer *Entity, message io.Reader, sigType packet.S
 	if err != nil {
 		return
 	}
-	io.Copy(wrappedHash, message)
+	if _, err = io.Copy(wrappedHash, message); err != nil {
+		return err
+	}
 
 	err = sig.Sign(h, signer.PrivateKey, config)
 	if err != nil {

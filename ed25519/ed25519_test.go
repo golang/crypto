@@ -11,12 +11,18 @@ import (
 	"crypto"
 	"crypto/rand"
 	"encoding/hex"
+	mathrand "math/rand"
 	"os"
 	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ed25519/internal/edwards25519"
+)
+
+const (
+	// Message length of random test messages
+	maxMessageLength = 1 << 10
 )
 
 type zeroReader struct{}
@@ -46,25 +52,28 @@ func TestUnmarshalMarshal(t *testing.T) {
 	}
 }
 
-func TestSignVerify(t *testing.T) {
-	var zero zeroReader
-	public, private, _ := ed25519.GenerateKey(zero)
+func TestSignVerifyRandomizeSlow(t *testing.T) {
+	public, private, _ := ed25519.GenerateKey(rand.Reader)
 
-	message := []byte("test message")
+	message := make([]byte, mathrand.Intn(maxMessageLength))
+	if _, err := rand.Read(message); err != nil {
+		t.Fatal(err)
+	}
 	sig := ed25519.Sign(private, message)
 	if !ed25519.Verify(public, message, sig) {
 		t.Errorf("valid signature rejected")
 	}
-
-	wrongMessage := []byte("wrong message")
+	wrongMessage := make([]byte, 1+mathrand.Intn(maxMessageLength))
+	for rand.Read(wrongMessage); bytes.Equal(wrongMessage, message); {
+		rand.Read(wrongMessage)
+	}
 	if ed25519.Verify(public, wrongMessage, sig) {
 		t.Errorf("signature of different message accepted")
 	}
 }
 
-func TestCryptoSigner(t *testing.T) {
-	var zero zeroReader
-	public, private, _ := ed25519.GenerateKey(zero)
+func TestCryptoSignerRandomizeSlow(t *testing.T) {
+	public, private, _ := ed25519.GenerateKey(rand.Reader)
 
 	signer := crypto.Signer(private)
 
@@ -78,9 +87,12 @@ func TestCryptoSigner(t *testing.T) {
 		t.Errorf("public keys do not match: original:%x vs Public():%x", public, public2)
 	}
 
-	message := []byte("message")
+	message := make([]byte, mathrand.Intn(maxMessageLength))
+	if _, err := rand.Read(message); err != nil {
+		t.Fatal(err)
+	}
 	var noHash crypto.Hash
-	signature, err := signer.Sign(zero, message, noHash)
+	signature, err := signer.Sign(rand.Reader, message, noHash)
 	if err != nil {
 		t.Fatalf("error from Sign(): %s", err)
 	}

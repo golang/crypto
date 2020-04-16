@@ -8,16 +8,11 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"golang.org/x/crypto/openpgp/errors"
 	"io"
 	"io/ioutil"
 	"testing"
-)
 
-const (
-	iterations         = 500
-	iterationsSlow     = 10
-	iterationsVerySlow = 5
+	"golang.org/x/crypto/openpgp/errors"
 )
 
 func TestReadFull(t *testing.T) {

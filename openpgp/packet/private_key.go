@@ -35,16 +35,18 @@ type PrivateKey struct {
 	encryptedData []byte
 	cipher        CipherFunction
 	s2k           func(out, in []byte)
-	PrivateKey    interface{} // An *{rsa|dsa|ecdsa}.PrivateKey or crypto.Signer/crypto.Decrypter (Decryptor RSA only).
-	sha1Checksum  bool
-	iv            []byte
+	// An *{rsa|dsa|elgamal|ecdh|ecdsa|ed25519}.PrivateKey or
+	// crypto.Signer/crypto.Decrypter (Decryptor RSA only).
+	PrivateKey   interface{}
+	sha1Checksum bool
+	iv           []byte
 
 	// Type of encryption of the S2K packet
 	// Allowed values are 0 (Not encrypted), 254 (SHA1), or
 	// 255 (2-byte checksum)
-	s2kType       S2KType
+	s2kType S2KType
 	// Full parameters of the S2K packet
-	s2kParams     *s2k.Params
+	s2kParams *s2k.Params
 }
 
 //S2KType s2k packet type

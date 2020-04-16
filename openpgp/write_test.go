@@ -17,11 +17,8 @@ import (
 )
 
 const (
-	iterations         = 200
-	iterationsSlow     = 10
-	iterationsVerySlow = 5
-	maxPlaintextLen    = 1 << 12
-	maxPassLen         = 1 << 6
+	maxPlaintextLen = 1 << 12
+	maxPassLen      = 1 << 6
 )
 
 func TestSignDetached(t *testing.T) {
@@ -166,7 +163,7 @@ func TestSymmetricEncryption(t *testing.T) {
 	}
 }
 
-func TestSymmetricEncryptionV5(t *testing.T) {
+func TestSymmetricEncryptionV5RandomizeSlow(t *testing.T) {
 	var modes = []packet.AEADMode{
 		packet.AEADModeEAX,
 		packet.AEADModeOCB,
@@ -176,68 +173,66 @@ func TestSymmetricEncryptionV5(t *testing.T) {
 		DefaultMode: modes[mathrand.Intn(len(modes))],
 	}
 	config := &packet.Config{AEADConfig: &aeadConf}
-	for i := 0; i < iterationsVerySlow; i++ {
-		buf := new(bytes.Buffer)
-		passphrase := make([]byte, mathrand.Intn(maxPassLen))
-		_, err := rand.Read(passphrase)
-		if err != nil {
-			panic(err)
-		}
-		plaintext, err := SymmetricallyEncrypt(buf, passphrase, nil, config)
-		if err != nil {
-			t.Errorf("error writing headers: %s", err)
-			return
-		}
-		message := make([]byte, mathrand.Intn(maxPlaintextLen))
-		_, errR := rand.Read(message)
-		if errR != nil {
-			panic(errR)
-		}
-		_, err = plaintext.Write(message)
-		if err != nil {
-			t.Errorf("error writing to plaintext writer: %s", err)
-		}
-		err = plaintext.Close()
-		if err != nil {
-			t.Errorf("error closing plaintext writer: %s", err)
-		}
+	buf := new(bytes.Buffer)
+	passphrase := make([]byte, mathrand.Intn(maxPassLen))
+	_, err := rand.Read(passphrase)
+	if err != nil {
+		panic(err)
+	}
+	plaintext, err := SymmetricallyEncrypt(buf, passphrase, nil, config)
+	if err != nil {
+		t.Errorf("error writing headers: %s", err)
+		return
+	}
+	message := make([]byte, mathrand.Intn(maxPlaintextLen))
+	_, errR := rand.Read(message)
+	if errR != nil {
+		panic(errR)
+	}
+	_, err = plaintext.Write(message)
+	if err != nil {
+		t.Errorf("error writing to plaintext writer: %s", err)
+	}
+	err = plaintext.Close()
+	if err != nil {
+		t.Errorf("error closing plaintext writer: %s", err)
+	}
 
-		// Check if the packet is AEADEncrypted
-		copiedCiph := make([]byte, len(buf.Bytes()))
-		copy(copiedCiph, buf.Bytes())
-		copiedBuf := bytes.NewBuffer(copiedCiph)
-		packets := packet.NewReader(copiedBuf)
-		// First a SymmetricKeyEncrypted packet
-		p, err := packets.Next()
-		switch tp := p.(type) {
-		case *packet.SymmetricKeyEncrypted:
-		default:
-			t.Errorf("Didn't find a SymmetricKeyEncrypted packet (found %T instead)", tp)
-		}
-		// Then an AEADEncrypted packet
-		p, err = packets.Next()
-		switch tp := p.(type) {
-		case *packet.AEADEncrypted:
-		default:
-			t.Errorf("Didn't find an AEADEncrypted packet (found %T instead)", tp)
-		}
+	// Check if the packet is AEADEncrypted
+	copiedCiph := make([]byte, len(buf.Bytes()))
+	copy(copiedCiph, buf.Bytes())
+	copiedBuf := bytes.NewBuffer(copiedCiph)
+	packets := packet.NewReader(copiedBuf)
+	// First a SymmetricKeyEncrypted packet
+	p, err := packets.Next()
+	switch tp := p.(type) {
+	case *packet.SymmetricKeyEncrypted:
+	default:
+		t.Errorf("Didn't find a SymmetricKeyEncrypted packet (found %T instead)", tp)
+	}
+	// Then an AEADEncrypted packet
+	p, err = packets.Next()
+	switch tp := p.(type) {
+	case *packet.AEADEncrypted:
+	default:
+		t.Errorf("Didn't find an AEADEncrypted packet (found %T instead)", tp)
+	}
 
-		promptFunc := func(keys []Key, symmetric bool) ([]byte, error) {
-			return passphrase, nil
-		}
-		md, err := ReadMessage(buf, nil, promptFunc, config)
-		if err != nil {
-			t.Errorf("error rereading message: %s", err)
-		}
-		messageBuf := bytes.NewBuffer(nil)
-		_, err = io.Copy(messageBuf, md.UnverifiedBody)
-		if err != nil {
-			t.Errorf("error rereading message: %s", err)
-		}
-		if !bytes.Equal(message, messageBuf.Bytes()) {
-			t.Errorf("recovered message incorrect got '%s', want '%s'",
-				messageBuf.Bytes(), message)
-		}
+	promptFunc := func(keys []Key, symmetric bool) ([]byte, error) {
+		return passphrase, nil
+	}
+	md, err := ReadMessage(buf, nil, promptFunc, config)
+	if err != nil {
+		t.Errorf("error rereading message: %s", err)
+	}
+	messageBuf := bytes.NewBuffer(nil)
+	_, err = io.Copy(messageBuf, md.UnverifiedBody)
+	if err != nil {
+		t.Errorf("error rereading message: %s", err)
+	}
+	if !bytes.Equal(message, messageBuf.Bytes()) {
+		t.Errorf("recovered message incorrect got '%s', want '%s'",
+			messageBuf.Bytes(), message)
 	}
 }
 
@@ -304,7 +299,7 @@ func TestEncryption(t *testing.T) {
 				DefaultMode: modes[mathrand.Intn(len(modes))],
 			}
 			config = &packet.Config{
-				AEADConfig:  &aeadConf,
+				AEADConfig: &aeadConf,
 			}
 		}
 

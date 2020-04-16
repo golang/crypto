@@ -5,8 +5,9 @@
 package packet
 
 import (
-	"golang.org/x/crypto/openpgp/errors"
 	"io"
+
+	"golang.org/x/crypto/openpgp/errors"
 )
 
 // Reader reads packets from an io.Reader and allows packets to be 'unread' so
@@ -42,6 +43,7 @@ func (r *Reader) Next() (p Packet, err error) {
 			r.readers = r.readers[:len(r.readers)-1]
 			continue
 		}
+		// TODO: Add strict mode that rejects unknown packets, instead of ignoring them.
 		if _, ok := err.(errors.UnknownPacketTypeError); !ok {
 			return nil, err
 		}

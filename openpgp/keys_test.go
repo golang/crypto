@@ -33,7 +33,7 @@ func TestKeyExpiry(t *testing.T) {
 	if !ok {
 		t.Fatal("No encryption key found")
 	}
-	if id, expected := key.PublicKey.KeyIdShortString(), "96A672F5"; id != expected {
+	if id, expected := key.PublicKey.KeyIdShortString(), "CD3D39FF"; id != expected {
 		t.Errorf("Expected key %s at time %s, but got key %s", expected, time1.Format(timeFormat), id)
 	}
 
@@ -41,7 +41,7 @@ func TestKeyExpiry(t *testing.T) {
 	// selected.
 	time2, _ := time.Parse(timeFormat, "2013-07-09")
 	key, _ = entity.EncryptionKey(time2)
-	if id, expected := key.PublicKey.KeyIdShortString(), "96A672F5"; id != expected {
+	if id, expected := key.PublicKey.KeyIdShortString(), "CD3D39FF"; id != expected {
 		t.Errorf("Expected key %s at time %s, but got key %s", expected, time2.Format(timeFormat), id)
 	}
 
