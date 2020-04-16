@@ -13,9 +13,9 @@ const unaligned = runtime.GOARCH == "386" ||
 	runtime.GOARCH == "ppc64le" ||
 	runtime.GOARCH == "s390x"
 
-// xor reads a little endian uint32 from src, XORs it with u and
+// addXor reads a little endian uint32 from src, XORs it with (u + a) and
 // places the result in little endian byte order in dst.
-func xor(dst, src []byte, u uint32) {
+func addXor(dst, src []byte, u uint32, a uint32) {
 	_, _ = src[3], dst[3] // eliminate bounds checks
 	if unaligned {
 		// The compiler should optimize this code into
@@ -27,12 +27,13 @@ func xor(dst, src []byte, u uint32) {
 		v |= uint32(src[1]) << 8
 		v |= uint32(src[2]) << 16
 		v |= uint32(src[3]) << 24
-		v ^= u
+		v ^= u + a
 		dst[0] = byte(v)
 		dst[1] = byte(v >> 8)
 		dst[2] = byte(v >> 16)
 		dst[3] = byte(v >> 24)
 	} else {
+		u += a
 		dst[0] = src[0] ^ byte(u)
 		dst[1] = src[1] ^ byte(u>>8)
 		dst[2] = src[2] ^ byte(u>>16)
