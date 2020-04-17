@@ -89,7 +89,7 @@ func newUnauthenticatedCipher(c *Cipher, key, nonce []byte) (*Cipher, error) {
 		return nil, errors.New("chacha20: wrong nonce size")
 	}
 
-	_, _ = key[31], nonce[11] // bounds check elimination hint
+	_, _ = key[KeySize-1], nonce[NonceSize-1] // bounds check elimination hint
 	c.key = [8]uint32{
 		binary.LittleEndian.Uint32(key[0:4]),
 		binary.LittleEndian.Uint32(key[4:8]),
@@ -310,7 +310,7 @@ func (s *Cipher) xorKeyStreamBlocksGeneric(dst, src []byte) {
 			panic("chacha20: internal error: counter overflow")
 		}
 
-		src, dst = src[64:], dst[64:]
+		src, dst = src[blockSize:], dst[blockSize:]
 	}
 }
 
