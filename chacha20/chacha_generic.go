@@ -261,6 +261,8 @@ func (s *Cipher) xorKeyStreamBlocksGeneric(dst, src []byte) {
 		s.precompDone = true
 	}
 
+	// A condition of len(src) > 0 would be sufficient, but this also
+	// acts as a bounds check elimination hint.
 	for len(src) >= 64 && len(dst) >= 64 {
 		// The remainder of the first column round.
 		fcr0, fcr4, fcr8, fcr12 := quarterRound(c0, c4, c8, s.counter)
