@@ -49,8 +49,8 @@ type PublicKey []byte
 // PrivateKey is the type of Ed25519 private keys. It implements crypto.Signer.
 type PrivateKey []byte
 
-// Public returns the PublicKey corresponding to priv.
-func (priv PrivateKey) Public() crypto.PublicKey {
+// Public returns the ED25519 PublicKey corresponding to priv.
+func (priv PrivateKey) Public() PublicKey {
 	publicKey := make([]byte, PublicKeySize)
 	copy(publicKey, priv[32:])
 	return PublicKey(publicKey)
@@ -70,7 +70,7 @@ func (priv PrivateKey) Seed() []byte {
 // handle pre-hashed messages. Thus opts.HashFunc() must return zero to
 // indicate the message hasn't been hashed. This can be achieved by passing
 // crypto.Hash(0) as the value for opts.
-func (priv PrivateKey) Sign(rand io.Reader, message []byte, opts crypto.SignerOpts) (signature []byte, err error) {
+func (priv PrivateKey) Sign(message []byte, opts crypto.SignerOpts) (signature []byte, err error) {
 	if opts.HashFunc() != crypto.Hash(0) {
 		return nil, errors.New("ed25519: cannot sign hashed message")
 	}
