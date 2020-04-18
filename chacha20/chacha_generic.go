@@ -89,7 +89,7 @@ func newUnauthenticatedCipher(c *Cipher, key, nonce []byte) (*Cipher, error) {
 		return nil, errors.New("chacha20: wrong nonce size")
 	}
 
-	_, _ = key[KeySize-1], nonce[NonceSize-1] // bounds check elimination hint
+	key, nonce = key[:KeySize], nonce[:NonceSize] // bounds check elimination hint
 	c.key = [8]uint32{
 		binary.LittleEndian.Uint32(key[0:4]),
 		binary.LittleEndian.Uint32(key[4:8]),
