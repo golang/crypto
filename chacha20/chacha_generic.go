@@ -89,6 +89,7 @@ func newUnauthenticatedCipher(c *Cipher, key, nonce []byte) (*Cipher, error) {
 		return nil, errors.New("chacha20: wrong nonce size")
 	}
 
+	key, nonce = key[:KeySize], nonce[:NonceSize] // bounds check elimination hint
 	c.key = [8]uint32{
 		binary.LittleEndian.Uint32(key[0:4]),
 		binary.LittleEndian.Uint32(key[4:8]),
@@ -260,7 +261,9 @@ func (s *Cipher) xorKeyStreamBlocksGeneric(dst, src []byte) {
 		s.precompDone = true
 	}
 
-	for i := 0; i < len(src); i += blockSize {
+	// A condition of len(src) > 0 would be sufficient, but this also
+	// acts as a bounds check elimination hint.
+	for len(src) >= 64 && len(dst) >= 64 {
 		// The remainder of the first column round.
 		fcr0, fcr4, fcr8, fcr12 := quarterRound(c0, c4, c8, s.counter)
 
@@ -285,49 +288,31 @@ func (s *Cipher) xorKeyStreamBlocksGeneric(dst, src []byte) {
 			x3, x4, x9, x14 = quarterRound(x3, x4, x9, x14)
 		}
 
-		// Finally, add back the initial state to generate the key stream.
-		x0 += c0
-		x1 += c1
-		x2 += c2
-		x3 += c3
-		x4 += c4
-		x5 += c5
-		x6 += c6
-		x7 += c7
-		x8 += c8
-		x9 += c9
-		x10 += c10
-		x11 += c11
-		x12 += s.counter
-		x13 += c13
-		x14 += c14
-		x15 += c15
+		// Add back the initial state to generate the key stream, then
+		// XOR the key stream with the source and write out the result.
+		addXor(dst[0:4], src[0:4], x0, c0)
+		addXor(dst[4:8], src[4:8], x1, c1)
+		addXor(dst[8:12], src[8:12], x2, c2)
+		addXor(dst[12:16], src[12:16], x3, c3)
+		addXor(dst[16:20], src[16:20], x4, c4)
+		addXor(dst[20:24], src[20:24], x5, c5)
+		addXor(dst[24:28], src[24:28], x6, c6)
+		addXor(dst[28:32], src[28:32], x7, c7)
+		addXor(dst[32:36], src[32:36], x8, c8)
+		addXor(dst[36:40], src[36:40], x9, c9)
+		addXor(dst[40:44], src[40:44], x10, c10)
+		addXor(dst[44:48], src[44:48], x11, c11)
+		addXor(dst[48:52], src[48:52], x12, s.counter)
+		addXor(dst[52:56], src[52:56], x13, c13)
+		addXor(dst[56:60], src[56:60], x14, c14)
+		addXor(dst[60:64], src[60:64], x15, c15)
 
 		s.counter += 1
 		if s.counter == 0 {
 			panic("chacha20: internal error: counter overflow")
 		}
 
-		in, out := src[i:], dst[i:]
-		in, out = in[:blockSize], out[:blockSize] // bounds check elimination hint
-
-		// XOR the key stream with the source and write out the result.
-		xor(out[0:], in[0:], x0)
-		xor(out[4:], in[4:], x1)
-		xor(out[8:], in[8:], x2)
-		xor(out[12:], in[12:], x3)
-		xor(out[16:], in[16:], x4)
-		xor(out[20:], in[20:], x5)
-		xor(out[24:], in[24:], x6)
-		xor(out[28:], in[28:], x7)
-		xor(out[32:], in[32:], x8)
-		xor(out[36:], in[36:], x9)
-		xor(out[40:], in[40:], x10)
-		xor(out[44:], in[44:], x11)
-		xor(out[48:], in[48:], x12)
-		xor(out[52:], in[52:], x13)
-		xor(out[56:], in[56:], x14)
-		xor(out[60:], in[60:], x15)
+		src, dst = src[blockSize:], dst[blockSize:]
 	}
 }
 
