@@ -335,3 +335,19 @@ func TestReadASN1BitString(t *testing.T) {
 		}
 	}
 }
+
+func TestAddASN1BigInt(t *testing.T) {
+	x := big.NewInt(-1)
+	var b Builder
+	b.AddASN1BigInt(x)
+	got, err := b.Bytes()
+	if err != nil {
+		t.Fatalf("unexpected error adding -1: %v", err)
+	}
+	s := String(got)
+	var y big.Int
+	ok := s.ReadASN1Integer(&y)
+	if !ok || x.Cmp(&y) != 0 {
+		t.Errorf("unexpected bytes %v, want %v", &y, x)
+	}
+}
