@@ -6,6 +6,7 @@ package poly1305
 
 import (
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"flag"
 	"testing"
@@ -15,9 +16,10 @@ import (
 var stressFlag = flag.Bool("stress", false, "run slow stress tests")
 
 type test struct {
-	in  string
-	key string
-	tag string
+	in    string
+	key   string
+	tag   string
+	state string
 }
 
 func (t *test) Input() []byte {
@@ -48,9 +50,33 @@ func (t *test) Tag() [16]byte {
 	return tag
 }
 
+func (t *test) InitialState() [3]uint64 {
+	// state is hex encoded in big-endian byte order
+	if t.state == "" {
+		return [3]uint64{0, 0, 0}
+	}
+	buf, err := hex.DecodeString(t.state)
+	if err != nil {
+		panic(err)
+	}
+	if len(buf) != 3*8 {
+		panic("incorrect state length")
+	}
+	return [3]uint64{
+		binary.BigEndian.Uint64(buf[16:24]),
+		binary.BigEndian.Uint64(buf[8:16]),
+		binary.BigEndian.Uint64(buf[0:8]),
+	}
+}
+
 func testSum(t *testing.T, unaligned bool, sumImpl func(tag *[TagSize]byte, msg []byte, key *[32]byte)) {
 	var tag [16]byte
 	for i, v := range testData {
+		// cannot set initial state before calling sum, so skip those tests
+		if v.InitialState() != [3]uint64{0, 0, 0} {
+			continue
+		}
+
 		in := v.Input()
 		if unaligned {
 			in = unalignBytes(in)
@@ -140,6 +166,9 @@ func testWriteGeneric(t *testing.T, unaligned bool) {
 			input = unalignBytes(input)
 		}
 		h := newMACGeneric(&key)
+		if s := v.InitialState(); s != [3]uint64{0, 0, 0} {
+			h.macState.h = s
+		}
 		n, err := h.Write(input[:len(input)/3])
 		if err != nil || n != len(input[:len(input)/3]) {
 			t.Errorf("#%d: unexpected Write results: n = %d, err = %v", i, n, err)
@@ -165,6 +194,9 @@ func testWrite(t *testing.T, unaligned bool) {
 			input = unalignBytes(input)
 		}
 		h := New(&key)
+		if s := v.InitialState(); s != [3]uint64{0, 0, 0} {
+			h.macState.h = s
+		}
 		n, err := h.Write(input[:len(input)/3])
 		if err != nil || n != len(input[:len(input)/3]) {
 			t.Errorf("#%d: unexpected Write results: n = %d, err = %v", i, n, err)

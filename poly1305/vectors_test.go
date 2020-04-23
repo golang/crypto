@@ -2940,4 +2940,61 @@ var testData = [...]test{
 			"eeb979c28f03795f6f1e4b8410beab19a20febc91985b8a7c298534a6598" +
 			"f2c5b0dc5de9f5e55a97791507bc6373db26",
 	},
+
+	// Override initial state to ensure large h (subject to h < 2(2¹³⁰ - 5)) is
+	// deserialized from the state correctly.
+	{
+		key:   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+		state: "0000000000000007fffffffffffffffffffffffffffffff5", // 2(2¹³⁰ - 5) - 1
+		in:    "",
+		tag:   "f9ffffffffffffffffffffffffffffff",
+	},
+	{
+		key:   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+		state: "000000000000000700000000000000000000000000000000", // 2¹³⁰
+		in:    "",
+		tag:   "04000000000000000000000000000000",
+	},
+	{
+		key:   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+		state: "0000000000000007fffffffffffffffffffffffffffffff5", // 2(2¹³⁰ - 5) - 1
+		in: "ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff",
+		tag: "1b000e5e5dfe8f5c4da11dd17b7654e7",
+	},
+	{
+		key:   "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+		state: "000000000000000700000000000000000000000000000001", // 2¹³⁰
+		in: "ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff" +
+			"ffffffffffffffffffffffffffffffff",
+		tag: "380859a4a5860b0e0967edfd711d37de",
+	},
 }
