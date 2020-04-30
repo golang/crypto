@@ -101,7 +101,7 @@ func TestOCSPResponseRaw(t *testing.T) {
 			}
 
 			if !bytes.Equal(responseBytes, resp.Raw) {
-				t.Errorf("bytes not equal on marshal")
+				t.Errorf("bytes not equal")
 			}
 		})
 	}
