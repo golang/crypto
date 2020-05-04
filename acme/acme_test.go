@@ -569,6 +569,45 @@ func TestWaitAuthorization(t *testing.T) {
 			t.Errorf("err is %v (%T); want non-nil *AuthorizationError", err, err)
 		}
 	})
+	t.Run("invalid status with error returns the authorization error", func(t *testing.T) {
+		_, err := runWaitAuthorization(context.Background(), t, func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintf(w, `{
+				"type": "dns-01",
+				"status": "invalid",
+				"error": {
+				  "type": "urn:ietf:params:acme:error:caa",
+				  "detail": "CAA record for <domain> prevents issuance",
+				  "status": 403
+				},
+				"url": "https://acme-v02.api.letsencrypt.org/acme/chall-v3/xxx/xxx",
+				"token": "xxx",
+				"validationRecord": [
+				  {
+					"hostname": "<domain>"
+				  }
+				]
+			  }`)
+		})
+
+		want := &AuthorizationError{
+			Errors: []error{
+				(&wireError{
+					Status: 403,
+					Type:   "urn:ietf:params:acme:error:caa",
+					Detail: "CAA record for <domain> prevents issuance",
+				}).error(nil),
+			},
+		}
+
+		_, ok := err.(*AuthorizationError)
+		if !ok {
+			t.Errorf("err is %T; want non-nil *AuthorizationError", err)
+		}
+
+		if err.Error() != want.Error() {
+			t.Errorf("err is %v; want %v", err, want)
+		}
+	})
 	t.Run("non-retriable error", func(t *testing.T) {
 		const code = http.StatusBadRequest
 		_, err := runWaitAuthorization(context.Background(), t, func(w http.ResponseWriter, r *http.Request) {
@@ -1317,7 +1356,7 @@ func TestTLSALPN01ChallengeCert(t *testing.T) {
 	}
 	acmeExts := []pkix.Extension{}
 	for _, ext := range cert.Extensions {
-		if idPeACMEIdentifierV1.Equal(ext.Id) {
+		if idPeACMEIdentifier.Equal(ext.Id) {
 			acmeExts = append(acmeExts, ext)
 		}
 	}
