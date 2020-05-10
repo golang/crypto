@@ -7,6 +7,7 @@ package acme
 import (
 	"errors"
 	"net/http"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -114,5 +115,105 @@ func TestAuthorizationError(t *testing.T) {
 		if tt.err.Error() != tt.msg {
 			t.Errorf("got: %s\nwant: %s", tt.err, tt.msg)
 		}
+	}
+}
+
+func TestSubproblems(t *testing.T) {
+	tests := []struct {
+		wire        wireError
+		expectedOut Error
+	}{
+		{
+			wire: wireError{
+				Status: 1,
+				Type:   "urn:error",
+				Detail: "it's an error",
+			},
+			expectedOut: Error{
+				StatusCode:  1,
+				ProblemType: "urn:error",
+				Detail:      "it's an error",
+			},
+		},
+		{
+			wire: wireError{
+				Status: 1,
+				Type:   "urn:error",
+				Detail: "it's an error",
+				Subproblems: []Subproblem{
+					{
+						Type:   "urn:error:sub",
+						Detail: "it's a subproblem",
+					},
+				},
+			},
+			expectedOut: Error{
+				StatusCode:  1,
+				ProblemType: "urn:error",
+				Detail:      "it's an error",
+				Subproblems: []Subproblem{
+					{
+						Type:   "urn:error:sub",
+						Detail: "it's a subproblem",
+					},
+				},
+			},
+		},
+		{
+			wire: wireError{
+				Status: 1,
+				Type:   "urn:error",
+				Detail: "it's an error",
+				Subproblems: []Subproblem{
+					{
+						Type:       "urn:error:sub",
+						Detail:     "it's a subproblem",
+						Identifier: &AuthzID{Type: "dns", Value: "example"},
+					},
+				},
+			},
+			expectedOut: Error{
+				StatusCode:  1,
+				ProblemType: "urn:error",
+				Detail:      "it's an error",
+				Subproblems: []Subproblem{
+					{
+						Type:       "urn:error:sub",
+						Detail:     "it's a subproblem",
+						Identifier: &AuthzID{Type: "dns", Value: "example"},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		out := tc.wire.error(nil)
+		if !reflect.DeepEqual(*out, tc.expectedOut) {
+			t.Errorf("Unexpected error: wanted %v, got %v", tc.expectedOut, *out)
+		}
+	}
+}
+
+func TestErrorStringerWithSubproblems(t *testing.T) {
+	err := Error{
+		StatusCode:  1,
+		ProblemType: "urn:error",
+		Detail:      "it's an error",
+		Subproblems: []Subproblem{
+			{
+				Type:   "urn:error:sub",
+				Detail: "it's a subproblem",
+			},
+			{
+				Type:       "urn:error:sub",
+				Detail:     "it's a subproblem",
+				Identifier: &AuthzID{Type: "dns", Value: "example"},
+			},
+		},
+	}
+	expectedStr := "1 urn:error: it's an error; subproblems:\n\turn:error:sub: it's a subproblem\n\turn:error:sub: [dns: example] it's a subproblem"
+	if err.Error() != expectedStr {
+		t.Errorf("Unexpected error string: wanted %q, got %q", expectedStr, err.Error())
 	}
 }
