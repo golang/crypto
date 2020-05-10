@@ -564,7 +564,11 @@ func TestRFC_GetOrder(t *testing.T) {
 		AuthzURLs:   []string{"/authz/1"},
 		FinalizeURL: "/orders/1/fin",
 		CertURL:     "/orders/1/cert",
-		Error:       &Error{ProblemType: "badRequest"},
+		Error: &Error{
+			ProblemDetails: ProblemDetails{
+				ProblemType: "badRequest",
+			},
+		},
 	}
 	if !reflect.DeepEqual(o, okOrder) {
 		t.Errorf("GetOrder = %+v\nwant %+v", o, okOrder)
@@ -739,5 +743,57 @@ func TestRFC_AlreadyRevokedCert(t *testing.T) {
 	err := cl.RevokeCert(context.Background(), testKeyEC, []byte{0}, CRLReasonUnspecified)
 	if err != nil {
 		t.Fatalf("RevokeCert: %v", err)
+	}
+}
+
+func TestRFC_Subproblems(t *testing.T) {
+	s := newACMEServer()
+	s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/accounts/1"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status": "valid"}`))
+	})
+	s.handle("/acme/new-order", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		fmt.Fprint(w, `{"type":"urn:ietf:params:acme:error:malformed","detail":"Some of the identifiers requested were rejected","subproblems":[{"type":"urn:ietf:params:acme:error:malformed","title":"Hostname contains illegal characters","detail":"Invalid underscore in DNS name \"_example.org\"","identifier":{"type":"dns","value":"_example.org"}},{"type":"urn:ietf:params:acme:error:rejectedIdentifier","detail":"This CA will not issue for \"example.net\"","identifier":{"type":"dns","value":"example.net"}}]}`)
+	})
+	s.start()
+	defer s.close()
+
+	cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
+	o, err := cl.AuthorizeOrder(context.Background(), DomainIDs("_example.org", "example.net"))
+	if o != nil {
+		t.Fatal("Received a non-nil Order object when response was problem details")
+	}
+	acmeErr, isAcmeErr := err.(*Error)
+	if !isAcmeErr {
+		t.Fatalf("Expected error of type acme.Error, got %T", err)
+	}
+	expectedSubproblems := []SubproblemDetails{
+		{
+			ProblemDetails: ProblemDetails{
+				ProblemType: "urn:ietf:params:acme:error:malformed",
+				Title:       "Hostname contains illegal characters",
+				Detail:      "Invalid underscore in DNS name \"_example.org\"",
+			},
+			Identifier: AuthzID{
+				Type:  "dns",
+				Value: "_example.org",
+			},
+		},
+		{
+			ProblemDetails: ProblemDetails{
+				ProblemType: "urn:ietf:params:acme:error:rejectedIdentifier",
+				Detail:      "This CA will not issue for \"example.net\"",
+			},
+			Identifier: AuthzID{
+				Type:  "dns",
+				Value: "example.net",
+			},
+		},
+	}
+
+	if !reflect.DeepEqual(acmeErr.Subproblems, expectedSubproblems) {
+		t.Errorf("Loss of subproblem data fidelity from the wire. Expected %+v, got %+v", expectedSubproblems, acmeErr.Subproblems)
 	}
 }
