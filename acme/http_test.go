@@ -238,3 +238,18 @@ func TestUserAgent(t *testing.T) {
 		}
 	}
 }
+
+func TestAccountKidLoop(t *testing.T) {
+	// if Client.postNoRetry is called with a nil key argument
+	// then Client.Key must be set, otherwise we fall into an
+	// infinite loop (which also causes a deadlock).
+	client := &Client{dir: &Directory{OrderURL: ":)"}}
+	_, _, err := client.postNoRetry(context.Background(), nil, "", nil)
+	if err == nil {
+		t.Fatal("Client.postNoRetry didn't fail with a nil key")
+	}
+	expected := "acme: Client.Key must be populated to make POST requests"
+	if err.Error() != expected {
+		t.Fatalf("Unexpected error returned: wanted %q, got %q", expected, err.Error())
+	}
+}
