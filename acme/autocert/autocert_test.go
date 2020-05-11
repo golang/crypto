@@ -488,9 +488,8 @@ func startACMEServerStub(t *testing.T, tokenCert getCertificateFunc, domain stri
 		if err := crt.VerifyHostname(domain); err != nil {
 			t.Errorf("verifyTokenCert: %v", err)
 		}
-		// TODO: Update OID to the latest value 1.3.6.1.5.5.7.1.31
 		// See https://tools.ietf.org/html/draft-ietf-acme-tls-alpn-05#section-5.1
-		oid := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 30, 1}
+		oid := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
 		for _, x := range crt.Extensions {
 			if x.Id.Equal(oid) {
 				// No need to check the extension value here.

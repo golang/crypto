@@ -82,6 +82,14 @@ var keyPressTests = []struct {
 		line: "ba",
 	},
 	{
+		in:   "a\006b\r", // ^F
+		line: "ab",
+	},
+	{
+		in:   "a\002b\r", // ^B
+		line: "ba",
+	},
+	{
 		in:   "a\177b\r", // backspace
 		line: "b",
 	},
@@ -208,6 +216,16 @@ var keyPressTests = []struct {
 		line: "a",
 		err:  ErrPasteIndicator,
 	},
+	{
+		// Ctrl-C terminates readline
+		in:  "\003",
+		err: io.EOF,
+	},
+	{
+		// Ctrl-C at the end of line also terminates readline
+		in:  "a\003\r",
+		err: io.EOF,
+	},
 }
 
 func TestKeyPresses(t *testing.T) {
@@ -323,18 +341,32 @@ func TestTerminalSetSize(t *testing.T) {
 }
 
 func TestReadPasswordLineEnd(t *testing.T) {
-	var tests = []struct {
+	type testType struct {
 		input string
 		want  string
-	}{
-		{"\n", ""},
+	}
+	var tests = []testType{
 		{"\r\n", ""},
 		{"test\r\n", "test"},
+		{"test\r", "test"},
+		{"test\n", "test"},
 		{"testtesttesttes\n", "testtesttesttes"},
 		{"testtesttesttes\r\n", "testtesttesttes"},
 		{"testtesttesttesttest\n", "testtesttesttesttest"},
 		{"testtesttesttesttest\r\n", "testtesttesttesttest"},
+		{"\btest", "test"},
+		{"t\best", "est"},
+		{"te\bst", "tst"},
+		{"test\b", "tes"},
+		{"test\b\r\n", "tes"},
+		{"test\b\n", "tes"},
+		{"test\b\r", "tes"},
 	}
+	eol := "\n"
+	if runtime.GOOS == "windows" {
+		eol = "\r"
+	}
+	tests = append(tests, testType{eol, ""})
 	for _, test := range tests {
 		buf := new(bytes.Buffer)
 		if _, err := buf.WriteString(test.input); err != nil {
