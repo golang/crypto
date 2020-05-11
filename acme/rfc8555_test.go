@@ -755,7 +755,7 @@ func TestRFC_Subproblems(t *testing.T) {
 	})
 	s.handle("/acme/new-order", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprint(w, `{"type":"urn:ietf:params:acme:error:malformed","detail":"Some of the identifiers requested were rejected","subproblems":[{"type":"urn:ietf:params:acme:error:malformed","title":"Hostname contains illegal characters","detail":"Invalid underscore in DNS name \"_example.org\"","identifier":{"type":"dns","value":"_example.org"}},{"type":"urn:ietf:params:acme:error:rejectedIdentifier","detail":"This CA will not issue for \"example.net\"","identifier":{"type":"dns","value":"example.net"}}]}`)
+		fmt.Fprint(w, `{"type":"urn:ietf:params:acme:error:malformed","detail":"Some of the identifiers requested were rejected","subproblems":[{"type":"urn:ietf:params:acme:error:malformed","title":"Hostname contains illegal characters","detail":"Invalid underscore in DNS name \"_example.org\"","identifier":{"type":"dns","value":"_example.org"}},{"type":"urn:ietf:params:acme:error:rejectedIdentifier","detail":"This CA will not issue for \"example.net\""}]}`)
 	})
 	s.start()
 	defer s.close()
@@ -773,10 +773,9 @@ func TestRFC_Subproblems(t *testing.T) {
 		{
 			ProblemDetails: ProblemDetails{
 				ProblemType: "urn:ietf:params:acme:error:malformed",
-				Title:       "Hostname contains illegal characters",
 				Detail:      "Invalid underscore in DNS name \"_example.org\"",
 			},
-			Identifier: AuthzID{
+			Identifier: &AuthzID{
 				Type:  "dns",
 				Value: "_example.org",
 			},
@@ -786,10 +785,7 @@ func TestRFC_Subproblems(t *testing.T) {
 				ProblemType: "urn:ietf:params:acme:error:rejectedIdentifier",
 				Detail:      "This CA will not issue for \"example.net\"",
 			},
-			Identifier: AuthzID{
-				Type:  "dns",
-				Value: "example.net",
-			},
+			Identifier: nil,
 		},
 	}
 

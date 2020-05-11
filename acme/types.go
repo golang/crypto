@@ -65,9 +65,6 @@ type ProblemDetails struct {
 	// ProblemType is a URI reference that identifies the problem type,
 	// typically in a "urn:acme:error:xxx" form.
 	ProblemType string `json:"type"`
-	// Title is a short, human-readable summary of the problem type.
-	// This optional attribute may not be set by your ACME server implementation.
-	Title string
 	// Detail is a human-readable explanation specific to this occurrence of the problem.
 	Detail string
 	// Instance indicates a URL that the client should direct a human user to visit
@@ -76,8 +73,6 @@ type ProblemDetails struct {
 	// "urn:ietf:params:acme:error:userActionRequired" and a Link header with relation
 	// "terms-of-service" containing the latest TOS URL.
 	Instance string
-	// Subproblems are optional additional per-identifier problems.
-	Subproblems []SubproblemDetails
 }
 
 // SubproblemDetails represents sub-problems specific to an identifier that are
@@ -85,13 +80,15 @@ type ProblemDetails struct {
 // See RFC 8555 Section 6.7.1: https://tools.ietf.org/html/rfc8555#section-6.7.1
 type SubproblemDetails struct {
 	ProblemDetails
-	Identifier AuthzID
+	Identifier *AuthzID
 }
 
 // Error is an ACME error, based on Problem Details for HTTP APIs doc
 // https://tools.ietf.org/html/rfc7807
 type Error struct {
 	ProblemDetails
+	// Subproblems are optional additional per-identifier problems.
+	Subproblems []SubproblemDetails
 	// Header is the original server error response headers.
 	// It may be nil.
 	Header http.Header
@@ -532,7 +529,6 @@ func (c *wireChallenge) challenge() *Challenge {
 type wireError struct {
 	Status      int
 	Type        string
-	Title       string
 	Detail      string
 	Instance    string
 	Subproblems []SubproblemDetails
@@ -543,11 +539,10 @@ func (e *wireError) error(h http.Header) *Error {
 		ProblemDetails: ProblemDetails{
 			StatusCode:  e.Status,
 			ProblemType: e.Type,
-			Title:       e.Title,
 			Detail:      e.Detail,
 			Instance:    e.Instance,
-			Subproblems: e.Subproblems,
 		},
+		Subproblems: e.Subproblems,
 		Header: h,
 	}
 }
