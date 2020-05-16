@@ -558,10 +558,16 @@ userAuthLoop:
 				candidate.user = s.user
 				candidate.pubKeyData = pubKeyData
 				candidate.perms, candidate.result = config.PublicKeyCallback(s, pubKey)
-				if candidate.result == nil && candidate.perms != nil && candidate.perms.CriticalOptions != nil && candidate.perms.CriticalOptions[sourceAddressCriticalOption] != "" {
-					candidate.result = checkSourceAddress(
+				// If PublicKeyCallback returns ErrPartialSuccess we need to check source address
+				// and update the returned error if this check fails
+				if (candidate.result == nil || candidate.result == ErrPartialSuccess) && candidate.perms != nil && candidate.perms.CriticalOptions != nil && candidate.perms.CriticalOptions[sourceAddressCriticalOption] != "" {
+					err = checkSourceAddress(
 						s.RemoteAddr(),
 						candidate.perms.CriticalOptions[sourceAddressCriticalOption])
+					// We need to update candidate.result only if the source address check fails
+					if err != nil {
+						candidate.result = err
+					}
 				}
 				cache.add(candidate)
 			}
