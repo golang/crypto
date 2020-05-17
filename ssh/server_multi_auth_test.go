@@ -8,7 +8,10 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
+
+	"golang.org/x/crypto/ssh/testdata"
 )
 
 func doClientServerAuth(t *testing.T, serverConfig *ServerConfig, clientConfig *ClientConfig, serverAuthErrors *[]error) error {
@@ -110,7 +113,7 @@ func TestMultiStepAuthKeyAndPwd(t *testing.T) {
 		t.Fatalf("unexpected number of server auth errors: %v, errors: %+v", len(serverAuthErrors), serverAuthErrors)
 	}
 	if serverAuthErrors[1] != errWrongSequence {
-		t.Fatal("server not wrong sequence")
+		t.Fatal("server not returned wrong sequence")
 	}
 	if serverAuthErrors[2] != ErrPartialSuccess {
 		t.Fatal("server not returned partial success")
@@ -401,5 +404,159 @@ func TestMultiStepAuthKeyAndPwdAndKeyboardInteractive(t *testing.T) {
 	}
 	if serverAuthErrors[2] != ErrPartialSuccess {
 		t.Fatal("server not returned partial success")
+	}
+}
+
+func TestMultiStepAuthUserCertAndPwd(t *testing.T) {
+	var serverAuthErrors []error
+	username := "testuser"
+	errPwdAuthFailed := errors.New("password auth failed")
+	errWrongSequence := errors.New("wrong sequence")
+
+	certChecker := CertChecker{
+		SupportedCriticalOptions: []string{
+			sourceAddressCriticalOption,
+		},
+		IsUserAuthority: func(auth PublicKey) bool {
+			return bytes.Equal(auth.Marshal(), testPublicKeys["ca"].Marshal())
+		},
+	}
+
+	testuserCert, _, _, _, err := ParseAuthorizedKey(testdata.SSHCertificates["rsa_testuser"])
+	if err != nil {
+		t.Fatalf("Unable to parse rsa_testuser cert: %v", err)
+	}
+	signerTestuser, err := NewCertSigner(testuserCert.(*Certificate), testSigners["rsa"])
+	if err != nil {
+		t.Fatalf("Unable to create cert signer for rsa_testuser cert: %v", err)
+	}
+
+	serverConfig := &ServerConfig{
+		PasswordCallback: func(conn ConnMetadata, pass []byte) (*Permissions, error) {
+			// we only accept password auth if public key auth was already completed
+			if len(conn.PartialSuccessMethods()) == 0 {
+				return nil, errWrongSequence
+			}
+			if conn.PartialSuccessMethods()[0] != "publickey" {
+				return nil, errWrongSequence
+			}
+			if conn.User() == username && string(pass) == clientPassword {
+				return nil, nil
+			}
+			return nil, errPwdAuthFailed
+		},
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if conn.User() == username {
+				p, err := certChecker.Authenticate(conn, key)
+				if err != nil {
+					return p, err
+				}
+				// we only accept public key auth if it is the first authentication step
+				if len(conn.PartialSuccessMethods()) == 0 {
+					return p, ErrPartialSuccess
+				}
+				return nil, errWrongSequence
+			}
+
+			return nil, fmt.Errorf("pubkey for %q not acceptable", conn.User())
+		},
+		NextAuthMethodsCallback: func(conn ConnMetadata) []string {
+			if len(conn.PartialSuccessMethods()) == 1 && conn.PartialSuccessMethods()[0] == "publickey" {
+				return []string{"password"}
+			}
+			return []string{"publickey", "password"}
+		},
+	}
+
+	clientConfig := &ClientConfig{
+		User: username,
+		Auth: []AuthMethod{
+			PublicKeys(signerTestuser),
+			Password(clientPassword),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	err = doClientServerAuth(t, serverConfig, clientConfig, &serverAuthErrors)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+
+	if len(serverAuthErrors) != 3 {
+		t.Fatalf("unexpected number of server auth errors: %v, errors: %+v", len(serverAuthErrors), serverAuthErrors)
+	}
+	if serverAuthErrors[1] != ErrPartialSuccess {
+		t.Fatal("server not returned partial success")
+	}
+
+	// now test a user certificate with 127.0.0.1 as source address critical option
+	testuserCert, _, _, _, err = ParseAuthorizedKey(testdata.SSHCertificates["rsa_testuser_local_source_address"])
+	if err != nil {
+		t.Fatalf("Unable to parse rsa_testuser cert: %v", err)
+	}
+	signerTestuser, err = NewCertSigner(testuserCert.(*Certificate), testSigners["rsa"])
+	if err != nil {
+		t.Fatalf("Unable to create cert signer for rsa_testuser cert: %v", err)
+	}
+
+	serverAuthErrors = nil
+	clientConfig = &ClientConfig{
+		User: username,
+		Auth: []AuthMethod{
+			PublicKeys(signerTestuser),
+			Password(clientPassword),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	err = doClientServerAuth(t, serverConfig, clientConfig, &serverAuthErrors)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+
+	if len(serverAuthErrors) != 3 {
+		t.Fatalf("unexpected number of server auth errors: %v, errors: %+v", len(serverAuthErrors), serverAuthErrors)
+	}
+	if serverAuthErrors[1] != ErrPartialSuccess {
+		t.Fatal("server not returned partial success")
+	}
+
+	// now test a user certificate with an unacceptable source address critical option
+	testuserCert, _, _, _, err = ParseAuthorizedKey(testdata.SSHCertificates["rsa_testuser_nonlocal_source_address"])
+	if err != nil {
+		t.Fatalf("Unable to parse rsa_testuser cert: %v", err)
+	}
+	signerTestuser, err = NewCertSigner(testuserCert.(*Certificate), testSigners["rsa"])
+	if err != nil {
+		t.Fatalf("Unable to create cert signer for rsa_testuser cert: %v", err)
+	}
+
+	serverAuthErrors = nil
+	clientConfig = &ClientConfig{
+		User: username,
+		Auth: []AuthMethod{
+			PublicKeys(signerTestuser),
+			Password(clientPassword),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	err = doClientServerAuth(t, serverConfig, clientConfig, &serverAuthErrors)
+	if err == nil {
+		t.Fatalf("client login must fail the user cert has an unacceptable source address critical option")
+	}
+
+	// the error sequence is:
+	// - no auth passed yet
+	// - remote address %v is not allowed because of source-address restriction
+	// - wrong sequence
+	if len(serverAuthErrors) != 3 {
+		t.Fatalf("unexpected number of server auth errors: %v, errors: %+v", len(serverAuthErrors), serverAuthErrors)
+	}
+	if serverAuthErrors[1] == nil || !strings.Contains(serverAuthErrors[1].Error(), "is not allowed because of source-address restriction") {
+		t.Fatalf("server not returned the expected error: %v", serverAuthErrors[1])
+	}
+	if serverAuthErrors[2] != errWrongSequence {
+		t.Fatal("server not returned wrong sequence")
 	}
 }
