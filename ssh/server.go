@@ -580,7 +580,8 @@ userAuthLoop:
 					return nil, parseError(msgUserAuthRequest)
 				}
 
-				if candidate.result == nil {
+				// a public key is ok if result is nil or partial success
+				if candidate.result == nil || candidate.result == ErrPartialSuccess {
 					okMsg := userAuthPubKeyOkMsg{
 						Algo:   algo,
 						PubKey: pubKeyData,
