@@ -1115,7 +1115,7 @@ func (*PassphraseMissingError) Error() string {
 }
 
 // ParseRawPrivateKey returns a private key from a PEM encoded private key. It
-// supports RSA (PKCS#1), PKCS#8, DSA (OpenSSL), and ECDSA private keys. If the
+// supports RSA (PKCS#1), PKCS#8, DSA (OpenSSL), ECDSA and ED25519 private keys. If the
 // private key is encrypted, it will return a PassphraseMissingError.
 func ParseRawPrivateKey(pemBytes []byte) (interface{}, error) {
 	block, _ := pem.Decode(pemBytes)
