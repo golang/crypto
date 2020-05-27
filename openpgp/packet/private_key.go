@@ -89,8 +89,23 @@ func NewECDSAPrivateKey(creationTime time.Time, priv *ecdsa.PrivateKey) *Private
 	return pk
 }
 
+func NewEdDSAPrivateKey(creationTime time.Time, priv *ed25519.PrivateKey) *PrivateKey {
+	pk := new(PrivateKey)
+	pub := priv.Public().(ed25519.PublicKey)
+	pk.PublicKey = *NewEdDSAPublicKey(creationTime, &pub)
+	pk.PrivateKey = priv
+	return pk
+}
+
+func NewECDHPrivateKey(creationTime time.Time, priv *ecdh.PrivateKey) *PrivateKey {
+	pk := new(PrivateKey)
+	pk.PublicKey = *NewECDHPublicKey(creationTime, &priv.PublicKey)
+	pk.PrivateKey = priv
+	return pk
+}
+
 // NewSignerPrivateKey creates a PrivateKey from a crypto.Signer that
-// implements RSA or ECDSA.
+// implements RSA, ECDSA or EdDSA.
 func NewSignerPrivateKey(creationTime time.Time, signer crypto.Signer) *PrivateKey {
 	pk := new(PrivateKey)
 	// In general, the public Keys should be used as pointers. We still
@@ -104,8 +119,10 @@ func NewSignerPrivateKey(creationTime time.Time, signer crypto.Signer) *PrivateK
 		pk.PublicKey = *NewECDSAPublicKey(creationTime, pubkey)
 	case ecdsa.PublicKey:
 		pk.PublicKey = *NewECDSAPublicKey(creationTime, &pubkey)
-	case ed25519.PublicKey:
+	case *ed25519.PublicKey:
 		pk.PublicKey = *NewEdDSAPublicKey(creationTime, pubkey)
+	case ed25519.PublicKey:
+		pk.PublicKey = *NewEdDSAPublicKey(creationTime, &pubkey)
 	default:
 		panic("openpgp: unknown crypto.Signer type in NewSignerPrivateKey")
 	}
@@ -113,17 +130,20 @@ func NewSignerPrivateKey(creationTime time.Time, signer crypto.Signer) *PrivateK
 	return pk
 }
 
-func NewECDHPrivateKey(creationTime time.Time, priv *ecdh.PrivateKey) *PrivateKey {
+// NewDecrypterPrivateKey creates a PrivateKey from a *{rsa|elgamal|ecdh}.PrivateKey.
+func NewDecrypterPrivateKey(creationTime time.Time, decrypter interface{}) *PrivateKey {
 	pk := new(PrivateKey)
-	pk.PublicKey = *NewECDHPublicKey(creationTime, &priv.PublicKey)
-	pk.PrivateKey = priv
-	return pk
-}
-
-func NewEdDSAPrivateKey(creationTime time.Time, priv ed25519.PrivateKey) *PrivateKey {
-	pk := new(PrivateKey)
-	pk.PublicKey = *NewEdDSAPublicKey(creationTime, priv.Public().(ed25519.PublicKey))
-	pk.PrivateKey = priv
+	switch priv := decrypter.(type) {
+	case *rsa.PrivateKey:
+		pk.PublicKey = *NewRSAPublicKey(creationTime, &priv.PublicKey)
+	case *elgamal.PrivateKey:
+		pk.PublicKey = *NewElGamalPublicKey(creationTime, &priv.PublicKey)
+	case *ecdh.PrivateKey:
+		pk.PublicKey = *NewECDHPublicKey(creationTime, &priv.PublicKey)
+	default:
+		panic("openpgp: unknown decrypter type in NewDecrypterPrivateKey")
+	}
+	pk.PrivateKey = decrypter
 	return pk
 }
 
@@ -329,9 +349,9 @@ func serializeECDSAPrivateKey(w io.Writer, priv *ecdsa.PrivateKey) error {
 	return err
 }
 
-func serializeEdDSAPrivateKey(w io.Writer, priv ed25519.PrivateKey) error {
+func serializeEdDSAPrivateKey(w io.Writer, priv *ed25519.PrivateKey) error {
 	keySize := ed25519.PrivateKeySize - ed25519.PublicKeySize
-	_, err := w.Write(encoding.NewMPI(priv[:keySize]).EncodedBytes())
+	_, err := w.Write(encoding.NewMPI((*priv)[:keySize]).EncodedBytes())
 	return err
 }
 
@@ -456,7 +476,7 @@ func (pk *PrivateKey) serializePrivateKey(w io.Writer) (err error) {
 		err = serializeElGamalPrivateKey(w, priv)
 	case *ecdsa.PrivateKey:
 		err = serializeECDSAPrivateKey(w, priv)
-	case ed25519.PrivateKey:
+	case *ed25519.PrivateKey:
 		err = serializeEdDSAPrivateKey(w, priv)
 	case *ecdh.PrivateKey:
 		err = serializeECDHPrivateKey(w, priv)
@@ -597,7 +617,7 @@ func (pk *PrivateKey) parseECDHPrivateKey(data []byte) (err error) {
 }
 
 func (pk *PrivateKey) parseEdDSAPrivateKey(data []byte) (err error) {
-	eddsaPub := pk.PublicKey.PublicKey.(ed25519.PublicKey)
+	eddsaPub := pk.PublicKey.PublicKey.(*ed25519.PublicKey)
 	eddsaPriv := make(ed25519.PrivateKey, ed25519.PrivateKeySize)
 
 	buf := bytes.NewBuffer(data)
@@ -608,9 +628,9 @@ func (pk *PrivateKey) parseEdDSAPrivateKey(data []byte) (err error) {
 
 	priv := d.Bytes()
 	copy(eddsaPriv[32-len(priv):32], priv)
-	copy(eddsaPriv[32:], eddsaPub[:])
+	copy(eddsaPriv[32:], (*eddsaPub)[:])
 
-	pk.PrivateKey = eddsaPriv
+	pk.PrivateKey = &eddsaPriv
 	pk.Encrypted = false
 	pk.encryptedData = nil
 

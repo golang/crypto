@@ -83,6 +83,7 @@ func TestNewEntity(t *testing.T) {
 	if err != nil {
 		t.Errorf("failed to find bit length: %s", err)
 	}
+	defaultRSAKeyBits := 2048
 	if int(bl) != defaultRSAKeyBits {
 		t.Errorf("BitLength %v, expected %v", int(bl), defaultRSAKeyBits)
 	}

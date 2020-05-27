@@ -376,14 +376,14 @@ func TestEncryptDecryptEdDSAPrivateKeyRandomizeFast(t *testing.T) {
 	if err != nil {
 		panic(err)
 	}
-	privKey := *NewEdDSAPrivateKey(time.Now(), primaryKey)
+	privKey := *NewEdDSAPrivateKey(time.Now(), &primaryKey)
 	copiedPrivKey := make([]byte, len(primaryKey))
-	copy(copiedPrivKey, privKey.PrivateKey.(ed25519.PrivateKey))
+	copy(copiedPrivKey, *privKey.PrivateKey.(*ed25519.PrivateKey))
 	// Encrypt private key with random passphrase
 	privKey.Encrypt(password)
 	// Decrypt and check correctness
 	privKey.Decrypt(password)
-	if !bytes.Equal(privKey.PrivateKey.(ed25519.PrivateKey), copiedPrivKey) {
+	if !bytes.Equal(*privKey.PrivateKey.(*ed25519.PrivateKey), copiedPrivKey) {
 		t.Fatalf("Private key was not correctly decrypted:\ngot:\n%v\nwant:\n%v", privKey.PrivateKey, copiedPrivKey)
 	}
 }

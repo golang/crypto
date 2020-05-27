@@ -128,12 +128,8 @@ ParsePackets:
 			for _, k := range keys {
 				pubKeys = append(pubKeys, keyEnvelopePair{k, p})
 			}
-		case *packet.SymmetricallyEncrypted:
-			edp = p
-			break ParsePackets
-		case *packet.AEADEncrypted:
-			// edp = p.(*EncryptedDataPacket)
-			edp = p
+		case *packet.SymmetricallyEncrypted, *packet.AEADEncrypted:
+			edp = p.(packet.EncryptedDataPacket)
 			break ParsePackets
 		case *packet.Compressed, *packet.LiteralData, *packet.OnePassSignature:
 			// This message isn't encrypted.

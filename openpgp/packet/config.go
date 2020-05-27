@@ -7,10 +7,9 @@ package packet
 import (
 	"crypto"
 	"crypto/rand"
-	"math/big"
 	"io"
+	"math/big"
 	"time"
-
 )
 
 // Config collects a number of parameters along with sensible defaults.
@@ -103,6 +102,20 @@ func (c *Config) PasswordHashIterations() int {
 		return 0
 	}
 	return c.S2KCount
+}
+
+func (c *Config) RSAModulusBits() int {
+	if c == nil || c.RSABits == 0 {
+		return 2048
+	}
+	return c.RSABits
+}
+
+func (c *Config) PublicKeyAlgorithm() PublicKeyAlgorithm {
+	if c == nil || c.Algorithm == 0 {
+		return PubKeyAlgoRSA
+	}
+	return c.Algorithm
 }
 
 func (c *Config) AEAD() *AEADConfig {

@@ -37,7 +37,7 @@ type kdfAlgorithm byte
 type PublicKey struct {
 	CreationTime time.Time
 	PubKeyAlgo   PublicKeyAlgorithm
-	PublicKey    interface{} // *rsa.PublicKey, *dsa.PublicKey or *ecdsa.PublicKey
+	PublicKey    interface{} // *rsa.PublicKey, *dsa.PublicKey, *ecdsa.PublicKey or *eddsa.PublicKey
 	Fingerprint  [20]byte
 	KeyId        uint64
 	IsSubkey     bool
@@ -155,7 +155,7 @@ func NewECDHPublicKey(creationTime time.Time, pub *ecdh.PublicKey) *PublicKey {
 	return pk
 }
 
-func NewEdDSAPublicKey(creationTime time.Time, pub ed25519.PublicKey) *PublicKey {
+func NewEdDSAPublicKey(creationTime time.Time, pub *ed25519.PublicKey) *PublicKey {
 	curveInfo := ecc.FindByName("Ed25519")
 	pk := &PublicKey{
 		CreationTime: creationTime,
@@ -163,7 +163,7 @@ func NewEdDSAPublicKey(creationTime time.Time, pub ed25519.PublicKey) *PublicKey
 		PublicKey:    pub,
 		oid:          curveInfo.Oid,
 		// Native point format, see draft-koch-eddsa-for-openpgp-04, Appendix B
-		p: encoding.NewMPI(append([]byte{0x40}, pub...)),
+		p: encoding.NewMPI(append([]byte{0x40}, *pub...)),
 	}
 
 	pk.setFingerPrintAndKeyId()
@@ -405,7 +405,7 @@ func (pk *PublicKey) parseEdDSA(r io.Reader) (err error) {
 		return errors.UnsupportedError("unsupported EdDSA compression: " + strconv.Itoa(int(flag)))
 	}
 
-	pk.PublicKey = eddsa
+	pk.PublicKey = &eddsa
 	return
 }
 
@@ -612,7 +612,7 @@ func (pk *PublicKey) VerifySignature(signed hash.Hash, sig *Signature) (err erro
 		}
 		return nil
 	case PubKeyAlgoEdDSA:
-		eddsaPublicKey := pk.PublicKey.(ed25519.PublicKey)
+		eddsaPublicKey := pk.PublicKey.(*ed25519.PublicKey)
 
 		sigR := sig.EdDSASigR.Bytes()
 		sigS := sig.EdDSASigS.Bytes()
@@ -621,7 +621,7 @@ func (pk *PublicKey) VerifySignature(signed hash.Hash, sig *Signature) (err erro
 		copy(eddsaSig[32-len(sigR):32], sigR)
 		copy(eddsaSig[64-len(sigS):], sigS)
 
-		if !ed25519.Verify(eddsaPublicKey, hashBytes, eddsaSig) {
+		if !ed25519.Verify(*eddsaPublicKey, hashBytes, eddsaSig) {
 			return errors.SignatureError("EdDSA verification failure")
 		}
 		return nil
