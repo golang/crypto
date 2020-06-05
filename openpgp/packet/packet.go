@@ -540,3 +540,14 @@ func (mode AEADMode) TagLength() int {
 func (mode AEADMode) new(block cipher.Block) cipher.AEAD {
 	return algorithm.AEADMode(mode).New(block)
 }
+
+// ReasonForRevocation represents a revocation reason code as per RFC4880
+// section 5.2.3.23.
+type ReasonForRevocation uint8
+
+const (
+	NoReason       ReasonForRevocation = 0
+	KeySuperseded  ReasonForRevocation = 1
+	KeyCompromised ReasonForRevocation = 2
+	KeyRetired     ReasonForRevocation = 3
+)
