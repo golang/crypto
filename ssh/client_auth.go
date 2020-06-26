@@ -200,6 +200,7 @@ func (cb publicKeyCallback) auth(session []byte, user string, c packetConn, rand
 		return authFailure, nil, err
 	}
 	var methods []string
+
 	for _, signer := range signers {
 		ok, err := validateKey(signer.PublicKey(), user, c)
 		if err != nil {
@@ -211,11 +212,19 @@ func (cb publicKeyCallback) auth(session []byte, user string, c packetConn, rand
 
 		pub := signer.PublicKey()
 		pubKey := pub.Marshal()
+
+		// Openssh has deprecated "ssh-rsa" algorithm type, so we should not
+		// default to this algorithm when signing certs.
+		algoname := pub.Type()
+		if algoname == KeyAlgoRSA {
+			algoname = SigAlgoRSASHA2256
+		}
+
 		sign, err := signer.Sign(rand, buildDataSignedForAuth(session, userAuthRequestMsg{
 			User:    user,
 			Service: serviceSSH,
 			Method:  cb.method(),
-		}, []byte(pub.Type()), pubKey))
+		}, []byte(algoname), pubKey))
 		if err != nil {
 			return authFailure, nil, err
 		}
@@ -229,7 +238,7 @@ func (cb publicKeyCallback) auth(session []byte, user string, c packetConn, rand
 			Service:  serviceSSH,
 			Method:   cb.method(),
 			HasSig:   true,
-			Algoname: pub.Type(),
+			Algoname: algoname,
 			PubKey:   pubKey,
 			Sig:      sig,
 		}
@@ -273,7 +282,7 @@ func validateKey(key PublicKey, user string, c packetConn) (bool, error) {
 		Service:  serviceSSH,
 		Method:   "publickey",
 		HasSig:   false,
-		Algoname: key.Type(),
+		Algoname: SigAlgoRSASHA2256,
 		PubKey:   pubKey,
 	}
 	if err := c.writePacket(Marshal(&msg)); err != nil {
@@ -285,7 +294,7 @@ func validateKey(key PublicKey, user string, c packetConn) (bool, error) {
 
 func confirmKeyAck(key PublicKey, c packetConn) (bool, error) {
 	pubKey := key.Marshal()
-	algoname := key.Type()
+	algoname := SigAlgoRSASHA2256
 
 	for {
 		packet, err := c.readPacket()
