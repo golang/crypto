@@ -104,6 +104,10 @@ func unmarshal(in []byte, out interface{}) error {
 }
 
 // ToPEM converts all "safe bags" contained in pfxData to PEM blocks.
+//
+// Note that although the returned PEM blocks for private keys have type
+// "PRIVATE KEY", the bytes are not encoded according to PKCS #8, but according
+// to PKCS #1 for RSA keys and SEC 1 for ECDSA keys.
 func ToPEM(pfxData []byte, password string) ([]*pem.Block, error) {
 	encodedPassword, err := bmpString(password)
 	if err != nil {
