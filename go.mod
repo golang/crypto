@@ -1,4 +1,4 @@
-module golang.org/x/crypto
+module github.com/tbotnz/crypto/ssh/terminal
 
 go 1.11
 
