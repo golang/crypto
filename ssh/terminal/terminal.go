@@ -116,7 +116,7 @@ const (
 	keyCtrlC     = 3
 	keyCtrlD     = 4
 	keyCtrlU     = 21
-	keyEnter     = '\r'
+	keyEnter     = '\n'
 	keyEscape    = 27
 	keyBackspace = 127
 	keyUnknown   = 0xd800 /* UTF-16 surrogate area */ + iota
