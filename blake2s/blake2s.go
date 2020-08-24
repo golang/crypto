@@ -16,7 +16,7 @@
 //
 // BLAKE2X is a construction to compute hash values larger than 32 bytes. It
 // can produce hash values between 0 and 65535 bytes.
-package blake2s // import "golang.org/x/crypto/blake2s"
+package blake2s // import "github.com/tbotnz/crypto/blake2s"
 
 import (
 	"encoding/binary"

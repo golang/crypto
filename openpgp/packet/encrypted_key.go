@@ -12,8 +12,8 @@ import (
 	"math/big"
 	"strconv"
 
-	"golang.org/x/crypto/openpgp/elgamal"
-	"golang.org/x/crypto/openpgp/errors"
+	"github.com/tbotnz/crypto/openpgp/elgamal"
+	"github.com/tbotnz/crypto/openpgp/errors"
 )
 
 const encryptedKeyVersion = 3

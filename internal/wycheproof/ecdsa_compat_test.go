@@ -12,8 +12,8 @@ import (
 	"crypto/ecdsa"
 	"math/big"
 
-	"golang.org/x/crypto/cryptobyte"
-	"golang.org/x/crypto/cryptobyte/asn1"
+	"github.com/tbotnz/crypto/cryptobyte"
+	"github.com/tbotnz/crypto/cryptobyte/asn1"
 )
 
 func verifyASN1(pub *ecdsa.PublicKey, hash, sig []byte) bool {

@@ -10,8 +10,8 @@ import (
 	"crypto/dsa"
 	"math/big"
 
-	"golang.org/x/crypto/cryptobyte"
-	"golang.org/x/crypto/cryptobyte/asn1"
+	"github.com/tbotnz/crypto/cryptobyte"
+	"github.com/tbotnz/crypto/cryptobyte/asn1"
 )
 
 // VerifyASN1 verifies the ASN1 encoded signature, sig, of hash using the

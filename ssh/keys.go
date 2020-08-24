@@ -26,8 +26,8 @@ import (
 	"math/big"
 	"strings"
 
-	"golang.org/x/crypto/ed25519"
-	"golang.org/x/crypto/ssh/internal/bcrypt_pbkdf"
+	"github.com/tbotnz/crypto/ed25519"
+	"github.com/tbotnz/crypto/ssh/internal/bcrypt_pbkdf"
 )
 
 // These constants represent the algorithm names for key types supported by this

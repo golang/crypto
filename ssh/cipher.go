@@ -17,8 +17,8 @@ import (
 	"io"
 	"io/ioutil"
 
-	"golang.org/x/crypto/chacha20"
-	"golang.org/x/crypto/poly1305"
+	"github.com/tbotnz/crypto/chacha20"
+	"github.com/tbotnz/crypto/poly1305"
 )
 
 const (

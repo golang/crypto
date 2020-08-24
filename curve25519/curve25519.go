@@ -5,7 +5,7 @@
 // Package curve25519 provides an implementation of the X25519 function, which
 // performs scalar multiplication on the elliptic curve known as Curve25519.
 // See RFC 7748.
-package curve25519 // import "golang.org/x/crypto/curve25519"
+package curve25519 // import "github.com/tbotnz/crypto/curve25519"
 
 import (
 	"crypto/subtle"

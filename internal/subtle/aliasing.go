@@ -6,7 +6,7 @@
 
 // Package subtle implements functions that are often useful in cryptographic
 // code but require careful thought to use correctly.
-package subtle // import "golang.org/x/crypto/internal/subtle"
+package subtle // import "github.com/tbotnz/crypto/internal/subtle"
 
 import "unsafe"
 

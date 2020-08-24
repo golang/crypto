@@ -12,7 +12,7 @@ import (
 	"errors"
 	"math/bits"
 
-	"golang.org/x/crypto/internal/subtle"
+	"github.com/tbotnz/crypto/internal/subtle"
 )
 
 const (
@@ -68,7 +68,7 @@ var _ cipher.Stream = (*Cipher)(nil)
 // Note that ChaCha20, like all stream ciphers, is not authenticated and allows
 // attackers to silently tamper with the plaintext. For this reason, it is more
 // appropriate as a building block than as a standalone encryption mechanism.
-// Instead, consider using package golang.org/x/crypto/chacha20poly1305.
+// Instead, consider using package github.com/tbotnz/crypto/chacha20poly1305.
 func NewUnauthenticatedCipher(key, nonce []byte) (*Cipher, error) {
 	// This function is split into a wrapper so that the Cipher allocation will
 	// be inlined, and depending on how the caller uses the return value, won't
