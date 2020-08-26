@@ -128,6 +128,7 @@ const (
 	keyAltRight
 	keyHome
 	keyEnd
+	keyDelete
 	keyDeleteWord
 	keyDeleteLine
 	keyClearScreen
@@ -179,6 +180,13 @@ func bytesToKey(b []byte, pasteActive bool) (rune, []byte) {
 		}
 		r, l := utf8.DecodeRune(b)
 		return r, b[l:]
+	}
+
+	if !pasteActive && len(b) >= 4 && b[0] == keyEscape && b[1] == '[' && b[3] == '~' {
+		switch b[2] {
+		case '3':
+			return keyDelete, b[4:]
+		}
 	}
 
 	if !pasteActive && len(b) >= 3 && b[0] == keyEscape && b[1] == '[' {
@@ -532,6 +540,11 @@ func (t *Terminal) handleKey(key rune) (line string, ok bool) {
 		t.cursorX = 0
 		t.cursorY = 0
 		t.maxLine = 0
+	case keyDelete:
+		if t.pos < len(t.line) {
+			t.pos++
+			t.eraseNPreviousChars(1)
+		}
 	case keyDeleteWord:
 		// Delete zero or more spaces and then one or more characters.
 		t.eraseNPreviousChars(t.countToLeftWord())

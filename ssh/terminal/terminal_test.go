@@ -193,6 +193,21 @@ var keyPressTests = []struct {
 		line: "a",
 	},
 	{
+		// a, b, c, d, left, left, delete should leave abd.
+		in:   "abcd\x1b[D\x1b[D\x1b[3~\r",
+		line: "abd",
+	},
+	{
+		// a, b, c, d, delete should leave abcd.
+		in:   "abcd\x1b[3~\r",
+		line: "abcd",
+	},
+	{
+		// a single delete should do nothing.
+		in:   "\x1b[3~\r",
+		line: "",
+	},
+	{
 		// a, b, c, d, left, left, ^U should erase to the beginning of
 		// the line.
 		in:   "abcd\x1b[D\x1b[D\025\r",
