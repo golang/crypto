@@ -424,6 +424,15 @@ func TestMakeRawState(t *testing.T) {
 	}
 }
 
+func TestGetPrompt(t *testing.T) {
+	c := &MockTerminal{}
+	ss := NewTerminal(c, "prompt")
+	p := ss.GetPrompt()
+	if p != "prompt" {
+		t.Fatalf("failed to read prompt, got %s", p)
+	}
+}
+
 func TestOutputNewlines(t *testing.T) {
 	// \n should be changed to \r\n in terminal output.
 	buf := new(bytes.Buffer)
