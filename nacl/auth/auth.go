@@ -40,7 +40,7 @@ const (
 func Sum(m []byte, key *[KeySize]byte) *[Size]byte {
 	mac := hmac.New(sha512.New, key[:])
 	mac.Write(m)
-	out := new([KeySize]byte)
+	out := new([Size]byte)
 	copy(out[:], mac.Sum(nil)[:Size])
 	return out
 }
