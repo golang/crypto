@@ -509,7 +509,11 @@ func (sig *Signature) signPrepareHash(h hash.Hash) (digest []byte, err error) {
 // On success, the signature is stored in sig. Call Serialize to write it out.
 // If config is nil, sensible defaults will be used.
 func (sig *Signature) Sign(h hash.Hash, priv *PrivateKey, config *Config) (err error) {
-	sig.outSubpackets = sig.buildSubpackets()
+	outSubpackets, err := sig.buildSubpackets()
+	if err != nil {
+		return
+	}
+	sig.outSubpackets = outSubpackets
 	digest, err := sig.signPrepareHash(h)
 	if err != nil {
 		return
@@ -583,15 +587,33 @@ func (sig *Signature) SignUserId(id string, pub *PublicKey, priv *PrivateKey, co
 	return sig.Sign(h, priv, config)
 }
 
-// SignKey computes a signature from priv, asserting that pub is a subkey. On
+// SignSubKey computes a signature from masterKey, asserting that it owns this subKey. On
 // success, the signature is stored in sig. Call Serialize to write it out.
 // If config is nil, sensible defaults will be used.
-func (sig *Signature) SignKey(pub *PublicKey, priv *PrivateKey, config *Config) error {
-	h, err := keySignatureHash(&priv.PublicKey, pub, sig.Hash)
+func (sig *Signature) SignSubKey(subKey *PublicKey, masterKey *PrivateKey, config *Config) error {
+	h, err := keySignatureHash(&masterKey.PublicKey, subKey, sig.Hash)
 	if err != nil {
 		return err
 	}
-	return sig.Sign(h, priv, config)
+	return sig.Sign(h, masterKey, config)
+}
+
+// SignKey is an alias to SignSubKey which is here to maintain backwards-incompatibility,
+// but which should be considered DEPRECATED, and may be removed in the future.
+func (sig *Signature) SignKey(subKey *PublicKey, masterKey *PrivateKey, config *Config) error {
+	return sig.SignSubKey(subKey, masterKey, config)
+}
+
+// SignMasterKey computes a signature from subKey, asserting that it is owned by this masterKey. On
+// success, the signature is stored in sig. Call Serialize to write it out.
+// If config is nil, sensible defaults will be used.
+// https://www.gnupg.org/faq/subkey-cross-certify.html
+func (sig *Signature) SignMasterKey(masterKey *PublicKey, subKey *PrivateKey, config *Config) error {
+	h, err := keySignatureHash(masterKey, &subKey.PublicKey, sig.Hash)
+	if err != nil {
+		return err
+	}
+	return sig.Sign(h, subKey, config)
 }
 
 // Serialize marshals sig to w. Sign, SignUserId or SignKey must have been
@@ -627,6 +649,12 @@ func (sig *Signature) Serialize(w io.Writer) (err error) {
 		return
 	}
 
+	return sig.serializeWithoutHeaders(w)
+}
+
+// https://tools.ietf.org/html/rfc4880#section-5.2.3
+func (sig *Signature) serializeWithoutHeaders(w io.Writer) (err error) {
+	unhashedSubpacketsLen := subpacketsLength(sig.outSubpackets, false)
 	_, err = w.Write(sig.HashSuffix[:len(sig.HashSuffix)-6])
 	if err != nil {
 		return
@@ -667,7 +695,7 @@ type outputSubpacket struct {
 	contents      []byte
 }
 
-func (sig *Signature) buildSubpackets() (subpackets []outputSubpacket) {
+func (sig *Signature) buildSubpackets() (subpackets []outputSubpacket, err error) {
 	creationTime := make([]byte, 4)
 	binary.BigEndian.PutUint32(creationTime, uint32(sig.CreationTime.Unix()))
 	subpackets = append(subpackets, outputSubpacket{true, creationTimeSubpacket, false, creationTime})
@@ -725,6 +753,16 @@ func (sig *Signature) buildSubpackets() (subpackets []outputSubpacket) {
 
 	if len(sig.PreferredCompression) > 0 {
 		subpackets = append(subpackets, outputSubpacket{true, prefCompressionSubpacket, false, sig.PreferredCompression})
+	}
+
+	// https://tools.ietf.org/html/rfc4880#section-5.2.3.26
+	if sig.EmbeddedSignature != nil {
+		var buf bytes.Buffer
+		err = sig.EmbeddedSignature.serializeWithoutHeaders(&buf)
+		if err != nil {
+			return
+		}
+		subpackets = append(subpackets, outputSubpacket{true, embeddedSignatureSubpacket, true, buf.Bytes()})
 	}
 
 	return

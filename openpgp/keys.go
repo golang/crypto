@@ -578,7 +578,7 @@ func NewEntity(name, comment, email string, config *packet.Config) (*Entity, err
 	}
 	e.Subkeys[0].PublicKey.IsSubkey = true
 	e.Subkeys[0].PrivateKey.IsSubkey = true
-	err = e.Subkeys[0].Sig.SignKey(e.Subkeys[0].PublicKey, e.PrivateKey, config)
+	err = e.Subkeys[0].Sig.SignSubKey(e.Subkeys[0].PublicKey, e.PrivateKey, config)
 	if err != nil {
 		return nil, err
 	}
@@ -613,7 +613,13 @@ func (e *Entity) SerializePrivate(w io.Writer, config *packet.Config) (err error
 		if err != nil {
 			return
 		}
-		err = subkey.Sig.SignKey(subkey.PublicKey, e.PrivateKey, config)
+		if subkey.Sig.FlagsValid && subkey.Sig.FlagSign {
+			err = subkey.Sig.EmbeddedSignature.SignMasterKey(e.PrimaryKey, subkey.PrivateKey, config)
+			if err != nil {
+				return
+			}
+		}
+		err = subkey.Sig.SignSubKey(subkey.PublicKey, e.PrivateKey, config)
 		if err != nil {
 			return
 		}
