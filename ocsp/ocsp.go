@@ -466,7 +466,7 @@ func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
 
 // ParseResponseForCert acts identically to ParseResponse, except it supports
 // parsing responses that contain multiple statuses. If the response contains
-// multiple responses and cert is not nil,  then ParseResponseForCert will return
+// multiple statuses and cert is not nil, then ParseResponseForCert will return
 // the first status which contains a matching serial, otherwise it will return an
 // error. If cert is nil, then the first status in the response will be returned.
 func ParseResponseForCert(bytes []byte, cert, issuer *x509.Certificate) (*Response, error) {
