@@ -445,14 +445,15 @@ func ParseRequest(bytes []byte) (*Request, error) {
 	}, nil
 }
 
-// ParseResponse parses an OCSP response in DER form. Response must contain
-// only one certificate statuses. To parse the status of a specific Certificate,
-// use ParseResponseForCert instead.
+// ParseResponse parses an OCSP response in DER form. The response must contain
+// only one certificate status. To parse the status of a specific certificate
+// from a response which may contain multiple statuses, use ParseResponseForCert
+// instead.
 //
 // If the response contains an embedded certificate, then that certificate will
 // be used to verify the response signature. If the response contains an
 // embedded certificate and issuer is not nil, then issuer will be used to verify
-// the certificate signature.
+// the signature on the embedded certificate.
 //
 // If the response does not contain an embedded certificate and issuer is not
 // nil, then issuer will be used to verify the response signature.
@@ -463,21 +464,11 @@ func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
 	return ParseResponseForCert(bytes, nil, issuer)
 }
 
-// ParseResponseForCert parses an OCSP response in DER form. If cert is not nil
-// ParseResponseForCert will look for a certificate status in the response that
-// has a serial matching cert. If cert is nil the first certificate status in
-// the response is returned.
-//
-// If the response contains a embedded certificate then that certificate will
-// be used to verify the response signature. If the response contains an
-// embedded certificate and issuer is not nil then issuer will be used to verify
-// the certificate signature.
-//
-// If the response does not contain an embedded certificate and issuer is not
-// nil then issuer will be used to verify the response signature.
-//
-// Invalid responses and parse failures will result in a ParseError.
-// Error responses will result in a ResponseError.
+// ParseResponseForCert acts identically to ParseResponse, except it supports
+// parsing responses that contain multiple statuses. If the response contains
+// multiple responses and cert is not nil,  then ParseResponseForCert will return
+// the first status which contains a matching serial, otherwise it will return an
+// error. If cert is nil, then the first status in the response will be returned.
 func ParseResponseForCert(bytes []byte, cert, issuer *x509.Certificate) (*Response, error) {
 	var resp responseASN1
 	rest, err := asn1.Unmarshal(bytes, &resp)
