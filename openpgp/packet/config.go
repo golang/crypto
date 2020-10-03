@@ -46,6 +46,11 @@ type Config struct {
 	// RSABits is the number of bits in new RSA keys made with NewEntity.
 	// If zero, then 2048 bit keys are created.
 	RSABits int
+	// SigLifetimeSecs is the number of seconds after the signature creation
+	// time that the signature expires.  If this is not present or has a value
+	// of zero, it never expires.
+	// https://tools.ietf.org/html/rfc4880#section-5.2.3.10
+	SigLifetimeSecs uint32
 }
 
 func (c *Config) Random() io.Reader {
