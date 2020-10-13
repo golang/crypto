@@ -223,6 +223,10 @@ type ExternalAccountBinding struct {
 	KeyAlgorithm string
 }
 
+func (e *ExternalAccountBinding) String() string {
+	return fmt.Sprintf("&{KID: %q, Key: redacted, KeyAlgorithm: %v}", e.KID, e.KeyAlgorithm)
+}
+
 // Directory is ACME server discovery data.
 // See https://tools.ietf.org/html/rfc8555#section-7.1.1 for more details.
 type Directory struct {
