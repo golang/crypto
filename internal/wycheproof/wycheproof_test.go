@@ -24,7 +24,7 @@ import (
 	_ "crypto/sha512"
 )
 
-const wycheproofModVer = "v0.0.0-20191126014559-06e5e105eeb9"
+const wycheproofModVer = "v0.0.0-20191219022705-2196000605e4"
 
 var wycheproofTestVectorsDir string
 

@@ -351,3 +351,24 @@ func TestAddASN1BigInt(t *testing.T) {
 		t.Errorf("unexpected bytes %v, want %v", &y, x)
 	}
 }
+
+func TestReadASN1Boolean(t *testing.T) {
+	testData := []struct {
+		in  []byte
+		ok  bool
+		out bool
+	}{
+		{[]byte{}, false, false},
+		{[]byte{0x01, 0x01, 0x00}, true, false},
+		{[]byte{0x01, 0x01, 0xff}, true, true},
+		{[]byte{0x01, 0x01, 0x01}, false, false},
+	}
+	for i, test := range testData {
+		in := String(test.in)
+		var out bool
+		ok := in.ReadASN1Boolean(&out)
+		if ok != test.ok || ok && (out != test.out) {
+			t.Errorf("#%d: in.ReadASN1Boolean() = %v, want %v; out = %v, want %v", i, ok, test.ok, out, test.out)
+		}
+	}
+}
