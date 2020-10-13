@@ -206,19 +206,20 @@ type Account struct {
 	ExternalAccountBinding *ExternalAccountBinding
 }
 
-// ExternalAccountBinding contains the data needed to form a request with with
+// ExternalAccountBinding contains the data needed to form a request with
 // an external account binding.
 // See https://tools.ietf.org/html/rfc8555#section-7.3.4 for more details.
 type ExternalAccountBinding struct {
-	// The KID is the Key ID of the symmetric MAC key that the CA uses to
+	// KID is the Key ID of the symmetric MAC key that the CA uses to
 	// identify an external account from ACME.
 	KID string
 
-	// The Key is the key bytes of a symmetric key that the CA uses to identify
+	// Key is the bytes of a symmetric key that the CA uses to identify
 	// the account. The KID should reference the same key that the CA holds.
 	Key []byte
 
-	// The KeyAlgorithm of key hashing algorithm to use with this key.
+	// KeyAlgorithm of the JWS. Only the HMAC algorithms are supported
+	// https://tools.ietf.org/html/rfc7518#section-3.1
 	KeyAlgorithm string
 }
 
