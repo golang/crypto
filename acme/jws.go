@@ -41,6 +41,14 @@ const noKeyID = keyID("")
 // See https://tools.ietf.org/html/rfc8555#section-6.3 for more details.
 const noPayload = ""
 
+// jsonWebSignature can be easily serialized into a JWS following
+// https://tools.ietf.org/html/rfc7515#section-3.2
+type jsonWebSignature struct {
+	Protected string `json:"protected"`
+	Payload   string `json:"payload"`
+	Sig       string `json:"signature"`
+}
+
 // jwsEncodeJSON signs claimset using provided key and a nonce.
 // The result is serialized in JSON format containing either kid or jwk
 // fields based on the provided keyID value.
@@ -82,16 +90,12 @@ func jwsEncodeJSON(claimset interface{}, key crypto.Signer, kid keyID, nonce, ur
 		return nil, err
 	}
 
-	enc := struct {
-		Protected string `json:"protected"`
-		Payload   string `json:"payload"`
-		Sig       string `json:"signature"`
-	}{
+	enc := &jsonWebSignature{
 		Protected: phead,
 		Payload:   payload,
 		Sig:       base64.RawURLEncoding.EncodeToString(sig),
 	}
-	return json.Marshal(&enc)
+	return json.Marshal(enc)
 }
 
 // jwkEncode encodes public part of an RSA or ECDSA key into a JWK.

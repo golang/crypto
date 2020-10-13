@@ -44,16 +44,10 @@ func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tos
 	c.cacheMu.Lock() // guard c.kid access
 	defer c.cacheMu.Unlock()
 
-	type encodedEAB struct {
-		Protected string `json:"protected,omitempty"`
-		Payload   string `json:"payload,omitempty"`
-		Sig       string `json:"signature,omitempty"`
-	}
-
 	req := struct {
-		TermsAgreed            bool        `json:"termsOfServiceAgreed,omitempty"`
-		Contact                []string    `json:"contact,omitempty"`
-		ExternalAccountBinding *encodedEAB `json:"externalAccountBinding,omitempty"`
+		TermsAgreed            bool              `json:"termsOfServiceAgreed,omitempty"`
+		Contact                []string          `json:"contact,omitempty"`
+		ExternalAccountBinding *jsonWebSignature `json:"externalAccountBinding,omitempty"`
 	}{
 		Contact: acct.Contact,
 	}
@@ -63,16 +57,11 @@ func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tos
 	regURL := c.dir.RegURL
 	// set 'externalAccountBinding' field if requested
 	if acct.ExternalAccountBinding != nil {
-		protected, payload, sig, err := c.encodeExternalAccountBinding(c.Key, regURL, acct.ExternalAccountBinding)
+		eabJWS, err := c.encodeExternalAccountBinding(c.Key, regURL, acct.ExternalAccountBinding)
 		if err != nil {
 			return nil, fmt.Errorf("acme: failed to encode external account binding: %v", err)
 		}
-
-		req.ExternalAccountBinding = &encodedEAB{
-			Protected: protected,
-			Payload:   payload,
-			Sig:       sig,
-		}
+		req.ExternalAccountBinding = eabJWS
 	}
 
 	res, err := c.post(ctx, c.Key, regURL, req, wantStatus(
@@ -101,10 +90,10 @@ func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tos
 // as described in https://tools.ietf.org/html/rfc8555#section-7.3.4.
 // It will return the base64 encoded protected and payload fields, as well as
 // the payload signature as a []byte.
-func (c *Client) encodeExternalAccountBinding(key crypto.Signer, url string, eab *ExternalAccountBinding) (string, string, string, error) {
+func (c *Client) encodeExternalAccountBinding(key crypto.Signer, url string, eab *ExternalAccountBinding) (*jsonWebSignature, error) {
 	jwk, err := jwkEncode(key.Public())
 	if err != nil {
-		return "", "", "", err
+		return nil, err
 	}
 
 	payload := base64.RawURLEncoding.EncodeToString([]byte(jwk))
@@ -112,26 +101,20 @@ func (c *Client) encodeExternalAccountBinding(key crypto.Signer, url string, eab
 
 	h, err := jwsMacHasher(eab.Algorithm)
 	if err != nil {
-		return "", "", "", err
+		return nil, err
 	}
 	hmac := hmac.New(h, eab.Key)
 
 	if _, err := hmac.Write([]byte(phead + "." + payload)); err != nil {
-		return "", "", "", err
+		return nil, err
 	}
 	mac := hmac.Sum(nil)
 
-	enc := struct {
-		Protected string `json:"protected"`
-		Payload   string `json:"payload"`
-		Sig       string `json:"signature"`
-	}{
+	return &jsonWebSignature{
 		Protected: phead,
 		Payload:   payload,
 		Sig:       base64.RawURLEncoding.EncodeToString(mac),
-	}
-
-	return enc.Protected, enc.Payload, enc.Sig, nil
+	}, nil
 }
 
 // updateGegRFC is equivalent to c.UpdateReg but for CAs implementing RFC 8555.
