@@ -218,13 +218,12 @@ type ExternalAccountBinding struct {
 	// the account. The KID should reference the same key that the CA holds.
 	Key []byte
 
-	// KeyAlgorithm of the JWS. Only the HMAC algorithms are supported
-	// https://tools.ietf.org/html/rfc7518#section-3.1
-	KeyAlgorithm string
+	// Algorithm used for the JWS. Only HMAC algorithms are supported.
+	Algorithm JWSAlgorithm
 }
 
 func (e *ExternalAccountBinding) String() string {
-	return fmt.Sprintf("&{KID: %q, Key: redacted, KeyAlgorithm: %v}", e.KID, e.KeyAlgorithm)
+	return fmt.Sprintf("&{KID: %q, Key: redacted, Algorithm: %v}", e.KID, e.Algorithm)
 }
 
 // Directory is ACME server discovery data.

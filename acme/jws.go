@@ -20,6 +20,14 @@ import (
 	"math/big"
 )
 
+type JWSAlgorithm string
+
+const (
+	AlgorithmHS256 = JWSAlgorithm("HS256")
+	AlgorithmHS384 = JWSAlgorithm("HS384")
+	AlgorithmHS512 = JWSAlgorithm("HS512")
+)
+
 // keyID is the account identity provided by a CA during registration.
 type keyID string
 
@@ -178,17 +186,17 @@ func jwsHasher(pub crypto.PublicKey) (string, crypto.Hash) {
 }
 
 // jwsMacHasher returns an appropriate hash.Hash constructor for the given
-// keyAlgorithm. This can be used to hash data using a MAC.
-func jwsMacHasher(keyAlgorithm string) (func() hash.Hash, error) {
-	switch keyAlgorithm {
-	case "HS256":
+// JWSAlgorithm. This can be used to hash data using a MAC.
+func jwsMacHasher(alg JWSAlgorithm) (func() hash.Hash, error) {
+	switch alg {
+	case AlgorithmHS256:
 		return sha256.New, nil
-	case "HS384":
+	case AlgorithmHS384:
 		return sha512.New384, nil
-	case "HS512":
+	case AlgorithmHS512:
 		return sha512.New, nil
 	default:
-		return nil, fmt.Errorf("unsupported key type %q", keyAlgorithm)
+		return nil, fmt.Errorf("unsupported signature algorithm %v", alg)
 	}
 }
 

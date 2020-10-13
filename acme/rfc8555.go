@@ -108,9 +108,9 @@ func (c *Client) encodeExternalAccountBinding(key crypto.Signer, url string, eab
 	}
 
 	payload := base64.RawURLEncoding.EncodeToString([]byte(jwk))
-	phead := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"alg":%q,"kid":%q,"url":%q}`, eab.KeyAlgorithm, eab.KID, url)))
+	phead := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"alg":%q,"kid":%q,"url":%q}`, eab.Algorithm, eab.KID, url)))
 
-	h, err := jwsMacHasher(eab.KeyAlgorithm)
+	h, err := jwsMacHasher(eab.Algorithm)
 	if err != nil {
 		return "", "", "", err
 	}

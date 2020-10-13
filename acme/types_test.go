@@ -13,11 +13,11 @@ import (
 
 func TestExternalAccountBindingString(t *testing.T) {
 	eab := ExternalAccountBinding{
-		KID:          "kid",
-		KeyAlgorithm: "HS256",
+		KID:       "kid",
+		Algorithm: "HS256",
 	}
 	got := eab.String()
-	want := `&{KID: "kid", Key: redacted, KeyAlgorithm: HS256}`
+	want := `&{KID: "kid", Key: redacted, Algorithm: HS256}`
 	if got != want {
 		t.Errorf("eab.String() = %q, want: %q", got, want)
 	}
