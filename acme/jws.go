@@ -10,13 +10,11 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/sha512"
 	_ "crypto/sha512" // need for EC keys
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"hash"
 	"math/big"
 )
 
@@ -189,18 +187,18 @@ func jwsHasher(pub crypto.PublicKey) (string, crypto.Hash) {
 	return "", 0
 }
 
-// jwsMacHasher returns an appropriate hash.Hash constructor for the given
+// jwsMACHasher returns an appropriate hash.Hash constructor for the given
 // JWSAlgorithm. This can be used to hash data using a MAC.
-func jwsMacHasher(alg JWSAlgorithm) (func() hash.Hash, error) {
+func jwsMACHasher(alg JWSAlgorithm) (crypto.Hash, error) {
 	switch alg {
 	case AlgorithmHS256:
-		return sha256.New, nil
+		return crypto.SHA256, nil
 	case AlgorithmHS384:
-		return sha512.New384, nil
+		return crypto.SHA384, nil
 	case AlgorithmHS512:
-		return sha512.New, nil
+		return crypto.SHA512, nil
 	default:
-		return nil, fmt.Errorf("unsupported signature algorithm %v", alg)
+		return 0, fmt.Errorf("unsupported signature algorithm %v", alg)
 	}
 }
 

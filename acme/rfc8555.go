@@ -54,17 +54,17 @@ func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tos
 	if c.dir.Terms != "" {
 		req.TermsAgreed = prompt(c.dir.Terms)
 	}
-	regURL := c.dir.RegURL
+
 	// set 'externalAccountBinding' field if requested
 	if acct.ExternalAccountBinding != nil {
-		eabJWS, err := c.encodeExternalAccountBinding(c.Key, regURL, acct.ExternalAccountBinding)
+		eabJWS, err := c.encodeExternalAccountBinding(acct.ExternalAccountBinding)
 		if err != nil {
 			return nil, fmt.Errorf("acme: failed to encode external account binding: %v", err)
 		}
 		req.ExternalAccountBinding = eabJWS
 	}
 
-	res, err := c.post(ctx, c.Key, regURL, req, wantStatus(
+	res, err := c.post(ctx, c.Key, c.dir.RegURL, req, wantStatus(
 		http.StatusOK,      // account with this key already registered
 		http.StatusCreated, // new account created
 	))
@@ -88,22 +88,20 @@ func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tos
 
 // encodeExternalAccountBinding will encode an external account binding stanza
 // as described in https://tools.ietf.org/html/rfc8555#section-7.3.4.
-// It will return the base64 encoded protected and payload fields, as well as
-// the payload signature as a []byte.
-func (c *Client) encodeExternalAccountBinding(key crypto.Signer, url string, eab *ExternalAccountBinding) (*jsonWebSignature, error) {
-	jwk, err := jwkEncode(key.Public())
+func (c *Client) encodeExternalAccountBinding(eab *ExternalAccountBinding) (*jsonWebSignature, error) {
+	jwk, err := jwkEncode(c.Key.Public())
 	if err != nil {
 		return nil, err
 	}
 
 	payload := base64.RawURLEncoding.EncodeToString([]byte(jwk))
-	phead := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"alg":%q,"kid":%q,"url":%q}`, eab.Algorithm, eab.KID, url)))
+	phead := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"alg":%q,"kid":%q,"url":%q}`, eab.Algorithm, eab.KID, c.dir.RegURL)))
 
-	h, err := jwsMacHasher(eab.Algorithm)
+	h, err := jwsMACHasher(eab.Algorithm)
 	if err != nil {
 		return nil, err
 	}
-	hmac := hmac.New(h, eab.Key)
+	hmac := hmac.New(h.New, eab.Key)
 
 	if _, err := hmac.Write([]byte(phead + "." + payload)); err != nil {
 		return nil, err
