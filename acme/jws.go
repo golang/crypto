@@ -18,12 +18,14 @@ import (
 	"math/big"
 )
 
-type JWSAlgorithm string
+// MACAlgorithm represents a JWS MAC signature algorithm.
+// See https://tools.ietf.org/html/rfc7518#section-3.1 for more details.
+type MACAlgorithm string
 
 const (
-	AlgorithmHS256 = JWSAlgorithm("HS256")
-	AlgorithmHS384 = JWSAlgorithm("HS384")
-	AlgorithmHS512 = JWSAlgorithm("HS512")
+	MACAlgorithmHS256 = MACAlgorithm("HS256")
+	MACAlgorithmHS384 = MACAlgorithm("HS384")
+	MACAlgorithmHS512 = MACAlgorithm("HS512")
 )
 
 // keyID is the account identity provided by a CA during registration.
@@ -187,15 +189,14 @@ func jwsHasher(pub crypto.PublicKey) (string, crypto.Hash) {
 	return "", 0
 }
 
-// jwsMACHasher returns an appropriate hash.Hash constructor for the given
-// JWSAlgorithm. This can be used to hash data using a MAC.
-func jwsMACHasher(alg JWSAlgorithm) (crypto.Hash, error) {
+// jwsMACHasher returns an appropriate crypto.Hash for the given MACAlgorithm.
+func jwsMACHasher(alg MACAlgorithm) (crypto.Hash, error) {
 	switch alg {
-	case AlgorithmHS256:
+	case MACAlgorithmHS256:
 		return crypto.SHA256, nil
-	case AlgorithmHS384:
+	case MACAlgorithmHS384:
 		return crypto.SHA384, nil
-	case AlgorithmHS512:
+	case MACAlgorithmHS512:
 		return crypto.SHA512, nil
 	default:
 		return 0, fmt.Errorf("unsupported signature algorithm %v", alg)

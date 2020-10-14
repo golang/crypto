@@ -353,7 +353,7 @@ func TestRFC_RegisterExternalAccountBinding(t *testing.T) {
 	eab := &ExternalAccountBinding{
 		KID:       "kid-1",
 		Key:       []byte("secret"),
-		Algorithm: AlgorithmHS256,
+		Algorithm: MACAlgorithmHS256,
 	}
 
 	type protected struct {

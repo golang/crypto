@@ -218,8 +218,8 @@ type ExternalAccountBinding struct {
 	// the account. The KID should reference the same key that the CA holds.
 	Key []byte
 
-	// Algorithm used for the JWS. Only HMAC algorithms are supported.
-	Algorithm JWSAlgorithm
+	// Algorithm used to sign the JWS.
+	Algorithm MACAlgorithm
 }
 
 func (e *ExternalAccountBinding) String() string {
