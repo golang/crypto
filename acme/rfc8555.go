@@ -5,9 +5,9 @@
 package acme
 
 import (
+	"bytes"
 	"context"
 	"crypto"
-	"crypto/hmac"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
@@ -93,29 +93,12 @@ func (c *Client) encodeExternalAccountBinding(eab *ExternalAccountBinding) (*jso
 	if err != nil {
 		return nil, err
 	}
-
-	payload := base64.RawURLEncoding.EncodeToString([]byte(jwk))
-	phead := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"alg":%q,"kid":%q,"url":%q}`, eab.Algorithm, eab.KID, c.dir.RegURL)))
-
-	h, err := jwsMACHasher(eab.Algorithm)
-	if err != nil {
-		return nil, err
-	}
-	hmac := hmac.New(h.New, eab.Key)
-
-	if _, err := hmac.Write([]byte(phead + "." + payload)); err != nil {
-		return nil, err
-	}
-	mac := hmac.Sum(nil)
-
-	return &jsonWebSignature{
-		Protected: phead,
-		Payload:   payload,
-		Sig:       base64.RawURLEncoding.EncodeToString(mac),
-	}, nil
+	var rProtected bytes.Buffer
+	fmt.Fprintf(&rProtected, `{"alg":%q,"kid":%q,"url":%q}`, eab.Algorithm, eab.KID, c.dir.RegURL)
+	return jwsWithMAC(eab.Key, eab.Algorithm, rProtected.Bytes(), []byte(jwk))
 }
 
-// updateGegRFC is equivalent to c.UpdateReg but for CAs implementing RFC 8555.
+// updateRegRFC is equivalent to c.UpdateReg but for CAs implementing RFC 8555.
 // It expects c.Discover to have already been called.
 func (c *Client) updateRegRFC(ctx context.Context, a *Account) (*Account, error) {
 	url := string(c.accountKID(ctx))

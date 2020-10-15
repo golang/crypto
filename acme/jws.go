@@ -7,14 +7,17 @@ package acme
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
+	"crypto/sha512"
 	_ "crypto/sha512" // need for EC keys
 	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"hash"
 	"math/big"
 )
 
@@ -89,13 +92,36 @@ func jwsEncodeJSON(claimset interface{}, key crypto.Signer, kid keyID, nonce, ur
 	if err != nil {
 		return nil, err
 	}
-
 	enc := &jsonWebSignature{
 		Protected: phead,
 		Payload:   payload,
 		Sig:       base64.RawURLEncoding.EncodeToString(sig),
 	}
 	return json.Marshal(enc)
+}
+
+// jwsWithMAC creates and signs a JWS using the given key and algorithm.
+// "rawProtected" and "rawPayload" should not be base64-URL-encoded.
+func jwsWithMAC(key []byte, alg MACAlgorithm, rawProtected, rawPayload []byte) (*jsonWebSignature, error) {
+	protected := base64.RawURLEncoding.EncodeToString(rawProtected)
+	payload := base64.RawURLEncoding.EncodeToString(rawPayload)
+
+	// Only HMACs are currently supported.
+	hmac, err := newHMAC(key, alg)
+	if err != nil {
+		return nil, err
+	}
+
+	if _, err := hmac.Write([]byte(protected + "." + payload)); err != nil {
+		return nil, err
+	}
+	mac := hmac.Sum(nil)
+
+	return &jsonWebSignature{
+		Protected: protected,
+		Payload:   payload,
+		Sig:       base64.RawURLEncoding.EncodeToString(mac),
+	}, nil
 }
 
 // jwkEncode encodes public part of an RSA or ECDSA key into a JWK.
@@ -189,17 +215,17 @@ func jwsHasher(pub crypto.PublicKey) (string, crypto.Hash) {
 	return "", 0
 }
 
-// jwsMACHasher returns an appropriate crypto.Hash for the given MACAlgorithm.
-func jwsMACHasher(alg MACAlgorithm) (crypto.Hash, error) {
+// newHMAC returns an appropriate HMAC for the given MACAlgorithm.
+func newHMAC(key []byte, alg MACAlgorithm) (hash.Hash, error) {
 	switch alg {
 	case MACAlgorithmHS256:
-		return crypto.SHA256, nil
+		return hmac.New(sha256.New, key), nil
 	case MACAlgorithmHS384:
-		return crypto.SHA384, nil
+		return hmac.New(sha512.New384, key), nil
 	case MACAlgorithmHS512:
-		return crypto.SHA512, nil
+		return hmac.New(sha512.New, key), nil
 	default:
-		return 0, fmt.Errorf("unsupported signature algorithm %v", alg)
+		return nil, fmt.Errorf("unsupported MAC algorithm: %v", alg)
 	}
 }
 
