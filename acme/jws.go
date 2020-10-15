@@ -92,12 +92,12 @@ func jwsEncodeJSON(claimset interface{}, key crypto.Signer, kid keyID, nonce, ur
 	if err != nil {
 		return nil, err
 	}
-	enc := &jsonWebSignature{
+	enc := jsonWebSignature{
 		Protected: phead,
 		Payload:   payload,
 		Sig:       base64.RawURLEncoding.EncodeToString(sig),
 	}
-	return json.Marshal(enc)
+	return json.Marshal(&enc)
 }
 
 // jwsWithMAC creates and signs a JWS using the given key and algorithm.
@@ -111,7 +111,6 @@ func jwsWithMAC(key []byte, alg MACAlgorithm, rawProtected, rawPayload []byte) (
 	if err != nil {
 		return nil, err
 	}
-
 	if _, err := hmac.Write([]byte(protected + "." + payload)); err != nil {
 		return nil, err
 	}

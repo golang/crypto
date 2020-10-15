@@ -21,7 +21,6 @@ func TestExternalAccountBindingString(t *testing.T) {
 	if got != want {
 		t.Errorf("eab.String() = %q, want: %q", got, want)
 	}
-
 }
 
 func TestRateLimit(t *testing.T) {

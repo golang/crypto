@@ -395,6 +395,7 @@ func TestJWSEncodeJSONCustom(t *testing.T) {
 
 func TestJWSWithMAC(t *testing.T) {
 	// Example from RFC 7520 Section 4.4.3.
+	// https://tools.ietf.org/html/rfc7520#section-4.4.3
 	b64Key := "hJtXIZ2uSN5kbQfbtTNWbpdmhkV8FJG-Onbc6mxCcYg"
 	alg := MACAlgorithmHS256
 	rawProtected := []byte(`{"alg":"HS256","kid":"018c0ae5-4d9b-471b-bfd6-eef314bc7037"}`)
