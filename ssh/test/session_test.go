@@ -217,28 +217,6 @@ func TestKeyChange(t *testing.T) {
 	}
 }
 
-func TestInvalidTerminalMode(t *testing.T) {
-	if runtime.GOOS == "aix" {
-		// On AIX, sshd cannot acquire /dev/pts/* if launched as
-		// a non-root user.
-		t.Skipf("skipping on %s", runtime.GOOS)
-	}
-	server := newServer(t)
-	defer server.Shutdown()
-	conn := server.Dial(clientConfig())
-	defer conn.Close()
-
-	session, err := conn.NewSession()
-	if err != nil {
-		t.Fatalf("session failed: %v", err)
-	}
-	defer session.Close()
-
-	if err = session.RequestPty("vt100", 80, 40, ssh.TerminalModes{255: 1984}); err == nil {
-		t.Fatalf("req-pty failed: successful request with invalid mode")
-	}
-}
-
 func TestValidTerminalMode(t *testing.T) {
 	if runtime.GOOS == "aix" {
 		// On AIX, sshd cannot acquire /dev/pts/* if launched as
@@ -420,6 +398,11 @@ func TestKeyExchanges(t *testing.T) {
 	var config ssh.Config
 	config.SetDefaults()
 	kexOrder := config.KeyExchanges
+	// Based on the discussion in #17230, the key exchange algorithms
+	// diffie-hellman-group-exchange-sha1 and diffie-hellman-group-exchange-sha256
+	// are not included in the default list of supported kex so we have to add them
+	// here manually.
+	kexOrder = append(kexOrder, "diffie-hellman-group-exchange-sha1", "diffie-hellman-group-exchange-sha256")
 	for _, kex := range kexOrder {
 		t.Run(kex, func(t *testing.T) {
 			server := newServer(t)

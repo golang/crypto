@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"sync"
 	"testing"
+	"time"
 )
 
 func muxPair() (*mux, *mux) {
@@ -285,6 +286,219 @@ func TestMuxChannelRequest(t *testing.T) {
 
 	if received != 3 {
 		t.Errorf("got %d requests, want %d", received, 3)
+	}
+}
+
+func TestMuxUnknownChannelRequests(t *testing.T) {
+	clientPipe, serverPipe := memPipe()
+	client := newMux(clientPipe)
+	defer serverPipe.Close()
+	defer client.Close()
+
+	kDone := make(chan struct{})
+	go func() {
+		// Ignore unknown channel messages that don't want a reply.
+		err := serverPipe.writePacket(Marshal(channelRequestMsg{
+			PeersID:             1,
+			Request:             "keepalive@openssh.com",
+			WantReply:           false,
+			RequestSpecificData: []byte{},
+		}))
+		if err != nil {
+			t.Fatalf("send: %v", err)
+		}
+
+		// Send a keepalive, which should get a channel failure message
+		// in response.
+		err = serverPipe.writePacket(Marshal(channelRequestMsg{
+			PeersID:             2,
+			Request:             "keepalive@openssh.com",
+			WantReply:           true,
+			RequestSpecificData: []byte{},
+		}))
+		if err != nil {
+			t.Fatalf("send: %v", err)
+		}
+
+		packet, err := serverPipe.readPacket()
+		if err != nil {
+			t.Fatalf("read packet: %v", err)
+		}
+		decoded, err := decode(packet)
+		if err != nil {
+			t.Fatalf("decode failed: %v", err)
+		}
+
+		switch msg := decoded.(type) {
+		case *channelRequestFailureMsg:
+			if msg.PeersID != 2 {
+				t.Fatalf("received response to wrong message: %v", msg)
+			}
+		default:
+			t.Fatalf("unexpected channel message: %v", msg)
+		}
+
+		kDone <- struct{}{}
+
+		// Receive and respond to the keepalive to confirm the mux is
+		// still processing requests.
+		packet, err = serverPipe.readPacket()
+		if err != nil {
+			t.Fatalf("read packet: %v", err)
+		}
+		if packet[0] != msgGlobalRequest {
+			t.Fatalf("expected global request")
+		}
+
+		err = serverPipe.writePacket(Marshal(globalRequestFailureMsg{
+			Data: []byte{},
+		}))
+		if err != nil {
+			t.Fatalf("failed to send failure msg: %v", err)
+		}
+
+		close(kDone)
+	}()
+
+	// Wait for the server to send the keepalive message and receive back a
+	// response.
+	select {
+	case <-kDone:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("server never received ack")
+	}
+
+	// Confirm client hasn't closed.
+	if _, _, err := client.SendRequest("keepalive@golang.org", true, nil); err != nil {
+		t.Fatalf("failed to send keepalive: %v", err)
+	}
+
+	select {
+	case <-kDone:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("server never shut down")
+	}
+}
+
+func TestMuxClosedChannel(t *testing.T) {
+	clientPipe, serverPipe := memPipe()
+	client := newMux(clientPipe)
+	defer serverPipe.Close()
+	defer client.Close()
+
+	kDone := make(chan struct{})
+	go func() {
+		// Open the channel.
+		packet, err := serverPipe.readPacket()
+		if err != nil {
+			t.Fatalf("read packet: %v", err)
+		}
+		if packet[0] != msgChannelOpen {
+			t.Fatalf("expected chan open")
+		}
+
+		var openMsg channelOpenMsg
+		if err := Unmarshal(packet, &openMsg); err != nil {
+			t.Fatalf("unmarshal: %v", err)
+		}
+
+		// Send back the opened channel confirmation.
+		err = serverPipe.writePacket(Marshal(channelOpenConfirmMsg{
+			PeersID:       openMsg.PeersID,
+			MyID:          0,
+			MyWindow:      0,
+			MaxPacketSize: channelMaxPacket,
+		}))
+		if err != nil {
+			t.Fatalf("send: %v", err)
+		}
+
+		// Close the channel.
+		err = serverPipe.writePacket(Marshal(channelCloseMsg{
+			PeersID: openMsg.PeersID,
+		}))
+		if err != nil {
+			t.Fatalf("send: %v", err)
+		}
+
+		// Send a keepalive message on the channel we just closed.
+		err = serverPipe.writePacket(Marshal(channelRequestMsg{
+			PeersID:             openMsg.PeersID,
+			Request:             "keepalive@openssh.com",
+			WantReply:           true,
+			RequestSpecificData: []byte{},
+		}))
+		if err != nil {
+			t.Fatalf("send: %v", err)
+		}
+
+		// Receive the channel closed response.
+		packet, err = serverPipe.readPacket()
+		if err != nil {
+			t.Fatalf("read packet: %v", err)
+		}
+		if packet[0] != msgChannelClose {
+			t.Fatalf("expected channel close")
+		}
+
+		// Receive the keepalive response failure.
+		packet, err = serverPipe.readPacket()
+		if err != nil {
+			t.Fatalf("read packet: %v", err)
+		}
+		if packet[0] != msgChannelFailure {
+			t.Fatalf("expected channel close")
+		}
+		kDone <- struct{}{}
+
+		// Receive and respond to the keepalive to confirm the mux is
+		// still processing requests.
+		packet, err = serverPipe.readPacket()
+		if err != nil {
+			t.Fatalf("read packet: %v", err)
+		}
+		if packet[0] != msgGlobalRequest {
+			t.Fatalf("expected global request")
+		}
+
+		err = serverPipe.writePacket(Marshal(globalRequestFailureMsg{
+			Data: []byte{},
+		}))
+		if err != nil {
+			t.Fatalf("failed to send failure msg: %v", err)
+		}
+
+		close(kDone)
+	}()
+
+	// Open a channel.
+	ch, err := client.openChannel("chan", nil)
+	if err != nil {
+		t.Fatalf("OpenChannel: %v", err)
+	}
+	defer ch.Close()
+
+	// Wait for the server to close the channel and send the keepalive.
+	select {
+	case <-kDone:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("server never received ack")
+	}
+
+	// Make sure the channel closed.
+	if _, ok := <-ch.incomingRequests; ok {
+		t.Fatalf("channel not closed")
+	}
+
+	// Confirm client hasn't closed
+	if _, _, err := client.SendRequest("keepalive@golang.org", true, nil); err != nil {
+		t.Fatalf("failed to send keepalive: %v", err)
+	}
+
+	select {
+	case <-kDone:
+	case <-time.After(10 * time.Second):
+		t.Fatalf("server never shut down")
 	}
 }
 
