@@ -424,7 +424,10 @@ func addUserID(e *Entity, packets *packet.Reader, pkt *packet.UserId) error {
 			if err = e.PrimaryKey.VerifyUserIdSignature(pkt.Id, e.PrimaryKey, sig); err != nil {
 				return errors.StructuralError("user ID self-signature invalid: " + err.Error())
 			}
-			identity.SelfSignature = sig
+			if identity.SelfSignature == nil || sig.CreationTime.After(identity.SelfSignature.CreationTime) {
+				identity.SelfSignature = sig
+			}
+
 			e.Identities[pkt.Id] = identity
 		} else {
 			identity.Signatures = append(identity.Signatures, sig)

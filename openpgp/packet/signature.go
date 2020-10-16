@@ -57,7 +57,7 @@ type Signature struct {
 	PreferredSymmetric, PreferredHash, PreferredCompression []uint8
 	IssuerKeyId                                             *uint64
 	IsPrimaryId                                             *bool
-	NotationData                                            map[string]string
+	NotationData                                            map[string][]string
 
 	// FlagsValid is set if any flags were given. See RFC 4880, section
 	// 5.2.3.21 for details.
@@ -313,9 +313,9 @@ func parseSignatureSubpacket(sig *Signature, subpacket []byte, isHashed bool) (r
 		value := string(buf.Next(int(valueLength)))
 
 		if sig.NotationData == nil {
-			sig.NotationData = make(map[string]string)
+			sig.NotationData = make(map[string][]string)
 		}
-		sig.NotationData[key] = value
+		sig.NotationData[key] = append(sig.NotationData[key], value)
 	case prefHashAlgosSubpacket:
 		// Preferred hash algorithms, section 5.2.3.8
 		if !isHashed {
