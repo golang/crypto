@@ -188,6 +188,17 @@ func TestRegister(t *testing.T) {
 	}
 }
 
+func TestRegisterError(t *testing.T) {
+	c := &Client{}
+	wantErr := "client.Key must be set"
+	_, err := c.Register(context.Background(), &Account{}, AcceptTOS)
+	if err == nil {
+		t.Errorf("c.Register() with empty client succeeded, wanted error")
+	} else if !strings.Contains(err.Error(), wantErr) {
+		t.Errorf("c.Register() with empty client = %v, want error that contains %q", err, wantErr)
+	}
+}
+
 func TestUpdateReg(t *testing.T) {
 	const terms = "https://ca.tld/acme/terms"
 	contacts := []string{"mailto:admin@example.com"}

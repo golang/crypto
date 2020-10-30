@@ -103,6 +103,9 @@ func jwsEncodeJSON(claimset interface{}, key crypto.Signer, kid keyID, nonce, ur
 // jwsWithMAC creates and signs a JWS using the given key and algorithm.
 // "rawProtected" and "rawPayload" should not be base64-URL-encoded.
 func jwsWithMAC(key []byte, alg MACAlgorithm, rawProtected, rawPayload []byte) (*jsonWebSignature, error) {
+	if len(key) == 0 {
+		return nil, fmt.Errorf("cannot sign JWS with an empty MAC key")
+	}
 	protected := base64.RawURLEncoding.EncodeToString(rawProtected)
 	payload := base64.RawURLEncoding.EncodeToString(rawPayload)
 

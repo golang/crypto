@@ -431,6 +431,26 @@ func TestJWSWithMAC(t *testing.T) {
 	}
 }
 
+func TestJWSWithMACError(t *testing.T) {
+	tt := []struct {
+		desc string
+		alg  MACAlgorithm
+		key  []byte
+	}{
+		{"Unknown Algorithm", MACAlgorithm("UNKNOWN-ALG"), []byte("hmac-key")},
+		{"Empty Key", MACAlgorithmHS256, nil},
+	}
+	for _, tc := range tt {
+		tc := tc
+		t.Run(string(tc.desc), func(t *testing.T) {
+			p := "{}"
+			if _, err := jwsWithMAC(tc.key, tc.alg, []byte(p), []byte(p)); err == nil {
+				t.Errorf("jwsWithMAC(%v, %v, %s, %s) = success; want err", tc.key, tc.alg, p, p)
+			}
+		})
+	}
+}
+
 func TestJWKThumbprintRSA(t *testing.T) {
 	// Key example from RFC 7638
 	const base64N = "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAt" +
@@ -527,5 +547,11 @@ func TestNewHMAC(t *testing.T) {
 				t.Errorf("HMAC produced signature with unexpected length; got %d want %d", gotSize, tc.wantSize)
 			}
 		})
+	}
+}
+
+func TestNewHMACError(t *testing.T) {
+	if h, err := newHMAC([]byte("key"), MACAlgorithm("UNKNOWN-ALG")); err == nil {
+		t.Errorf("newHMAC(UNKNOWN-ALG) = %T, nil; want error", h)
 	}
 }
