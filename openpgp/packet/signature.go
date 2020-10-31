@@ -110,6 +110,8 @@ func (sig *Signature) parse(r io.Reader) (err error) {
 		return errors.UnsupportedError("hash function " + strconv.Itoa(int(buf[2])))
 	}
 
+	sig.PreferredHash = append(sig.PreferredHash, buf[2])
+
 	hashedSubpacketsLength := int(buf[3])<<8 | int(buf[4])
 	l := 6 + hashedSubpacketsLength
 	sig.HashSuffix = make([]byte, l+6)
