@@ -13,6 +13,7 @@ import (
 	"encoding/binary"
 	"hash"
 	"io"
+	"io/ioutil"
 	"math/big"
 	"strconv"
 	"time"
@@ -56,6 +57,7 @@ type Signature struct {
 	PreferredSymmetric, PreferredHash, PreferredCompression []uint8
 	IssuerKeyId                                             *uint64
 	IsPrimaryId                                             *bool
+	NotationData                                            map[string][]string
 
 	// FlagsValid is set if any flags were given. See RFC 4880, section
 	// 5.2.3.21 for details.
@@ -198,6 +200,7 @@ const (
 	keyExpirationSubpacket       signatureSubpacketType = 9
 	prefSymmetricAlgosSubpacket  signatureSubpacketType = 11
 	issuerSubpacket              signatureSubpacketType = 16
+	notationDataSubpacket        signatureSubpacketType = 20
 	prefHashAlgosSubpacket       signatureSubpacketType = 21
 	prefCompressionSubpacket     signatureSubpacketType = 22
 	primaryUserIdSubpacket       signatureSubpacketType = 25
@@ -297,6 +300,22 @@ func parseSignatureSubpacket(sig *Signature, subpacket []byte, isHashed bool) (r
 		}
 		sig.IssuerKeyId = new(uint64)
 		*sig.IssuerKeyId = binary.BigEndian.Uint64(subpacket)
+	case notationDataSubpacket:
+		// Notation data, section 5.2.3.16
+		buf := bytes.NewBuffer(subpacket)
+		// The first 4 bytes are for unused flags.
+		io.CopyN(ioutil.Discard, buf, 4)
+
+		keyLength := binary.BigEndian.Uint16(buf.Next(2))
+		valueLength := binary.BigEndian.Uint16(buf.Next(2))
+
+		key := string(buf.Next(int(keyLength)))
+		value := string(buf.Next(int(valueLength)))
+
+		if sig.NotationData == nil {
+			sig.NotationData = make(map[string][]string)
+		}
+		sig.NotationData[key] = append(sig.NotationData[key], value)
 	case prefHashAlgosSubpacket:
 		// Preferred hash algorithms, section 5.2.3.8
 		if !isHashed {
