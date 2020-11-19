@@ -241,6 +241,31 @@ func TestParseDSA(t *testing.T) {
 	}
 }
 
+func TestParseDSAOpenSSH(t *testing.T) {
+	// We actually exercise the ParsePrivateKey codepath here, as opposed to
+	// using the ParseRawPrivateKey+NewSignerFromKey path that testdata_test.go
+	// uses.
+	s, err := ParsePrivateKey(testdata.PEMBytes["dsa-openssh-format"])
+	if err != nil {
+		t.Fatalf("ParsePrivateKey returned error: %s", err)
+	}
+
+	data := []byte("sign me")
+	sig, err := s.Sign(rand.Reader, data)
+	if err != nil {
+		t.Fatalf("dsa.Sign: %v", err)
+	}
+
+	if err := s.PublicKey().Verify(data, sig); err != nil {
+		t.Errorf("Verify failed: %v", err)
+	}
+
+	pk := string(MarshalAuthorizedKey(s.PublicKey()))
+	if pk != "ssh-dss AAAAB3NzaC1kc3MAAACBAJ7ezaBYgLm1dwpLHwlFHZK5O9f9Q94b/8Hagxm2kY1nJW/8DWum2UpUj4U4boVNqifL2RStYuKdbmBF8BgPaaAQNYp3LZVF5OJxoGuL92NizBc0LdFkAIs7YnRk0DYaHROJODmYtaJhg2MOHA3MwJT1EVSVQcDcISz+MqReVg7ZAAAAFQCPtPz4AMJSLO1iWnfWzZ7IXg8HLwAAAIBs6QDULRPMtA+nQp04M+5H8CBVKP2QxTFitbTKUdbhkupfPYp6ZQEolGJVV75s5FtFmYEgW/GimXq+TBayDDz5gwrHeqxzpuyUp9Ing5X8ixDj8BtTRDSXPq6bxh+fkjCvbZjowQLHTMoC8gnTr1lL3c27ceKRrSNtxpHXxdpqPQAAAH8KW+CxR9oC88vPFVMPJC0d9y4OnNCCh7f+YaZFt0wjvdNsRhKs+Xz4sf1WFh3NX+11KGPucec5w0lP6/TvbJmcDi3lR39q4i1+49zBzaok4T5Ff1BXQBAEfA7D2W4z+lUKTjLoOTKBa4lirTjOIbz6VdUQ0kLLCMJW+GT+lB7C\n" {
+		t.Errorf("Public key does not match: %q", pk)
+	}
+}
+
 // Tests for authorized_keys parsing.
 
 // getTestKey returns a public key, and its base64 encoding.

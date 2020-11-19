@@ -1363,6 +1363,39 @@ func parseOpenSSHPrivateKey(key []byte, decrypt openSSHDecryptFunc) (crypto.Priv
 		pk.Precompute()
 
 		return pk, nil
+	case KeyAlgoDSA:
+		// https://github.com/openssh/openssh-portable/blob/master/sshkey.c#L2409
+		key := struct {
+			P, Q, G, Y, X *big.Int
+			Comment string
+			Pad     []byte `ssh:"rest"`
+		}{}
+
+		if err := Unmarshal(pk1.Rest, &key); err != nil {
+			return nil, err
+		}
+
+		if err := checkOpenSSHKeyPadding(key.Pad); err != nil {
+			return nil, err
+		}
+
+		param := dsa.Parameters{
+			P: key.P,
+			Q: key.Q,
+			G: key.G,
+		}
+		if err := checkDSAParams(&param); err != nil {
+			return nil, err
+		}
+
+		pk := &dsa.PrivateKey{
+			PublicKey: dsa.PublicKey{
+				Parameters: param,
+				Y:          key.Y,
+			},
+			X: key.X,
+		}
+		return pk, nil
 	case KeyAlgoED25519:
 		key := struct {
 			Pub     []byte
