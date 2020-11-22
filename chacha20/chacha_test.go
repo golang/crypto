@@ -238,7 +238,7 @@ func BenchmarkChaCha20(b *testing.B) {
 		benchmarkChaCha20(b, 10, 25)
 	})
 	b.Run("4096", func(b *testing.B) {
-		benchmarkChaCha20(b, 256, 1)
+		benchmarkChaCha20(b, 4096, 1)
 	})
 	b.Run("100x40", func(b *testing.B) {
 		benchmarkChaCha20(b, 100, 40)
