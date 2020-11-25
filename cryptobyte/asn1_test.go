@@ -311,6 +311,37 @@ func TestReadASN1GeneralizedTime(t *testing.T) {
 	}
 }
 
+func TestReadASN1UTCTime(t *testing.T) {
+	testData := []struct {
+		in  string
+		ok  bool
+		out time.Time
+	}{
+		{"000102030405Z", true, time.Date(2000, 01, 02, 03, 04, 05, 0, time.UTC)},
+		{"500102030405Z", true, time.Date(1950, 01, 02, 03, 04, 05, 0, time.UTC)},
+		{"490102030405Z", true, time.Date(2049, 01, 02, 03, 04, 05, 0, time.UTC)},
+		{"990102030405Z", true, time.Date(1999, 01, 02, 03, 04, 05, 0, time.UTC)},
+		{"250102030405Z", true, time.Date(2025, 01, 02, 03, 04, 05, 0, time.UTC)},
+		{"750102030405Z", true, time.Date(1975, 01, 02, 03, 04, 05, 0, time.UTC)},
+		{"000102030405+0905", true, time.Date(2000, 01, 02, 03, 04, 05, 0, time.FixedZone("", 9*60*60+5*60))},
+		{"000102030405-0905", true, time.Date(2000, 01, 02, 03, 04, 05, 0, time.FixedZone("", -9*60*60-5*60))},
+		{"0001020304Z", true, time.Date(2000, 01, 02, 03, 04, 0, 0, time.UTC)},
+		{"5001020304Z", true, time.Date(1950, 01, 02, 03, 04, 00, 0, time.UTC)},
+		{"0001020304+0905", true, time.Date(2000, 01, 02, 03, 04, 0, 0, time.FixedZone("", 9*60*60+5*60))},
+		{"0001020304-0905", true, time.Date(2000, 01, 02, 03, 04, 0, 0, time.FixedZone("", -9*60*60-5*60))},
+		{"000102030405Z0700", false, time.Time{}},
+		{"000102030405", false, time.Time{}},
+	}
+	for i, test := range testData {
+		in := String(append([]byte{byte(asn1.UTCTime), byte(len(test.in))}, test.in...))
+		var out time.Time
+		ok := in.ReadASN1UTCTime(&out)
+		if ok != test.ok || ok && !reflect.DeepEqual(out, test.out) {
+			t.Errorf("#%d: in.ReadASN1UTCTime() = %v, want %v; out = %q, want %q", i, ok, test.ok, out, test.out)
+		}
+	}
+}
+
 func TestReadASN1BitString(t *testing.T) {
 	testData := []struct {
 		in  []byte
