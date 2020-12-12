@@ -882,3 +882,35 @@ func TestRFC_AlreadyRevokedCert(t *testing.T) {
 		t.Fatalf("RevokeCert: %v", err)
 	}
 }
+
+func TestRFC_ListCertAlternates(t *testing.T) {
+	s := newACMEServer()
+	s.handle("/crt", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pem-certificate-chain")
+		w.Header().Add("Link", `<https://example.com/crt/2>;rel="alternate"`)
+		w.Header().Add("Link", `<https://example.com/crt/3>; rel="alternate"`)
+		w.Header().Add("Link", `<https://example.com/acme>; rel="index"`)
+	})
+	s.handle("/crt2", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/pem-certificate-chain")
+	})
+	s.start()
+	defer s.close()
+
+	cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
+	crts, err := cl.ListCertAlternates(context.Background(), s.url("/crt"))
+	if err != nil {
+		t.Fatalf("ListCertAlternates: %v", err)
+	}
+	want := []string{"https://example.com/crt/2", "https://example.com/crt/3"}
+	if !reflect.DeepEqual(crts, want) {
+		t.Errorf("ListCertAlternates(/crt): %v; want %v", crts, want)
+	}
+	crts, err = cl.ListCertAlternates(context.Background(), s.url("/crt2"))
+	if err != nil {
+		t.Fatalf("ListCertAlternates: %v", err)
+	}
+	if crts != nil {
+		t.Errorf("ListCertAlternates(/crt2): %v; want nil", crts)
+	}
+}
