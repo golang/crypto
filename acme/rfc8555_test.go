@@ -7,9 +7,12 @@ package acme
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
@@ -318,6 +321,145 @@ func TestRFC_Register(t *testing.T) {
 
 	var didPrompt bool
 	a := &Account{Contact: []string{email}}
+	acct, err := cl.Register(ctx, a, func(tos string) bool {
+		didPrompt = true
+		terms := s.url("/terms")
+		if tos != terms {
+			t.Errorf("tos = %q; want %q", tos, terms)
+		}
+		return true
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	okAccount := &Account{
+		URI:       s.url("/accounts/1"),
+		Status:    StatusValid,
+		Contact:   []string{email},
+		OrdersURL: s.url("/accounts/1/orders"),
+	}
+	if !reflect.DeepEqual(acct, okAccount) {
+		t.Errorf("acct = %+v; want %+v", acct, okAccount)
+	}
+	if !didPrompt {
+		t.Error("tos prompt wasn't called")
+	}
+	if v := cl.accountKID(ctx); v != keyID(okAccount.URI) {
+		t.Errorf("account kid = %q; want %q", v, okAccount.URI)
+	}
+}
+
+func TestRFC_RegisterExternalAccountBinding(t *testing.T) {
+	eab := &ExternalAccountBinding{
+		KID:          "kid-1",
+		Key:          []byte("secret"),
+		KeyAlgorithm: "HS256",
+	}
+
+	type protected struct {
+		Algorithm string `json:"alg"`
+		KID       string `json:"kid"`
+		URL       string `json:"url"`
+	}
+	const email = "mailto:user@example.org"
+
+	s := newACMEServer()
+	s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/accounts/1"))
+		if r.Method != "POST" {
+			t.Errorf("r.Method = %q; want POST", r.Method)
+		}
+
+		var j struct {
+			Protected              string
+			Contact                []string
+			TermsOfServiceAgreed   bool
+			ExternalaccountBinding struct {
+				Protected string
+				Payload   string
+				Signature string
+			}
+		}
+		decodeJWSRequest(t, &j, r.Body)
+		protData, err := base64.RawURLEncoding.DecodeString(j.ExternalaccountBinding.Protected)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var prot protected
+		err = json.Unmarshal(protData, &prot)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !reflect.DeepEqual(j.Contact, []string{email}) {
+			t.Errorf("j.Contact = %v; want %v", j.Contact, []string{email})
+		}
+		if !j.TermsOfServiceAgreed {
+			t.Error("j.TermsOfServiceAgreed = false; want true")
+		}
+
+		// Ensure same KID.
+		if prot.KID != eab.KID {
+			t.Errorf("j.ExternalAccountBinding.KID = %s; want %s", prot.KID, eab.KID)
+		}
+		// Ensure same Algorithm.
+		if prot.Algorithm != eab.KeyAlgorithm {
+			t.Errorf("j.ExternalAccountBinding.Alg = %s; want %s",
+				prot.Algorithm, eab.KeyAlgorithm)
+		}
+
+		// Ensure same URL as outer JWS.
+		url := fmt.Sprintf("http://%s/acme/new-account", r.Host)
+		if prot.URL != url {
+			t.Errorf("j.ExternalAccountBinding.URL = %s; want %s",
+				prot.URL, url)
+		}
+
+		// Ensure payload is base64URL encoded string of JWK in outer JWS
+		jwk, err := jwkEncode(testKeyEC.Public())
+		if err != nil {
+			t.Fatal(err)
+		}
+		decodedPayload, err := base64.RawURLEncoding.DecodeString(j.ExternalaccountBinding.Payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if jwk != string(decodedPayload) {
+			t.Errorf("j.ExternalAccountBinding.Payload = %s; want %s", decodedPayload, jwk)
+		}
+
+		// Check signature on inner external account binding JWS
+		hmac := hmac.New(sha256.New, []byte("secret"))
+		_, err = hmac.Write([]byte(j.ExternalaccountBinding.Protected + "." + j.ExternalaccountBinding.Payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		mac := hmac.Sum(nil)
+		encodedMAC := base64.RawURLEncoding.EncodeToString(mac)
+
+		if !bytes.Equal([]byte(encodedMAC), []byte(j.ExternalaccountBinding.Signature)) {
+			t.Errorf("j.ExternalAccountBinding.Signature = %v; want %v",
+				[]byte(j.ExternalaccountBinding.Signature), encodedMAC)
+		}
+
+		w.Header().Set("Location", s.url("/accounts/1"))
+		w.WriteHeader(http.StatusCreated)
+		b, _ := json.Marshal([]string{email})
+		fmt.Fprintf(w, `{"status":"valid","orders":"%s","contact":%s}`, s.url("/accounts/1/orders"), b)
+	})
+	s.start()
+	defer s.close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	cl := &Client{
+		Key:          testKeyEC,
+		DirectoryURL: s.url("/"),
+	}
+
+	var didPrompt bool
+	a := &Account{Contact: []string{email}, ExternalAccountBinding: eab}
 	acct, err := cl.Register(ctx, a, func(tos string) bool {
 		didPrompt = true
 		terms := s.url("/terms")
