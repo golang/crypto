@@ -217,13 +217,10 @@ type ExternalAccountBinding struct {
 	// Key is the bytes of the symmetric key that the CA provides to identify
 	// the account. Key must correspond to the KID.
 	Key []byte
-
-	// Algorithm used to sign the JWS.
-	Algorithm MACAlgorithm
 }
 
 func (e *ExternalAccountBinding) String() string {
-	return fmt.Sprintf("&{KID: %q, Key: redacted, Algorithm: %v}", e.KID, e.Algorithm)
+	return fmt.Sprintf("&{KID: %q, Key: redacted}", e.KID)
 }
 
 // Directory is ACME server discovery data.

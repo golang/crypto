@@ -351,9 +351,8 @@ func TestRFC_Register(t *testing.T) {
 
 func TestRFC_RegisterExternalAccountBinding(t *testing.T) {
 	eab := &ExternalAccountBinding{
-		KID:       "kid-1",
-		Key:       []byte("secret"),
-		Algorithm: MACAlgorithmHS256,
+		KID: "kid-1",
+		Key: []byte("secret"),
 	}
 
 	type protected struct {
@@ -403,10 +402,10 @@ func TestRFC_RegisterExternalAccountBinding(t *testing.T) {
 		if prot.KID != eab.KID {
 			t.Errorf("j.ExternalAccountBinding.KID = %s; want %s", prot.KID, eab.KID)
 		}
-		// Ensure same Algorithm.
-		if prot.Algorithm != string(eab.Algorithm) {
+		// Ensure expected Algorithm.
+		if prot.Algorithm != "HS256" {
 			t.Errorf("j.ExternalAccountBinding.Alg = %s; want %s",
-				prot.Algorithm, eab.Algorithm)
+				prot.Algorithm, "HS256")
 		}
 
 		// Ensure same URL as outer JWS.

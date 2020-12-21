@@ -397,8 +397,6 @@ func TestJWSWithMAC(t *testing.T) {
 	// Example from RFC 7520 Section 4.4.3.
 	// https://tools.ietf.org/html/rfc7520#section-4.4.3
 	b64Key := "hJtXIZ2uSN5kbQfbtTNWbpdmhkV8FJG-Onbc6mxCcYg"
-	alg := MACAlgorithmHS256
-	rawProtected := []byte(`{"alg":"HS256","kid":"018c0ae5-4d9b-471b-bfd6-eef314bc7037"}`)
 	rawPayload := []byte("It\xe2\x80\x99s a dangerous business, Frodo, going out your " +
 		"door. You step onto the road, and if you don't keep your feet, " +
 		"there\xe2\x80\x99s no knowing where you might be swept off " +
@@ -416,7 +414,7 @@ func TestJWSWithMAC(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unable to decode key: %q", b64Key)
 	}
-	got, err := jwsWithMAC(key, alg, rawProtected, rawPayload)
+	got, err := jwsWithMAC(key, "018c0ae5-4d9b-471b-bfd6-eef314bc7037", "", rawPayload)
 	if err != nil {
 		t.Fatalf("jwsWithMAC() = %q", err)
 	}
@@ -432,22 +430,9 @@ func TestJWSWithMAC(t *testing.T) {
 }
 
 func TestJWSWithMACError(t *testing.T) {
-	tt := []struct {
-		desc string
-		alg  MACAlgorithm
-		key  []byte
-	}{
-		{"Unknown Algorithm", MACAlgorithm("UNKNOWN-ALG"), []byte("hmac-key")},
-		{"Empty Key", MACAlgorithmHS256, nil},
-	}
-	for _, tc := range tt {
-		tc := tc
-		t.Run(string(tc.desc), func(t *testing.T) {
-			p := "{}"
-			if _, err := jwsWithMAC(tc.key, tc.alg, []byte(p), []byte(p)); err == nil {
-				t.Errorf("jwsWithMAC(%v, %v, %s, %s) = success; want err", tc.key, tc.alg, p, p)
-			}
-		})
+	p := "{}"
+	if _, err := jwsWithMAC(nil, "", "", []byte(p)); err == nil {
+		t.Errorf("jwsWithMAC(nil, ...) = success; want err")
 	}
 }
 
@@ -523,35 +508,5 @@ func TestJWKThumbprintErrUnsupportedKey(t *testing.T) {
 	_, err := JWKThumbprint(struct{}{})
 	if err != ErrUnsupportedKey {
 		t.Errorf("err = %q; want %q", err, ErrUnsupportedKey)
-	}
-}
-
-func TestNewHMAC(t *testing.T) {
-	tt := []struct {
-		alg      MACAlgorithm
-		wantSize int
-	}{
-		{MACAlgorithmHS256, 32},
-		{MACAlgorithmHS384, 48},
-		{MACAlgorithmHS512, 64},
-	}
-	for _, tc := range tt {
-		tc := tc
-		t.Run(string(tc.alg), func(t *testing.T) {
-			h, err := newHMAC([]byte("key"), tc.alg)
-			if err != nil {
-				t.Fatalf("newHMAC(%v) = %q", tc.alg, err)
-			}
-			gotSize := len(h.Sum(nil))
-			if gotSize != tc.wantSize {
-				t.Errorf("HMAC produced signature with unexpected length; got %d want %d", gotSize, tc.wantSize)
-			}
-		})
-	}
-}
-
-func TestNewHMACError(t *testing.T) {
-	if h, err := newHMAC([]byte("key"), MACAlgorithm("UNKNOWN-ALG")); err == nil {
-		t.Errorf("newHMAC(UNKNOWN-ALG) = %T, nil; want error", h)
 	}
 }

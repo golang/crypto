@@ -5,7 +5,6 @@
 package acme
 
 import (
-	"bytes"
 	"context"
 	"crypto"
 	"encoding/base64"
@@ -93,9 +92,7 @@ func (c *Client) encodeExternalAccountBinding(eab *ExternalAccountBinding) (*jso
 	if err != nil {
 		return nil, err
 	}
-	var rProtected bytes.Buffer
-	fmt.Fprintf(&rProtected, `{"alg":%q,"kid":%q,"url":%q}`, eab.Algorithm, eab.KID, c.dir.RegURL)
-	return jwsWithMAC(eab.Key, eab.Algorithm, rProtected.Bytes(), []byte(jwk))
+	return jwsWithMAC(eab.Key, eab.KID, c.dir.RegURL, []byte(jwk))
 }
 
 // updateRegRFC is equivalent to c.UpdateReg but for CAs implementing RFC 8555.
