@@ -17,9 +17,10 @@ import (
 
 // Config collects configuration parameters for s2k key-stretching
 // transformatioms. A nil *Config is valid and results in all default
-// values. Currently, Config is used only by the Serialize function in
-// this package.
+// values.
 type Config struct {
+	// Type is the S2K type to be used. If 0, Iterated is used.
+	Type uint8
 	// Hash is the default hash function to be used. If
 	// nil, SHA1 is used.
 	Hash crypto.Hash
@@ -43,6 +44,15 @@ func (c *Config) hash() crypto.Hash {
 	}
 
 	return c.Hash
+}
+
+func (c *Config) typ() uint8 {
+	if c == nil || c.Type == 0 {
+		// 3 - Iterated type is the previously used default.
+		return 3
+	}
+
+	return c.Type
 }
 
 func (c *Config) encodedCount() uint8 {
@@ -151,10 +161,11 @@ func Iterated(out []byte, h hash.Hash, in []byte, salt []byte, count int) {
 	}
 }
 
-// Parse reads a binary specification for a string-to-key transformation from r
-// and returns a function which performs that transform.
-func Parse(r io.Reader) (f func(out, in []byte), err error) {
-	var buf [9]byte
+// Read a binary specification for a string-to-key transformation from r and
+// returns a function which performs that transform, along with the serialized
+// S2K descriptor.
+func Read(r io.Reader) (f func(out, in []byte), serialized []byte, err error) {
+	var buf [11]byte
 
 	_, err = io.ReadFull(r, buf[:2])
 	if err != nil {
@@ -163,10 +174,10 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 
 	hash, ok := HashIdToHash(buf[1])
 	if !ok {
-		return nil, errors.UnsupportedError("hash for S2K function: " + strconv.Itoa(int(buf[1])))
+		return nil, nil, errors.UnsupportedError("hash for S2K function: " + strconv.Itoa(int(buf[1])))
 	}
 	if !hash.Available() {
-		return nil, errors.UnsupportedError("hash not available: " + strconv.Itoa(int(hash)))
+		return nil, nil, errors.UnsupportedError("hash not available: " + strconv.Itoa(int(hash)))
 	}
 	h := hash.New()
 
@@ -175,29 +186,84 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 		f := func(out, in []byte) {
 			Simple(out, h, in)
 		}
-		return f, nil
+		return f, buf[:2], nil
 	case 1:
-		_, err = io.ReadFull(r, buf[:8])
+		_, err = io.ReadFull(r, buf[2:10])
 		if err != nil {
 			return
 		}
 		f := func(out, in []byte) {
-			Salted(out, h, in, buf[:8])
+			Salted(out, h, in, buf[2:10])
 		}
-		return f, nil
+		return f, buf[:10], nil
 	case 3:
-		_, err = io.ReadFull(r, buf[:9])
+		_, err = io.ReadFull(r, buf[2:11])
 		if err != nil {
 			return
 		}
-		count := decodeCount(buf[8])
+		count := decodeCount(buf[10])
 		f := func(out, in []byte) {
-			Iterated(out, h, in, buf[:8], count)
+			Iterated(out, h, in, buf[2:10], count)
 		}
-		return f, nil
+		return f, buf[:], nil
 	}
 
-	return nil, errors.UnsupportedError("S2K function")
+	return nil, nil, errors.UnsupportedError("S2K function")
+}
+
+// Parse reads a binary specification for a string-to-key transformation from r
+// and returns a function which performs that transform.
+func Parse(r io.Reader) (f func(out, in []byte), err error) {
+	f, _, err = Read(r)
+	return f, err
+}
+
+// Create a new string-to-key specifier based the provided Config. If c is nil
+// sensible defaults are used. Returns a transformation function that performs
+// the key-stretching transformation, and writes the  serialized S2K descriptor
+// to w.
+func Create(w io.Writer, rand io.Reader, c *Config) (f func(out, in []byte), err error) {
+	var serialized []byte
+	var buf [11]byte
+	buf[0] = c.typ()
+	buf[1], _ = HashToHashId(c.hash())
+
+	switch c.typ() {
+	case 0:
+		f = func(out, in []byte) {
+			Simple(out, c.hash().New(), in)
+		}
+		serialized = buf[:2]
+	case 1:
+		salt := buf[2:10]
+		if _, err := io.ReadFull(rand, salt); err != nil {
+			return nil, err
+		}
+
+		f = func(out, in []byte) {
+			Salted(out, c.hash().New(), in, salt)
+		}
+		serialized = buf[:10]
+	case 3:
+		salt := buf[2:10]
+		if _, err := io.ReadFull(rand, salt); err != nil {
+			return nil, err
+		}
+		encodedCount := c.encodedCount()
+		count := decodeCount(encodedCount)
+		buf[10] = encodedCount
+
+		f = func(out, in []byte) {
+			Iterated(out, c.hash().New(), in, salt, count)
+		}
+		serialized = buf[:]
+	}
+
+	if _, err := w.Write(serialized); err != nil {
+		return nil, err
+	}
+
+	return f, nil
 }
 
 // Serialize salts and stretches the given passphrase and writes the
@@ -205,21 +271,12 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 // w. The key stretching can be configured with c, which may be
 // nil. In that case, sensible defaults will be used.
 func Serialize(w io.Writer, key []byte, rand io.Reader, passphrase []byte, c *Config) error {
-	var buf [11]byte
-	buf[0] = 3 /* iterated and salted */
-	buf[1], _ = HashToHashId(c.hash())
-	salt := buf[2:10]
-	if _, err := io.ReadFull(rand, salt); err != nil {
-		return err
-	}
-	encodedCount := c.encodedCount()
-	count := decodeCount(encodedCount)
-	buf[10] = encodedCount
-	if _, err := w.Write(buf[:]); err != nil {
+	fn, err := Create(w, rand, c)
+	if err != nil {
 		return err
 	}
 
-	Iterated(key, c.hash().New(), passphrase, salt, count)
+	fn(key, passphrase)
 	return nil
 }
 
