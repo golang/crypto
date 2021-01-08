@@ -71,6 +71,8 @@ func TestIterated(t *testing.T) {
 var parseTests = []struct {
 	spec, in, out string
 }{
+	/* gnu-dummy */
+	{"0000", "hello", "00000000"},
 	/* Simple with SHA1 */
 	{"0002", "hello", "aaf4c61d"},
 	/* Salted with SHA1 */

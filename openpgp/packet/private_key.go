@@ -117,6 +117,11 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 		if s2kType == 254 {
 			pk.sha1Checksum = true
 		}
+		if pk.cipher == 0 {
+			// http://www.iana.org/assignments/pgp-parameters/pgp-parameters.xhtml#pgp-parameters-12
+			// 0 = Plaintext or unencrypted data
+			pk.Encrypted = false
+		}
 	default:
 		return errors.UnsupportedError("deprecated s2k function in private key")
 	}
@@ -138,7 +143,7 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 		return
 	}
 
-	if !pk.Encrypted {
+	if !pk.Encrypted && len(pk.encryptedData) > 0 {
 		return pk.parsePrivateKey(pk.encryptedData)
 	}
 

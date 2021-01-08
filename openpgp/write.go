@@ -59,6 +59,16 @@ func armoredDetachSign(w io.Writer, signer *Entity, message io.Reader, sigType p
 	return out.Close()
 }
 
+func detachSignFromSubKey(w io.Writer, signer *Entity, message io.Reader, sigType packet.SignatureType, config *packet.Config) (err error) {
+	for _, sk := range signer.Subkeys {
+		if sk.PrivateKey.CanSign() {
+			return doDetachedSign(w, sk.PrivateKey, message, sigType, config)
+		}
+	}
+
+	return errors.InvalidArgumentError("signing subkey doesn't have a private key")
+}
+
 func detachSign(w io.Writer, signer *Entity, message io.Reader, sigType packet.SignatureType, config *packet.Config) (err error) {
 	if signer.PrivateKey == nil {
 		return errors.InvalidArgumentError("signing key doesn't have a private key")
@@ -67,12 +77,21 @@ func detachSign(w io.Writer, signer *Entity, message io.Reader, sigType packet.S
 		return errors.InvalidArgumentError("signing key is encrypted")
 	}
 
+	if signer.PrivateKey.PrivateKey == nil && len(signer.Subkeys) > 0 {
+		// We have subkeys but no master private key, so lets sign with the sub keys
+		return detachSignFromSubKey(w, signer, message, sigType, config)
+	}
+
+	return doDetachedSign(w, signer.PrivateKey, message, sigType, config)
+}
+
+func doDetachedSign(w io.Writer, signingPK *packet.PrivateKey, message io.Reader, sigType packet.SignatureType, config *packet.Config) (err error) {
 	sig := new(packet.Signature)
 	sig.SigType = sigType
-	sig.PubKeyAlgo = signer.PrivateKey.PubKeyAlgo
+	sig.PubKeyAlgo = signingPK.PubKeyAlgo
 	sig.Hash = config.Hash()
 	sig.CreationTime = config.Now()
-	sig.IssuerKeyId = &signer.PrivateKey.KeyId
+	sig.IssuerKeyId = &signingPK.KeyId
 
 	h, wrappedHash, err := hashForSignature(sig.Hash, sig.SigType)
 	if err != nil {
@@ -80,7 +99,7 @@ func detachSign(w io.Writer, signer *Entity, message io.Reader, sigType packet.S
 	}
 	io.Copy(wrappedHash, message)
 
-	err = sig.Sign(h, signer.PrivateKey, config)
+	err = sig.Sign(h, signingPK, config)
 	if err != nil {
 		return
 	}
