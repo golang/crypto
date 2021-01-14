@@ -6,7 +6,7 @@ package salsa
 
 // core applies the Salsa20 core function to 16-byte input in, 32-byte key k,
 // and 16-byte constant c, and puts the result into 64-byte array out.
-func core(out *[64]byte, in *[16]byte, k *[32]byte, c *[16]byte, rounds int) {
+func core(out *[64]byte, in *[16]byte, k *[32]byte, c *[16]byte, rounds uint) {
 	j0 := uint32(c[0]) | uint32(c[1])<<8 | uint32(c[2])<<16 | uint32(c[3])<<24
 	j1 := uint32(k[0]) | uint32(k[1])<<8 | uint32(k[2])<<16 | uint32(k[3])<<24
 	j2 := uint32(k[4]) | uint32(k[5])<<8 | uint32(k[6])<<16 | uint32(k[7])<<24
@@ -27,7 +27,7 @@ func core(out *[64]byte, in *[16]byte, k *[32]byte, c *[16]byte, rounds int) {
 	x0, x1, x2, x3, x4, x5, x6, x7, x8 := j0, j1, j2, j3, j4, j5, j6, j7, j8
 	x9, x10, x11, x12, x13, x14, x15 := j9, j10, j11, j12, j13, j14, j15
 
-	for i := 0; i < rounds; i += 2 {
+	for i := uint(0); i < rounds; i += 2 {
 		u := x0 + x12
 		x4 ^= u<<7 | u>>(32-7)
 		u = x4 + x0
@@ -206,7 +206,7 @@ func genericXORKeyStream(out, in []byte, counter *[16]byte, key *[32]byte) {
 
 // genericXORKeyStream is the generic implementation of XORKeyStream to be used
 // when no assembly implementation is available.
-func generic20nXORKeyStream(out, in []byte, counter *[16]byte, key *[32]byte, rounds int) {
+func generic20nXORKeyStream(out, in []byte, counter *[16]byte, key *[32]byte, rounds uint) {
 	var block [64]byte
 	var counterCopy [16]byte
 	copy(counterCopy[:], counter[:])
