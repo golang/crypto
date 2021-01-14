@@ -293,7 +293,7 @@ func TestXORKeyStream(t *testing.T) {
 	//core(&out_core, &in16, &key, &counter)
 	//t.Errorf("% 02x,", out_core)
 
-	test_amd64 := true
+	test_amd64 := false
 
 	// The default calls used externally:
 	// XORKeyStream uses the default 20 rounds
