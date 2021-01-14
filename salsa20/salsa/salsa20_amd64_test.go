@@ -32,7 +32,7 @@ func TestCounterOverflow(t *testing.T) {
 
 // TestXORKeyStream applies the Salsa20 XOR Key Stream function to input in, key,
 // and 16-byte constant c, and tests the result to verify 20/12/8 are functioning properly.
-func TestXORKeyStream(t *testing.T) {
+func TestXORKeyStream_amd(t *testing.T) {
 	in512 := make([]byte, 512)
 
 	out512_test20 := []byte{
@@ -321,22 +321,4 @@ func TestXORKeyStream(t *testing.T) {
 	if !testEq(out_XOR, out512_test8) {
 		t.Errorf("\nexpected: % 02x,\n     got: % 02x", out512_test8, out_XOR)
 	}
-}
-
-func testEq(a []byte, b []byte) (ret bool) {
-	// If one is nil, the other must also be nil.
-	if (a == nil) != (b == nil) {
-		return false
-	}
-	if len(a) != len(b) {
-		return false
-	}
-	ret = true
-	for i := range a {
-		if a[i] != b[i] {
-			//fmt.Println("Mismatch at", i)
-			ret = false
-		}
-	}
-	return
 }
