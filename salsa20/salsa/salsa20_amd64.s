@@ -7,14 +7,15 @@
 // This code was translated into a form compatible with 6a from the public
 // domain sources in SUPERCOP: https://bench.cr.yp.to/supercop.html
 
-// func salsa2020XORKeyStream(out, in *byte, n uint64, nonce, key *byte)
+// func salsa20nXORKeyStream(out, in *byte, n uint64, nonce, key *byte)
 // This needs up to 64 bytes at 360(SP); hence the non-obvious frame size.
-TEXT ·salsa2020XORKeyStream(SB),0,$456-40 // frame = 424 + 32 byte alignment
+TEXT ·salsa20nXORKeyStream(SB),0,$456-40 // frame = 424 + 32 byte alignment
 	MOVQ out+0(FP),DI
 	MOVQ in+8(FP),SI
 	MOVQ n+16(FP),DX
 	MOVQ nonce+24(FP),CX
 	MOVQ key+32(FP),R8
+	MOVQ iter+40(FP),BX
 
 	MOVQ SP,R12
 	MOVQ SP,R9
@@ -122,7 +123,7 @@ TEXT ·salsa2020XORKeyStream(SB),0,$456-40 // frame = 424 + 32 byte alignment
 	MOVL DX,16(SP)
 	MOVL CX, 36 (SP)
 	MOVQ R9,352(SP)
-	MOVQ $20,DX
+	MOVQ BX,DX       // Set the rounds for MAINLOOP
 	MOVOA 64(SP),X0
 	MOVOA 80(SP),X1
 	MOVOA 96(SP),X2
