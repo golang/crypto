@@ -84,7 +84,7 @@ func XORKeyStream8(out, in []byte, nonce []byte, key *[32]byte) {
 	salsa.XORKeyStreamWithRounds(out, in, &subNonce, key, 8)
 }
 
-// XORKeyStream12 crypts bytes from in to out using the given key and nonce using 8 rounds.
+// XORKeyStream12 crypts bytes from in to out using the given key and nonce using 12 rounds.
 // In and out must overlap entirely or not at all. Nonce must
 // be either 8 or 24 bytes long.
 func XORKeyStream12(out, in []byte, nonce []byte, key *[32]byte) {

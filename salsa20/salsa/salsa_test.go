@@ -248,9 +248,6 @@ func TestXORKeyStream(t *testing.T) {
 	}
 	counter := [16]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5}
 
-	// enable amd64 tests
-	test_amd64 := false
-
 	// The default calls used externally:
 	// XORKeyStream uses the default 20 rounds
 	out_XOR := make([]byte, 512)
@@ -294,15 +291,6 @@ func TestXORKeyStream(t *testing.T) {
 		t.Errorf("\nexpected: % 02x,\n     got: % 02x", out512_test20, out_XOR)
 	}
 
-	if test_amd64 {
-		// asm salsa20nXORKeyStream(out, in *byte, n uint64, nonce, key *byte, rounds uint64) with 20 rounds
-		out_XOR = make([]byte, 512)
-		salsa20nXORKeyStream(&out_XOR[0], &in512[0], uint64(len(in512)), &counter[0], &key[0], uint64(20))
-		if !testEq(out_XOR, out512_test20) {
-			t.Errorf("\nexpected: % 02x,\n     got: % 02x", out512_test20, out_XOR)
-		}
-	}
-
 	// noasm genericXORKeyStream(out, in, counter, key, rounds) with 12 rounds
 	out_XOR = make([]byte, 512)
 	generic20nXORKeyStream(out_XOR, in512, &counter, &key, 12)
@@ -310,29 +298,11 @@ func TestXORKeyStream(t *testing.T) {
 		t.Errorf("\nexpected: % 02x,\n     got: % 02x", out512_test12, out_XOR)
 	}
 
-	if test_amd64 {
-		// asm salsa20nXORKeyStream(out, in *byte, n uint64, nonce, key *byte, rounds uint64) with 12 rounds
-		out_XOR = make([]byte, 512)
-		salsa20nXORKeyStream(&out_XOR[0], &in512[0], uint64(len(in512)), &counter[0], &key[0], uint64(12))
-		if !testEq(out_XOR, out512_test12) {
-			t.Errorf("\nexpected: % 02x,\n     got: % 02x", out512_test12, out_XOR)
-		}
-	}
-
 	// noasm genericXORKeyStream(out, in, counter, key, rounds) with 8 rounds
 	out_XOR = make([]byte, 512)
 	generic20nXORKeyStream(out_XOR, in512, &counter, &key, 8)
 	if !testEq(out_XOR, out512_test8) {
 		t.Errorf("\nexpected: % 02x,\n     got: % 02x", out512_test8, out_XOR)
-	}
-
-	if test_amd64 {
-		// asm salsa20nXORKeyStream(out, in *byte, n uint64, nonce, key *byte, rounds uint64) with 8 rounds
-		out_XOR = make([]byte, 512)
-		salsa20nXORKeyStream(&out_XOR[0], &in512[0], uint64(len(in512)), &counter[0], &key[0], uint64(8))
-		if !testEq(out_XOR, out512_test8) {
-			t.Errorf("\nexpected: % 02x,\n     got: % 02x", out512_test8, out_XOR)
-		}
 	}
 }
 
