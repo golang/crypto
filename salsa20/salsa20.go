@@ -21,14 +21,12 @@ passing a 24-byte slice as the nonce triggers XSalsa20.
 */
 package salsa20 // import "golang.org/x/crypto/salsa20"
 
-// TODO(agl): implement XORKeyStream12 and XORKeyStream8 - the reduced round variants of Salsa20.
-
 import (
 	"golang.org/x/crypto/internal/subtle"
 	"golang.org/x/crypto/salsa20/salsa"
 )
 
-// XORKeyStream crypts bytes from in to out using the given key and nonce.
+// XORKeyStream crypts bytes from in to out using the given key and nonce using 20 rounds.
 // In and out must overlap entirely or not at all. Nonce must
 // be either 8 or 24 bytes long.
 func XORKeyStream(out, in []byte, nonce []byte, key *[32]byte) {
@@ -55,4 +53,62 @@ func XORKeyStream(out, in []byte, nonce []byte, key *[32]byte) {
 	}
 
 	salsa.XORKeyStream(out, in, &subNonce, key)
+}
+
+// XORKeyStream8 crypts bytes from in to out using the given key and nonce using 8 rounds.
+// In and out must overlap entirely or not at all. Nonce must
+// be either 8 or 24 bytes long.
+func XORKeyStream8(out, in []byte, nonce []byte, key *[32]byte) {
+	if len(out) < len(in) {
+		panic("salsa20: output smaller than input")
+	}
+	if subtle.InexactOverlap(out[:len(in)], in) {
+		panic("salsa20: invalid buffer overlap")
+	}
+
+	var subNonce [16]byte
+
+	if len(nonce) == 24 {
+		var subKey [32]byte
+		var hNonce [16]byte
+		copy(hNonce[:], nonce[:16])
+		salsa.HSalsa20(&subKey, &hNonce, key, &salsa.Sigma)
+		copy(subNonce[:], nonce[16:])
+		key = &subKey
+	} else if len(nonce) == 8 {
+		copy(subNonce[:], nonce[:])
+	} else {
+		panic("salsa20: nonce must be 8 or 24 bytes")
+	}
+
+	salsa.XORKeyStreamWithRounds(out, in, &subNonce, key, 8)
+}
+
+// XORKeyStream12 crypts bytes from in to out using the given key and nonce using 12 rounds.
+// In and out must overlap entirely or not at all. Nonce must
+// be either 8 or 24 bytes long.
+func XORKeyStream12(out, in []byte, nonce []byte, key *[32]byte) {
+	if len(out) < len(in) {
+		panic("salsa20: output smaller than input")
+	}
+	if subtle.InexactOverlap(out[:len(in)], in) {
+		panic("salsa20: invalid buffer overlap")
+	}
+
+	var subNonce [16]byte
+
+	if len(nonce) == 24 {
+		var subKey [32]byte
+		var hNonce [16]byte
+		copy(hNonce[:], nonce[:16])
+		salsa.HSalsa20(&subKey, &hNonce, key, &salsa.Sigma)
+		copy(subNonce[:], nonce[16:])
+		key = &subKey
+	} else if len(nonce) == 8 {
+		copy(subNonce[:], nonce[:])
+	} else {
+		panic("salsa20: nonce must be 8 or 24 bytes")
+	}
+
+	salsa.XORKeyStreamWithRounds(out, in, &subNonce, key, 12)
 }
