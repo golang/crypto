@@ -14,5 +14,9 @@ func XORKeyStream(out, in []byte, counter *[16]byte, key *[32]byte) {
 }
 
 func XORKeyStreamWithRounds(out, in []byte, counter *[16]byte, key *[32]byte, rounds uint) {
+	if len(in) == 0 || rounds%2 != 0 {
+		return
+	}
+
 	generic20nXORKeyStream(out, in, counter, key, rounds)
 }

@@ -23,11 +23,11 @@ func XORKeyStream(out, in []byte, counter *[16]byte, key *[32]byte) {
 }
 
 func XORKeyStreamWithRounds(out, in []byte, counter *[16]byte, key *[32]byte, rounds uint) {
-	if len(in) == 0 {
+	if len(in) == 0 || rounds%2 != 0 {
 		return
 	}
 	_ = out[len(in)-1] // fail if the length of out is shorter than in
-	if rounds%2 == 0 && rounds < 0xffff {
+	if rounds < 0xffff {
 		salsa20nXORKeyStream(&out[0], &in[0], uint64(len(in)), &counter[0], &key[0], uint64(rounds))
 	} else {
 		generic20nXORKeyStream(out, in, counter, key, rounds)
