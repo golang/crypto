@@ -213,11 +213,11 @@ func serializeRSAPrivateKey(w io.Writer, priv *rsa.PrivateKey) error {
 	if err != nil {
 		return err
 	}
-	err = writeBig(w, priv.Primes[1])
+	err = writeBig(w, priv.Primes[0])
 	if err != nil {
 		return err
 	}
-	err = writeBig(w, priv.Primes[0])
+	err = writeBig(w, priv.Primes[1])
 	if err != nil {
 		return err
 	}
