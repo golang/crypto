@@ -317,30 +317,30 @@ GLOBL counter<>(SB), (NOPTR+RODATA), $16
 	MOVL R15, 8*4+off+576(dst)
 
 #define BLAKE2s_SSE2() \
-	PRECOMPUTE_MSG(SP, 16, SI, R8, R9, R10, R11, R12, R13, R14, R15);               \
-	ROUND_SSE2(X4, X5, X6, X7, 16(SP), 32(SP), 48(SP), 64(SP), X8);                 \
-	ROUND_SSE2(X4, X5, X6, X7, 16+64(SP), 32+64(SP), 48+64(SP), 64+64(SP), X8);     \
-	ROUND_SSE2(X4, X5, X6, X7, 16+128(SP), 32+128(SP), 48+128(SP), 64+128(SP), X8); \
-	ROUND_SSE2(X4, X5, X6, X7, 16+192(SP), 32+192(SP), 48+192(SP), 64+192(SP), X8); \
-	ROUND_SSE2(X4, X5, X6, X7, 16+256(SP), 32+256(SP), 48+256(SP), 64+256(SP), X8); \
-	ROUND_SSE2(X4, X5, X6, X7, 16+320(SP), 32+320(SP), 48+320(SP), 64+320(SP), X8); \
-	ROUND_SSE2(X4, X5, X6, X7, 16+384(SP), 32+384(SP), 48+384(SP), 64+384(SP), X8); \
-	ROUND_SSE2(X4, X5, X6, X7, 16+448(SP), 32+448(SP), 48+448(SP), 64+448(SP), X8); \
-	ROUND_SSE2(X4, X5, X6, X7, 16+512(SP), 32+512(SP), 48+512(SP), 64+512(SP), X8); \
-	ROUND_SSE2(X4, X5, X6, X7, 16+576(SP), 32+576(SP), 48+576(SP), 64+576(SP), X8)
+	PRECOMPUTE_MSG(BP, 16, SI, R8, R9, R10, R11, R12, R13, R14, R15);               \
+	ROUND_SSE2(X4, X5, X6, X7, 16(BP), 32(BP), 48(BP), 64(BP), X8);                 \
+	ROUND_SSE2(X4, X5, X6, X7, 16+64(BP), 32+64(BP), 48+64(BP), 64+64(BP), X8);     \
+	ROUND_SSE2(X4, X5, X6, X7, 16+128(BP), 32+128(BP), 48+128(BP), 64+128(BP), X8); \
+	ROUND_SSE2(X4, X5, X6, X7, 16+192(BP), 32+192(BP), 48+192(BP), 64+192(BP), X8); \
+	ROUND_SSE2(X4, X5, X6, X7, 16+256(BP), 32+256(BP), 48+256(BP), 64+256(BP), X8); \
+	ROUND_SSE2(X4, X5, X6, X7, 16+320(BP), 32+320(BP), 48+320(BP), 64+320(BP), X8); \
+	ROUND_SSE2(X4, X5, X6, X7, 16+384(BP), 32+384(BP), 48+384(BP), 64+384(BP), X8); \
+	ROUND_SSE2(X4, X5, X6, X7, 16+448(BP), 32+448(BP), 48+448(BP), 64+448(BP), X8); \
+	ROUND_SSE2(X4, X5, X6, X7, 16+512(BP), 32+512(BP), 48+512(BP), 64+512(BP), X8); \
+	ROUND_SSE2(X4, X5, X6, X7, 16+576(BP), 32+576(BP), 48+576(BP), 64+576(BP), X8)
 
 #define BLAKE2s_SSSE3() \
-	PRECOMPUTE_MSG(SP, 16, SI, R8, R9, R10, R11, R12, R13, R14, R15);                          \
-	ROUND_SSSE3(X4, X5, X6, X7, 16(SP), 32(SP), 48(SP), 64(SP), X8, X13, X14);                 \
-	ROUND_SSSE3(X4, X5, X6, X7, 16+64(SP), 32+64(SP), 48+64(SP), 64+64(SP), X8, X13, X14);     \
-	ROUND_SSSE3(X4, X5, X6, X7, 16+128(SP), 32+128(SP), 48+128(SP), 64+128(SP), X8, X13, X14); \
-	ROUND_SSSE3(X4, X5, X6, X7, 16+192(SP), 32+192(SP), 48+192(SP), 64+192(SP), X8, X13, X14); \
-	ROUND_SSSE3(X4, X5, X6, X7, 16+256(SP), 32+256(SP), 48+256(SP), 64+256(SP), X8, X13, X14); \
-	ROUND_SSSE3(X4, X5, X6, X7, 16+320(SP), 32+320(SP), 48+320(SP), 64+320(SP), X8, X13, X14); \
-	ROUND_SSSE3(X4, X5, X6, X7, 16+384(SP), 32+384(SP), 48+384(SP), 64+384(SP), X8, X13, X14); \
-	ROUND_SSSE3(X4, X5, X6, X7, 16+448(SP), 32+448(SP), 48+448(SP), 64+448(SP), X8, X13, X14); \
-	ROUND_SSSE3(X4, X5, X6, X7, 16+512(SP), 32+512(SP), 48+512(SP), 64+512(SP), X8, X13, X14); \
-	ROUND_SSSE3(X4, X5, X6, X7, 16+576(SP), 32+576(SP), 48+576(SP), 64+576(SP), X8, X13, X14)
+	PRECOMPUTE_MSG(BP, 16, SI, R8, R9, R10, R11, R12, R13, R14, R15);                          \
+	ROUND_SSSE3(X4, X5, X6, X7, 16(BP), 32(BP), 48(BP), 64(BP), X8, X13, X14);                 \
+	ROUND_SSSE3(X4, X5, X6, X7, 16+64(BP), 32+64(BP), 48+64(BP), 64+64(BP), X8, X13, X14);     \
+	ROUND_SSSE3(X4, X5, X6, X7, 16+128(BP), 32+128(BP), 48+128(BP), 64+128(BP), X8, X13, X14); \
+	ROUND_SSSE3(X4, X5, X6, X7, 16+192(BP), 32+192(BP), 48+192(BP), 64+192(BP), X8, X13, X14); \
+	ROUND_SSSE3(X4, X5, X6, X7, 16+256(BP), 32+256(BP), 48+256(BP), 64+256(BP), X8, X13, X14); \
+	ROUND_SSSE3(X4, X5, X6, X7, 16+320(BP), 32+320(BP), 48+320(BP), 64+320(BP), X8, X13, X14); \
+	ROUND_SSSE3(X4, X5, X6, X7, 16+384(BP), 32+384(BP), 48+384(BP), 64+384(BP), X8, X13, X14); \
+	ROUND_SSSE3(X4, X5, X6, X7, 16+448(BP), 32+448(BP), 48+448(BP), 64+448(BP), X8, X13, X14); \
+	ROUND_SSSE3(X4, X5, X6, X7, 16+512(BP), 32+512(BP), 48+512(BP), 64+512(BP), X8, X13, X14); \
+	ROUND_SSSE3(X4, X5, X6, X7, 16+576(BP), 32+576(BP), 48+576(BP), 64+576(BP), X8, X13, X14)
 
 #define BLAKE2s_SSE4() \
 	LOAD_MSG_SSE4(X8, X9, X10, X11, SI, 0, 2, 4, 6, 1, 3, 5, 7, 8, 10, 12, 14, 9, 11, 13, 15); \
@@ -372,16 +372,12 @@ GLOBL counter<>(SB), (NOPTR+RODATA), $16
 	MOVQ  blocks_len, DX;          \
 	                               \
 	MOVQ  SP, BP;                  \
-	MOVQ  SP, R9;                  \
-	ADDQ  $15, R9;                 \
-	ANDQ  $~15, R9;                \
-	MOVQ  R9, SP;                  \
+	ADDQ  $15, BP;                 \
+	ANDQ  $~15, BP;                \
 	                               \
 	MOVQ  0(BX), R9;               \
-	MOVQ  R9, 0(SP);               \
-	XORQ  R9, R9;                  \
-	MOVQ  R9, 8(SP);               \
-	MOVL  CX, 8(SP);               \
+	MOVQ  R9, 0(BP);               \
+	MOVQ  CX, 8(BP);               \
 	                               \
 	MOVOU 0(AX), X0;               \
 	MOVOU 16(AX), X1;              \
@@ -391,7 +387,7 @@ GLOBL counter<>(SB), (NOPTR+RODATA), $16
 	MOVOU counter<>(SB), X12;      \
 	MOVOU rol16<>(SB), X13;        \
 	MOVOU rol8<>(SB), X14;         \
-	MOVO  0(SP), X15;              \
+	MOVO  0(BP), X15;              \
 	                               \
 	loop:                          \
 	MOVO  X0, X4;                  \
@@ -413,14 +409,12 @@ GLOBL counter<>(SB), (NOPTR+RODATA), $16
 	SUBQ  $64, DX;                 \
 	JNE   loop;                    \
 	                               \
-	MOVO  X15, 0(SP);              \
-	MOVQ  0(SP), R9;               \
+	MOVO  X15, 0(BP);              \
+	MOVQ  0(BP), R9;               \
 	MOVQ  R9, 0(BX);               \
 	                               \
 	MOVOU X0, 0(AX);               \
-	MOVOU X1, 16(AX);              \
-	                               \
-	MOVQ  BP, SP
+	MOVOU X1, 16(AX)
 
 // func hashBlocksSSE2(h *[8]uint32, c *[2]uint32, flag uint32, blocks []byte)
 TEXT ·hashBlocksSSE2(SB), 0, $672-48 // frame = 656 + 16 byte alignment
