@@ -311,6 +311,79 @@ func TestReadASN1GeneralizedTime(t *testing.T) {
 	}
 }
 
+func TestReadASN1UTCTime(t *testing.T) {
+	t.Run("Parsing the time string", func(t *testing.T) {
+		testData := []struct {
+			in  string
+			ok  bool
+			out time.Time
+		}{
+			{"100102030405Z", true, time.Date(2010, 01, 02, 03, 04, 05, 0, time.UTC)},
+			{"100102030405", false, time.Time{}},
+			{"100102030405+0607", true, time.Date(2010, 01, 02, 03, 04, 05, 0, time.FixedZone("", 6*60*60+7*60))},
+			{"100102030405-0607", true, time.Date(2010, 01, 02, 03, 04, 05, 0, time.FixedZone("", -6*60*60-7*60))},
+			{"900102030405Z", true, time.Date(1990, 01, 02, 03, 04, 05, 0, time.UTC)},
+			/* These are invalid times. However, the time package normalises times
+			 * and they were accepted in some versions. See #11134. */
+			{"000100000000Z", false, time.Time{}},
+			{"101302030405Z", false, time.Time{}},
+			{"100002030405Z", false, time.Time{}},
+			{"100100030405Z", false, time.Time{}},
+			{"100132030405Z", false, time.Time{}},
+			{"100231030405Z", false, time.Time{}},
+			{"100102240405Z", false, time.Time{}},
+			{"100102036005Z", false, time.Time{}},
+			{"100102030460Z", false, time.Time{}},
+			{"-100102030410Z", false, time.Time{}},
+			{"10-0102030410Z", false, time.Time{}},
+			{"10-0002030410Z", false, time.Time{}},
+			{"1001-02030410Z", false, time.Time{}},
+			{"100102-030410Z", false, time.Time{}},
+			{"10010203-0410Z", false, time.Time{}},
+			{"1001020304-10Z", false, time.Time{}},
+		}
+		for i, test := range testData {
+			in := String(append([]byte{byte(asn1.UTCTime), byte(len(test.in))}, test.in...))
+			var out time.Time
+			ok := in.ReadASN1UTCTime(&out)
+			if ok != test.ok || ok && !reflect.DeepEqual(out, test.out) {
+				t.Errorf("#%d: in.ReadASN1UTCTime() = %v, want %v; out = %q, want %q", i, ok, test.ok, out, test.out)
+			}
+		}
+	})
+
+	t.Run("Wrong ASN1 tag", func(t *testing.T) {
+		var in = "100102030405Z"
+		asn1Bytes := String(append([]byte{byte(asn1.INTEGER), byte(len(in))}, in...))
+		var out time.Time
+		ok := asn1Bytes.ReadASN1UTCTime(&out)
+		if ok {
+			t.Errorf("Want error")
+		}
+	})
+}
+
+func TestReadASN1Time(t *testing.T) {
+	testData := []struct {
+		in  string
+		tag asn1.Tag
+		ok  bool
+		out time.Time
+	}{
+		{"100102030405Z", asn1.UTCTime, true, time.Date(2010, 01, 02, 03, 04, 05, 0, time.UTC)},
+		{"20100102030405Z", asn1.GeneralizedTime, true, time.Date(2010, 01, 02, 03, 04, 05, 0, time.UTC)},
+		{"THIS IS NOT A DATA", asn1.UTF8String, false, time.Time{}},
+	}
+	for i, test := range testData {
+		in := String(append([]byte{byte(test.tag), byte(len(test.in))}, test.in...))
+		var out time.Time
+		ok := in.ReadASN1Time(&out)
+		if ok != test.ok || ok && !reflect.DeepEqual(out, test.out) {
+			t.Errorf("#%d: in.ReadASN1Time() = %v, want %v; out = %q, want %q", i, ok, test.ok, out, test.out)
+		}
+	}
+}
+
 func TestReadASN1BitString(t *testing.T) {
 	testData := []struct {
 		in  []byte
