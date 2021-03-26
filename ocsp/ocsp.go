@@ -675,8 +675,8 @@ func CreateRequest(cert, issuer *x509.Certificate, opts *RequestOptions) ([]byte
 //
 // If template.IssuerHash is not set, SHA1 will be used.
 //
-// The ProducedAt date is automatically set to the current date, to the nearest minute.
-func CreateResponse(issuer, responderCert *x509.Certificate, template Response, priv crypto.Signer) ([]byte, error) {
+// The ProducedAt date is rounded to the nearest minute from the given producedAt.
+func CreateResponse(issuer, responderCert *x509.Certificate, template Response, priv crypto.Signer, producedAt time.Time) ([]byte, error) {
 	var publicKeyInfo struct {
 		Algorithm pkix.AlgorithmIdentifier
 		PublicKey asn1.BitString
@@ -740,7 +740,7 @@ func CreateResponse(issuer, responderCert *x509.Certificate, template Response, 
 	tbsResponseData := responseData{
 		Version:        0,
 		RawResponderID: rawResponderID,
-		ProducedAt:     time.Now().Truncate(time.Minute).UTC(),
+		ProducedAt:     producedAt.Truncate(time.Minute).UTC(),
 		Responses:      []singleResponse{innerResponse},
 	}
 

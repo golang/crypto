@@ -240,7 +240,7 @@ func TestOCSPResponse(t *testing.T) {
 	}
 
 	template.IssuerHash = crypto.MD5
-	_, err = CreateResponse(issuer, responder, template, responderPrivateKey)
+	_, err = CreateResponse(issuer, responder, template, responderPrivateKey, time.Now())
 	if err == nil {
 		t.Fatal("CreateResponse didn't fail with non-valid template.IssuerHash value crypto.MD5")
 	}
@@ -258,7 +258,7 @@ func TestOCSPResponse(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			template.IssuerHash = tc.issuerHash
-			responseBytes, err := CreateResponse(issuer, responder, template, responderPrivateKey)
+			responseBytes, err := CreateResponse(issuer, responder, template, responderPrivateKey, time.Now())
 			if err != nil {
 				t.Fatalf("CreateResponse failed: %s", err)
 			}
