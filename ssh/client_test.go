@@ -164,3 +164,52 @@ func TestBannerCallback(t *testing.T) {
 		t.Fatalf("got %s; want %s", receivedBanner, expected)
 	}
 }
+
+func TestNewClientConn(t *testing.T) {
+	for _, tt := range []struct {
+		name string
+		user string
+	}{
+		{
+			name: "good user field for ConnMetadata",
+			user: "testuser",
+		},
+		{
+			name: "empty user field for ConnMetadata",
+			user: "",
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c1, c2, err := netPipe()
+			if err != nil {
+				t.Fatalf("netPipe: %v", err)
+			}
+			defer c1.Close()
+			defer c2.Close()
+
+			serverConf := &ServerConfig{
+				PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+					return &Permissions{}, nil
+				},
+			}
+			serverConf.AddHostKey(testSigners["rsa"])
+			go NewServerConn(c1, serverConf)
+
+			clientConf := &ClientConfig{
+				User: tt.user,
+				Auth: []AuthMethod{
+					Password("testpw"),
+				},
+				HostKeyCallback: InsecureIgnoreHostKey(),
+			}
+			clientConn, _, _, err := NewClientConn(c2, "", clientConf)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if userGot := clientConn.User(); userGot != tt.user {
+				t.Errorf("got user %q; want user %q", userGot, tt.user)
+			}
+		})
+	}
+}
