@@ -34,20 +34,28 @@ func TestRateLimit(t *testing.T) {
 	hTime.Set("Retry-After", "Tue Apr 27 11:00:00 2017")
 
 	err1 := &Error{
-		ProblemType: "urn:ietf:params:acme:error:nolimit",
-		Header:      h120,
+		ProblemDetails: ProblemDetails{
+			ProblemType: "urn:ietf:params:acme:error:nolimit",
+		},
+		Header: h120,
 	}
 	err2 := &Error{
-		ProblemType: "urn:ietf:params:acme:error:rateLimited",
-		Header:      h120,
+		ProblemDetails: ProblemDetails{
+			ProblemType: "urn:ietf:params:acme:error:rateLimited",
+		},
+		Header: h120,
 	}
 	err3 := &Error{
-		ProblemType: "urn:ietf:params:acme:error:rateLimited",
-		Header:      nil,
+		ProblemDetails: ProblemDetails{
+			ProblemType: "urn:ietf:params:acme:error:rateLimited",
+		},
+		Header: nil,
 	}
 	err4 := &Error{
-		ProblemType: "urn:ietf:params:acme:error:rateLimited",
-		Header:      hTime,
+		ProblemDetails: ProblemDetails{
+			ProblemType: "urn:ietf:params:acme:error:rateLimited",
+		},
+		Header: hTime,
 	}
 
 	tt := []struct {
