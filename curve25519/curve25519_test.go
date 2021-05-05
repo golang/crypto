@@ -48,8 +48,7 @@ func TestLowOrderPoints(t *testing.T) {
 }
 
 func TestTestVectors(t *testing.T) {
-	t.Run("Generic", func(t *testing.T) { testTestVectors(t, scalarMultGeneric) })
-	t.Run("Native", func(t *testing.T) { testTestVectors(t, ScalarMult) })
+	t.Run("Legacy", func(t *testing.T) { testTestVectors(t, ScalarMult) })
 	t.Run("X25519", func(t *testing.T) {
 		testTestVectors(t, func(dst, scalar, point *[32]byte) {
 			out, err := X25519(scalar[:], point[:])
@@ -99,12 +98,43 @@ func TestHighBitIgnored(t *testing.T) {
 	}
 }
 
-func BenchmarkScalarBaseMult(b *testing.B) {
-	var in, out [32]byte
-	in[0] = 1
+var benchmarkSink byte
 
-	b.SetBytes(32)
+func BenchmarkX25519Basepoint(b *testing.B) {
+	scalar := make([]byte, ScalarSize)
+	if _, err := rand.Read(scalar); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		ScalarBaseMult(&out, &in)
+		out, err := X25519(scalar, Basepoint)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchmarkSink ^= out[0]
+	}
+}
+
+func BenchmarkX25519(b *testing.B) {
+	scalar := make([]byte, ScalarSize)
+	if _, err := rand.Read(scalar); err != nil {
+		b.Fatal(err)
+	}
+	point, err := X25519(scalar, Basepoint)
+	if err != nil {
+		b.Fatal(err)
+	}
+	if _, err := rand.Read(scalar); err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		out, err := X25519(scalar, point)
+		if err != nil {
+			b.Fatal(err)
+		}
+		benchmarkSink ^= out[0]
 	}
 }
