@@ -59,7 +59,7 @@ func TestRenewFromCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// veriy the renewal happened
+	// verify the renewal happened
 	defer func() {
 		testDidRenewLoop = func(next time.Duration, err error) {}
 	}()
