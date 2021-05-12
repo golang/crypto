@@ -17,6 +17,7 @@ import (
 
 func main() {
 	Package("golang.org/x/crypto/curve25519/internal/field")
+	Comment("//go:build amd64 && gc && !purego")
 	ConstraintExpr("amd64,gc,!purego")
 	feMul()
 	feSquare()
