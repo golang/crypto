@@ -11,13 +11,16 @@ import (
 	. "github.com/mmcloughlin/avo/gotypes"
 	. "github.com/mmcloughlin/avo/operand"
 	. "github.com/mmcloughlin/avo/reg"
+
+	// Ensure "go mod tidy" doesn't remove the golang.org/x/crypto module
+	// dependency, which is necessary to access the field.Element type.
+	_ "golang.org/x/crypto/curve25519"
 )
 
 //go:generate go run . -out ../fe_amd64.s -stubs ../fe_amd64.go -pkg field
 
 func main() {
 	Package("golang.org/x/crypto/curve25519/internal/field")
-	Comment("//go:build amd64 && gc && !purego")
 	ConstraintExpr("amd64,gc,!purego")
 	feMul()
 	feSquare()
