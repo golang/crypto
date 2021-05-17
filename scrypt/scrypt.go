@@ -186,9 +186,9 @@ func smix(b []byte, r, N int, v, xy []uint32) {
 // For example, you can get a derived key for e.g. AES-256 (which needs a
 // 32-byte key) by doing:
 //
-//      dk, err := scrypt.Key([]byte("some password"), salt, 32768, 8, 1, 32)
+//      dk, err := scrypt.Key([]byte("some password"), salt, 65536, 16, 1, 32)
 //
-// The recommended parameters for interactive logins as of 2017 are N=32768, r=8
+// The recommended parameters for interactive logins as of 2021 are N=65536, r=16
 // and p=1. The parameters N, r, and p should be increased as memory latency and
 // CPU parallelism increases; consider setting N to the highest power of 2 you
 // can derive within 100 milliseconds. Remember to get a good random salt.
