@@ -10,7 +10,9 @@ package ssh
 
 import (
 	"crypto/rand"
+	"errors"
 	"fmt"
+	"io"
 
 	"golang.org/x/crypto/ssh/testdata"
 )
@@ -20,6 +22,32 @@ var (
 	testSigners     map[string]Signer
 	testPublicKeys  map[string]PublicKey
 )
+
+type testAlgoSigner struct {
+	signer Signer
+	algo   string
+}
+
+func (tas *testAlgoSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error) {
+	if as, ok := tas.signer.(AlgorithmSigner); ok {
+		if algorithm == "" {
+			algorithm = tas.algo
+		}
+		return as.SignWithAlgorithm(rand, data, algorithm)
+	}
+	return nil, errors.New("not an AlgorithmSigner")
+}
+
+func (tas *testAlgoSigner) Sign(rand io.Reader, data []byte) (*Signature, error) {
+	if as, ok := tas.signer.(AlgorithmSigner); ok {
+		return as.SignWithAlgorithm(rand, data, tas.algo)
+	}
+	return nil, errors.New("not an AlgorithmSigner")
+}
+
+func (tas *testAlgoSigner) PublicKey() PublicKey {
+	return tas.signer.PublicKey()
+}
 
 func init() {
 	var err error
@@ -37,6 +65,13 @@ func init() {
 		if err != nil {
 			panic(fmt.Sprintf("Unable to create signer for test key %s: %v", t, err))
 		}
+		testPublicKeys[t] = testSigners[t].PublicKey()
+	}
+
+	// Create rsa-sha2-256 and rsa-sha2-512 signers
+	for _, t := range []string{"rsa-sha2-256", "rsa-sha2-512"} {
+		testPrivateKeys[t] = testPrivateKeys["rsa"]
+		testSigners[t] = &testAlgoSigner{signer: testSigners["rsa"], algo: t}
 		testPublicKeys[t] = testSigners[t].PublicKey()
 	}
 

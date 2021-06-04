@@ -105,15 +105,17 @@ func tryAuthBothSides(t *testing.T, config *ClientConfig, gssAPIWithMICConfig *G
 }
 
 func TestClientAuthPublicKey(t *testing.T) {
-	config := &ClientConfig{
-		User: "testuser",
-		Auth: []AuthMethod{
-			PublicKeys(testSigners["rsa"]),
-		},
-		HostKeyCallback: InsecureIgnoreHostKey(),
-	}
-	if err := tryAuth(t, config); err != nil {
-		t.Fatalf("unable to dial remote side: %s", err)
+	for _, s := range []string{"rsa", "rsa-sha2-256", "rsa-sha2-512"} {
+		config := &ClientConfig{
+			User: "testuser",
+			Auth: []AuthMethod{
+				PublicKeys(testSigners[s]),
+			},
+			HostKeyCallback: InsecureIgnoreHostKey(),
+		}
+		if err := tryAuth(t, config); err != nil {
+			t.Fatalf("unable to dial remote side: %s", err)
+		}
 	}
 }
 
