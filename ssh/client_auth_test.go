@@ -104,12 +104,60 @@ func tryAuthBothSides(t *testing.T, config *ClientConfig, gssAPIWithMICConfig *G
 	return err, serverAuthErrors
 }
 
+type testAlgoSigner struct {
+	signer Signer
+	algo   string
+}
+
+func (tas *testAlgoSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error) {
+	if as, ok := tas.signer.(AlgorithmSigner); ok {
+		if algorithm == "" {
+			algorithm = tas.algo
+		}
+		return as.SignWithAlgorithm(rand, data, algorithm)
+	}
+	return nil, errors.New("not an AlgorithmSigner")
+}
+
+func (tas *testAlgoSigner) Sign(rand io.Reader, data []byte) (*Signature, error) {
+	if as, ok := tas.signer.(AlgorithmSigner); ok {
+		return as.SignWithAlgorithm(rand, data, tas.algo)
+	}
+	return nil, errors.New("not an AlgorithmSigner")
+}
+
+func (tas *testAlgoSigner) PublicKey() PublicKey {
+	return &testAlgoSignerPublickey{
+		publickey: tas.signer.PublicKey(),
+		algo:      tas.algo,
+	}
+}
+
+type testAlgoSignerPublickey struct {
+	publickey PublicKey
+	algo      string
+}
+
+func (tp *testAlgoSignerPublickey) Type() string {
+	return tp.algo
+}
+
+func (tp *testAlgoSignerPublickey) Marshal() []byte {
+	return tp.publickey.Marshal()
+}
+
+func (tp *testAlgoSignerPublickey) Verify(data []byte, sig *Signature) error {
+	return tp.publickey.Verify(data, sig)
+}
+
 func TestClientAuthPublicKey(t *testing.T) {
-	for _, s := range []string{"rsa", "rsa-sha2-256", "rsa-sha2-512"} {
+	for _, s := range []Signer{testSigners["rsa"],
+		&testAlgoSigner{signer: testSigners["rsa"], algo: "rsa-sha2-256"},
+		&testAlgoSigner{signer: testSigners["rsa"], algo: "rsa-sha2-512"}} {
 		config := &ClientConfig{
 			User: "testuser",
 			Auth: []AuthMethod{
-				PublicKeys(testSigners[s]),
+				PublicKeys(s),
 			},
 			HostKeyCallback: InsecureIgnoreHostKey(),
 		}
