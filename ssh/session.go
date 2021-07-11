@@ -169,10 +169,7 @@ func (s *Session) Setenv(name, value string) error {
 		Name:  name,
 		Value: value,
 	}
-	ok, err := s.ch.SendRequest("env", true, Marshal(&msg))
-	if err == nil && !ok {
-		err = errors.New("ssh: setenv failed")
-	}
+	_, err := s.ch.SendRequest("env", false, Marshal(&msg))
 	return err
 }
 
