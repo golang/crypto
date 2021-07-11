@@ -116,6 +116,7 @@ var cipherModes = map[string]*cipherMode{
 
 	// AEAD ciphers
 	gcmCipherID:        {16, 12, newGCMCipher},
+	gcm256CipherID:     {32, 12, newGCMCipher},
 	chacha20Poly1305ID: {64, 0, newChaCha20Cipher},
 
 	// CBC mode is insecure and so is not included in the default config.
