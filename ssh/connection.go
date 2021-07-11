@@ -41,6 +41,13 @@ type ConnMetadata interface {
 
 	// LocalAddr returns the local address for this connection.
 	LocalAddr() net.Addr
+
+	// PartialSuccessMethods returns the ordered list of
+	// authentication methods that returned ErrPartialSuccess.
+	// It can be used inside callbacks to find if a multi-step
+	// authentication is done using the correct sequence and to
+	// return the authentication methods that can continue
+	PartialSuccessMethods() []string
 }
 
 // Conn represents an SSH connection for both server and client roles.
@@ -102,16 +109,21 @@ func (c *connection) Close() error {
 type sshConn struct {
 	conn net.Conn
 
-	user          string
-	sessionID     []byte
-	clientVersion []byte
-	serverVersion []byte
+	user                  string
+	sessionID             []byte
+	clientVersion         []byte
+	serverVersion         []byte
+	partialSuccessMethods []string
 }
 
 func dup(src []byte) []byte {
 	dst := make([]byte, len(src))
 	copy(dst, src)
 	return dst
+}
+
+func (c *sshConn) PartialSuccessMethods() []string {
+	return c.partialSuccessMethods
 }
 
 func (c *sshConn) User() string {
