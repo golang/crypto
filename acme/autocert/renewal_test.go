@@ -131,7 +131,7 @@ func TestRenewFromCache(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// veriy the renewal happened
+	// verify the renewal happened
 	defer func() {
 		testDidRenewLoop = func(next time.Duration, err error) {}
 	}()
@@ -244,7 +244,7 @@ func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
 	man.state[exampleCertKey] = s
 	man.stateMu.Unlock()
 
-	// veriy the renewal accepted the newer cached cert
+	// verify the renewal accepted the newer cached cert
 	defer func() {
 		testDidRenewLoop = func(next time.Duration, err error) {}
 	}()
