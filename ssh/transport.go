@@ -37,6 +37,21 @@ type packetConn interface {
 	Close() error
 }
 
+// Transport represents a connection that implements packet based operations as
+// specified by SSH Transport Protocol (RFC 4253).
+type Transport interface {
+	// WritePacket encrypts and sends a packet of data to the remote peer.
+	WritePacket([]byte) error
+
+	// ReadPacket reads and decrypts a packet of data from the remote peer. The
+	// read is blocking. If error is nil then the returned byte slice is always
+	// non-empty.
+	ReadPacket() ([]byte, error)
+
+	// Close closes the connection with the remote peer.
+	Close() error
+}
+
 // transport is the keyingTransport that implements the SSH packet
 // protocol.
 type transport struct {

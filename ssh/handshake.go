@@ -183,6 +183,10 @@ func (t *handshakeTransport) printPacket(p []byte, write bool) {
 	}
 }
 
+func (t *handshakeTransport) ReadPacket() ([]byte, error) {
+	return t.readPacket()
+}
+
 func (t *handshakeTransport) readPacket() ([]byte, error) {
 	p, ok := <-t.incoming
 	if !ok {
@@ -477,6 +481,10 @@ func (t *handshakeTransport) sendKexInit() error {
 	t.sentInitPacket = packet
 
 	return nil
+}
+
+func (t *handshakeTransport) WritePacket(p []byte) error {
+	return t.writePacket(p)
 }
 
 func (t *handshakeTransport) writePacket(p []byte) error {
