@@ -307,6 +307,13 @@ func confirmKeyAck(key PublicKey, c packetConn) (bool, error) {
 			}
 			return true, nil
 		case msgUserAuthFailure:
+			var msg userAuthFailureMsg
+			if err := Unmarshal(packet, &msg); err != nil {
+				return false, err
+			}
+			if msg.PartialSuccess {
+				return true, nil
+			}
 			return false, nil
 		default:
 			return false, unexpectedMessageError(msgUserAuthSuccess, packet[0])
