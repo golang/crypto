@@ -59,7 +59,7 @@ const (
 // For example, you can get a derived key for e.g. AES-256 (which needs a
 // 32-byte key) by doing:
 //
-//      key := argon2.Key([]byte("some password"), salt, 3, 32*1024, 4, 32)
+//      key := argon2.Key([]byte("some password"), salt, 3, 32*1024, 1, 32)
 //
 // The draft RFC recommends[2] time=3, and memory=32*1024 is a sensible number.
 // If using that amount of memory (32 MB) is not possible in some contexts then
@@ -67,10 +67,13 @@ const (
 //
 // The time parameter specifies the number of passes over the memory and the
 // memory parameter specifies the size of the memory in KiB. For example
-// memory=32*1024 sets the memory cost to ~32 MB. The number of threads can be
-// adjusted to the number of available CPUs. The cost parameters should be
-// increased as memory latency and CPU parallelism increases. Remember to get a
-// good random salt.
+// memory=32*1024 sets the memory cost to ~32 MB. The threads parameter defines
+// the parallelism degree used while deriving the key. It is commonly left at 1.
+//
+// The cost parameters should be increased as memory latency and CPU parallelism
+// increases. Remember to get a good random salt. All cost parameters affect the
+// result, so it is important to use static values for portability in
+// distributed systems.
 func Key(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
 	return deriveKey(argon2i, password, salt, nil, nil, time, memory, threads, keyLen)
 }
@@ -83,7 +86,7 @@ func Key(password, salt []byte, time, memory uint32, threads uint8, keyLen uint3
 // For example, you can get a derived key for e.g. AES-256 (which needs a
 // 32-byte key) by doing:
 //
-//      key := argon2.IDKey([]byte("some password"), salt, 1, 64*1024, 4, 32)
+//      key := argon2.IDKey([]byte("some password"), salt, 1, 64*1024, 1, 32)
 //
 // The draft RFC recommends[2] time=1, and memory=64*1024 is a sensible number.
 // If using that amount of memory (64 MB) is not possible in some contexts then
@@ -91,10 +94,13 @@ func Key(password, salt []byte, time, memory uint32, threads uint8, keyLen uint3
 //
 // The time parameter specifies the number of passes over the memory and the
 // memory parameter specifies the size of the memory in KiB. For example
-// memory=64*1024 sets the memory cost to ~64 MB. The number of threads can be
-// adjusted to the numbers of available CPUs. The cost parameters should be
-// increased as memory latency and CPU parallelism increases. Remember to get a
-// good random salt.
+// memory=32*1024 sets the memory cost to ~32 MB. The threads parameter defines
+// the parallelism degree used while deriving the key. It is commonly left at 1.
+//
+// The cost parameters should be increased as memory latency and CPU parallelism
+// increases. Remember to get a good random salt. All cost parameters affect the
+// result, so it is important to use static values for portability in
+// distributed systems.
 func IDKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
 	return deriveKey(argon2id, password, salt, nil, nil, time, memory, threads, keyLen)
 }
