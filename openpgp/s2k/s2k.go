@@ -15,6 +15,50 @@ import (
 	"golang.org/x/crypto/openpgp/errors"
 )
 
+const (
+	// S2KCountMin is the minimum allowable parameter for the iterated and salted
+	// string to key (S2K) key derivation function for symmetrically encrypting
+	// with a passphrase.
+	// It provides the least protection against dictionary attacks. A
+	// higher value should be chosen instead.
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.3
+	S2KCountMin = 1024
+
+	// S2KCountDefault is the default parameter used for the iterated and salted
+	// string to key (S2K) key derivation function for symmetrically encrypting
+	// with a passphrase.
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.3
+	S2KCountDefault = 65536
+
+	// S2KCountMax is the maximum allowable parameter for the iterated and salted
+	// string to key (S2K) key derivation function for symmetrically encrypting
+	// with a passphrase.
+	// It provides the highest security by requiring the most amount of work to
+	// perform a dictionary attack.
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.3
+	S2KCountMax = 65011712
+)
+
+type stringToKeySpecifier uint8
+
+const (
+	// The simple string-to-key directly hashes the password string to
+	// produce the key. It should not be used (section 3.7.2)
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.1
+	simpleS2K stringToKeySpecifier = 0
+
+	// The salted string-to-key method hashes the password along with a
+	// random salt. It should not be used (section 3.7.2)
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.2
+	saltedS2K stringToKeySpecifier = 1
+
+	// The Iterated and salted string to key method hashes the passphrase
+	// and random salt multiple times. The total number of octets to be
+	// hashed is specified via the S2KCount config parameter.
+	// See https://tools.ietf.org/html/rfc4880#section-3.7.1.3
+	iteratedAndSaltedS2K stringToKeySpecifier = 3
+)
+
 // Config collects configuration parameters for s2k key-stretching
 // transformatioms. A nil *Config is valid and results in all default
 // values. Currently, Config is used only by the Serialize function in
@@ -46,17 +90,20 @@ func (c *Config) hash() crypto.Hash {
 }
 
 func (c *Config) encodedCount() uint8 {
+	var i int
+
 	if c == nil || c.S2KCount == 0 {
-		return 96 // The common case. Correspoding to 65536
+		i = S2KCountDefault
+	} else {
+		i = c.S2KCount
 	}
 
-	i := c.S2KCount
 	switch {
 	// Behave like GPG. Should we make 65536 the lowest value used?
-	case i < 1024:
-		i = 1024
-	case i > 65011712:
-		i = 65011712
+	case i < S2KCountMin:
+		i = S2KCountMin
+	case i > S2KCountMax:
+		i = S2KCountMax
 	}
 
 	return encodeCount(i)
@@ -68,7 +115,7 @@ func (c *Config) encodedCount() uint8 {
 // if i is not in the above range (encodedCount above takes care to
 // pass i in the correct range). See RFC 4880 Section 3.7.7.1.
 func encodeCount(i int) uint8 {
-	if i < 1024 || i > 65011712 {
+	if i < S2KCountMin || i > S2KCountMax {
 		panic("count arg i outside the required range")
 	}
 
@@ -170,13 +217,13 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 	}
 	h := hash.New()
 
-	switch buf[0] {
-	case 0:
+	switch stringToKeySpecifier(buf[0]) {
+	case simpleS2K:
 		f := func(out, in []byte) {
 			Simple(out, h, in)
 		}
 		return f, nil
-	case 1:
+	case saltedS2K:
 		_, err = io.ReadFull(r, buf[:8])
 		if err != nil {
 			return
@@ -185,7 +232,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 			Salted(out, h, in, buf[:8])
 		}
 		return f, nil
-	case 3:
+	case iteratedAndSaltedS2K:
 		_, err = io.ReadFull(r, buf[:9])
 		if err != nil {
 			return
@@ -206,7 +253,7 @@ func Parse(r io.Reader) (f func(out, in []byte), err error) {
 // nil. In that case, sensible defaults will be used.
 func Serialize(w io.Writer, key []byte, rand io.Reader, passphrase []byte, c *Config) error {
 	var buf [11]byte
-	buf[0] = 3 /* iterated and salted */
+	buf[0] = byte(iteratedAndSaltedS2K)
 	buf[1], _ = HashToHashId(c.hash())
 	salt := buf[2:10]
 	if _, err := io.ReadFull(rand, salt); err != nil {

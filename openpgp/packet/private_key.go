@@ -23,6 +23,28 @@ import (
 	"golang.org/x/crypto/openpgp/s2k"
 )
 
+const (
+	// An octet of 0 signifies that the secret key follows unencrypted. The
+	// key data is followed by a 2-octet checksum.
+	// See https://tools.ietf.org/html/rfc4880#section-5.5.3
+	s2KUsageConventionUnencrypted = 0
+
+	// An octet of 254 signifies that the secret key is symmetrically
+	// encrypted according to an algorithm specifier and a string to key
+	// specifier (S2K).
+	// The encrypted secret key is followed by an encrypted 2-octet checksum.
+	// See https://tools.ietf.org/html/rfc4880#section-5.5.3
+	s2KUsageConventionPlaintextChecksum = 255
+
+	// An octet of 254 signifies that the secret key is symmetrically
+	// encrypted according to an algorithm specifier and a string to key
+	// specifier (S2K).
+	// The encrypted secret key is followed by an encrypted SHA1 hash of
+	// the plaintext of the secret key.
+	// See https://tools.ietf.org/html/rfc4880#section-5.5.3
+	s2KUsageConventionEncryptedSHA1 = 254
+)
+
 // PrivateKey represents a possibly encrypted private key. See RFC 4880,
 // section 5.5.3.
 type PrivateKey struct {
@@ -100,10 +122,10 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 	s2kType := buf[0]
 
 	switch s2kType {
-	case 0:
+	case s2KUsageConventionUnencrypted:
 		pk.s2k = nil
 		pk.Encrypted = false
-	case 254, 255:
+	case s2KUsageConventionEncryptedSHA1, s2KUsageConventionPlaintextChecksum:
 		_, err = readFull(r, buf[:])
 		if err != nil {
 			return
@@ -114,7 +136,7 @@ func (pk *PrivateKey) parse(r io.Reader) (err error) {
 		if err != nil {
 			return
 		}
-		if s2kType == 254 {
+		if s2kType == s2KUsageConventionEncryptedSHA1 {
 			pk.sha1Checksum = true
 		}
 	default:
