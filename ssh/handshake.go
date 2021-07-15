@@ -48,7 +48,7 @@ type handshakeTransport struct {
 	// hostKeys is non-empty if we are the server. In that case,
 	// it contains all host keys that can be used to sign the
 	// connection.
-	hostKeys []Signer
+	hostKeys map[string]Signer
 
 	// hostKeyAlgorithms is non-empty if we are the client. In that case,
 	// we accept these key types from the server as host key.
@@ -179,7 +179,7 @@ func (t *handshakeTransport) printPacket(p []byte, write bool) {
 		log.Printf("%s %s data (packet %d bytes)", t.id(), action, len(p))
 	} else {
 		msg, err := decode(p)
-		log.Printf("%s %s %T %v (%v)", t.id(), action, msg, msg, err)
+		log.Printf("%s %s %T %+v (%+v)", t.id(), action, msg, msg, err)
 	}
 }
 
@@ -456,9 +456,8 @@ func (t *handshakeTransport) sendKexInit() error {
 	io.ReadFull(rand.Reader, msg.Cookie[:])
 
 	if len(t.hostKeys) > 0 {
-		for _, k := range t.hostKeys {
-			msg.ServerHostKeyAlgos = append(
-				msg.ServerHostKeyAlgos, k.PublicKey().Type())
+		for alg, _ := range t.hostKeys {
+			msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, alg)
 		}
 	} else {
 		msg.ServerHostKeyAlgos = t.hostKeyAlgorithms
@@ -613,8 +612,8 @@ func (t *handshakeTransport) enterKeyExchange(otherInitPacket []byte) error {
 
 func (t *handshakeTransport) server(kex kexAlgorithm, algs *algorithms, magics *handshakeMagics) (*kexResult, error) {
 	var hostKey Signer
-	for _, k := range t.hostKeys {
-		if algs.hostKey == k.PublicKey().Type() {
+	for alg, k := range t.hostKeys {
+		if algs.hostKey == alg {
 			hostKey = k
 		}
 	}
@@ -634,7 +633,7 @@ func (t *handshakeTransport) client(kex kexAlgorithm, algs *algorithms, magics *
 		return nil, err
 	}
 
-	if err := verifyHostKeySignature(hostKey, result); err != nil {
+	if err := verifyHostKeySignature(hostKey, algs.hostKey, result); err != nil {
 		return nil, err
 	}
 

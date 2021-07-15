@@ -115,10 +115,19 @@ func (c *connection) clientHandshake(dialAddress string, config *ClientConfig) e
 
 // verifyHostKeySignature verifies the host key obtained in the key
 // exchange.
-func verifyHostKeySignature(hostKey PublicKey, result *kexResult) error {
+func verifyHostKeySignature(hostKey PublicKey, algo string, result *kexResult) error {
 	sig, rest, ok := parseSignatureBody(result.Signature)
 	if len(rest) > 0 || !ok {
 		return errors.New("ssh: signature parse error")
+	}
+
+	for privAlgo, pubAlgo := range certAlgoNames {
+		if pubAlgo == algo {
+			algo = privAlgo
+		}
+	}
+	if sig.Format != algo {
+		return fmt.Errorf("ssh: invalid signature algorithm %q, expected %q", sig.Format, algo)
 	}
 
 	return hostKey.Verify(result.H, sig)

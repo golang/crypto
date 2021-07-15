@@ -64,7 +64,7 @@ type ServerConfig struct {
 	// Config contains configuration shared between client and server.
 	Config
 
-	hostKeys []Signer
+	hostKeys map[string]Signer
 
 	// NoClientAuth is true if clients are allowed to connect without
 	// authenticating.
@@ -123,14 +123,41 @@ type ServerConfig struct {
 // key exists with the same algorithm, it is overwritten. Each server
 // config must have at least one host key.
 func (s *ServerConfig) AddHostKey(key Signer) {
-	for i, k := range s.hostKeys {
-		if k.PublicKey().Type() == key.PublicKey().Type() {
-			s.hostKeys[i] = key
+	if s.hostKeys == nil {
+		s.hostKeys = make(map[string]Signer)
+	}
+
+	keyType := key.PublicKey().Type()
+	switch keyType {
+	case KeyAlgoRSA, KeyAlgoRSASHA2256, KeyAlgoRSASHA2512:
+		if algorithmSigner, ok := key.(AlgorithmSigner); ok {
+			s.hostKeys[KeyAlgoRSA] = &defaultAlgorithmSigner{
+				algorithmSigner, SigAlgoRSA,
+			}
+			s.hostKeys[KeyAlgoRSASHA2256] = &defaultAlgorithmSigner{
+				algorithmSigner, SigAlgoRSASHA2256,
+			}
+			s.hostKeys[KeyAlgoRSASHA2512] = &defaultAlgorithmSigner{
+				algorithmSigner, SigAlgoRSASHA2512,
+			}
+			return
+		}
+	case CertAlgoRSAv01, CertAlgoRSASHA2256v01, CertAlgoRSASHA2512v01:
+		if algorithmSigner, ok := key.(AlgorithmSigner); ok {
+			s.hostKeys[CertAlgoRSAv01] = &defaultAlgorithmSigner{
+				algorithmSigner, SigAlgoRSA,
+			}
+			s.hostKeys[CertAlgoRSASHA2256v01] = &defaultAlgorithmSigner{
+				algorithmSigner, SigAlgoRSASHA2256,
+			}
+			s.hostKeys[CertAlgoRSASHA2512v01] = &defaultAlgorithmSigner{
+				algorithmSigner, SigAlgoRSASHA2512,
+			}
 			return
 		}
 	}
+	s.hostKeys[keyType] = key
 
-	s.hostKeys = append(s.hostKeys, key)
 }
 
 // cachedPubKey contains the results of querying whether a public key is
