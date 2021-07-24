@@ -104,7 +104,7 @@ func TestRsaPss(t *testing.T) {
 	}
 
 	// filesOverrideToPassZeroSLen is a map of all test files
-	// and which TcIds that should be overriden to pass if the
+	// and which TcIds that should be overridden to pass if the
 	// rsa.PSSOptions.SaltLength is zero.
 	// These tests expect a failure with a PSSOptions.SaltLength: 0
 	// and a signature that uses a different salt length. However,
