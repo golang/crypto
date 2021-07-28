@@ -4,6 +4,7 @@
 
 //go:build gc && !purego
 // +build gc,!purego
+// +build !js
 
 package chacha20
 
