@@ -99,19 +99,9 @@ func New256(key []byte) (hash.Hash, error) { return newDigest(Size256, key) }
 func New(size int, key []byte) (hash.Hash, error) { return newDigest(size, key) }
 
 func newDigest(hashSize int, key []byte) (*Digest, error) {
-	if hashSize < 1 || hashSize > Size {
-		return nil, errHashSize
-	}
-	if len(key) > Size {
-		return nil, errKeySize
-	}
-	d := &Digest{
-		size:   hashSize,
-		keyLen: len(key),
-	}
-	copy(d.key[:], key)
-	d.Reset()
-	return d, nil
+	d := new(Digest)
+	err := d.Init(hashSize, key)
+	return d, err
 }
 
 func checkSum(sum *[Size]byte, hashSize int, data []byte) {
@@ -198,6 +188,22 @@ func (d *Digest) UnmarshalBinary(b []byte) error {
 	copy(d.block[:], b[:BlockSize])
 	b = b[BlockSize:]
 	d.offset = int(b[0])
+	return nil
+}
+
+// Init initializes d with the specified parameters. For a description of the
+// parameters and possible errors, see New.
+func (d *Digest) Init(size int, key []byte) error {
+	if size < 1 || size > Size {
+		return errHashSize
+	}
+	if len(key) > Size {
+		return errKeySize
+	}
+	d.size = size
+	d.keyLen = len(key)
+	copy(d.key[:], key)
+	d.Reset()
 	return nil
 }
 
