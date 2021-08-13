@@ -8,8 +8,8 @@
 // Deprecated: this package is unmaintained except for security fixes. New
 // applications should consider a more focused, modern alternative to OpenPGP
 // for their specific task. If you are required to interoperate with OpenPGP
-// systems and need a maintained package, consider a maintained community fork.
-// See https://golang.org/issue/37497.
+// systems and need a maintained package, consider a community fork.
+// See https://golang.org/issue/44226.
 package packet // import "golang.org/x/crypto/openpgp/packet"
 
 import (
