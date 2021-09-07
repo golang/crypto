@@ -7,7 +7,7 @@ package curve25519
 import (
 	"bytes"
 	"crypto/rand"
-	"fmt"
+	"encoding/hex"
 	"testing"
 )
 
@@ -25,7 +25,7 @@ func TestX25519Basepoint(t *testing.T) {
 		}
 	}
 
-	result := fmt.Sprintf("%x", x)
+	result := hex.EncodeToString(x)
 	if result != expectedHex {
 		t.Errorf("incorrect result: got %s, want %s", result, expectedHex)
 	}
