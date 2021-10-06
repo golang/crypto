@@ -49,6 +49,7 @@ type CAServer struct {
 	challengeTypes []string
 	url            string
 	roots          *x509.CertPool
+	eabRequired    bool
 
 	mu             sync.Mutex
 	certCount      int                           // number of issued certs
@@ -152,6 +153,15 @@ func (ca *CAServer) Roots() *x509.CertPool {
 	return ca.roots
 }
 
+// ExternalAccountRequired makes an EAB JWS required for account registration.
+func (ca *CAServer) ExternalAccountRequired() *CAServer {
+	if ca.url != "" {
+		panic("ExternalAccountRequired must be called before Start")
+	}
+	ca.eabRequired = true
+	return ca
+}
+
 // Start starts serving requests. The server address becomes available in the
 // URL field.
 func (ca *CAServer) Start() *CAServer {
@@ -224,6 +234,12 @@ type discovery struct {
 	NewAccount string `json:"newAccount"`
 	NewOrder   string `json:"newOrder"`
 	NewAuthz   string `json:"newAuthz"`
+
+	Meta discoveryMeta `json:"meta,omitempty"`
+}
+
+type discoveryMeta struct {
+	ExternalAccountRequired bool `json:"externalAccountRequired,omitempty"`
 }
 
 type challenge struct {
@@ -264,6 +280,9 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 			NewNonce:   ca.serverURL("/new-nonce"),
 			NewAccount: ca.serverURL("/new-account"),
 			NewOrder:   ca.serverURL("/new-order"),
+			Meta: discoveryMeta{
+				ExternalAccountRequired: ca.eabRequired,
+			},
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			panic(fmt.Sprintf("discovery response: %v", err))
@@ -283,6 +302,21 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		ca.acctRegistered = true
+
+		var req struct {
+			ExternalAccountBinding json.RawMessage
+		}
+
+		if err := decodePayload(&req, r.Body); err != nil {
+			ca.httpErrorf(w, http.StatusBadRequest, err.Error())
+			return
+		}
+
+		if ca.eabRequired && len(req.ExternalAccountBinding) == 0 {
+			ca.httpErrorf(w, http.StatusBadRequest, "registration failed: no JWS for EAB")
+			return
+		}
+
 		// TODO: Check the user account key against a ca.accountKeys?
 		w.Header().Set("Location", ca.serverURL("/accounts/1"))
 		w.WriteHeader(http.StatusCreated)

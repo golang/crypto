@@ -394,6 +394,19 @@ func TestGetCertificate(t *testing.T) {
 				}
 			},
 		},
+		{
+			name:   "provideExternalAuth",
+			hello:  clientHelloInfo("example.org", algECDSA),
+			domain: "example.org",
+			prepare: func(t *testing.T, man *Manager, s *acmetest.CAServer) {
+				s.ExternalAccountRequired()
+
+				man.ExternalAccountBinding = &acme.ExternalAccountBinding{
+					KID: "test-key",
+					Key: make([]byte, 32),
+				}
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
