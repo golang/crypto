@@ -196,7 +196,7 @@ func TestJWSEncodeJSON(t *testing.T) {
 }
 
 func TestJWSEncodeKID(t *testing.T) {
-	kid := keyID("https://example.org/account/1")
+	kid := KeyID("https://example.org/account/1")
 	claims := struct{ Msg string }{"Hello JWS"}
 	// JWS signed with testKeyEC
 	const (
