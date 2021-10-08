@@ -193,7 +193,7 @@ func (r *keyring) SignWithFlags(key ssh.PublicKey, data []byte, flags SignatureF
 	}
 
 	r.expireKeysLocked()
-	keys := r.keys
+	keys := append(r.keys[:0:0], r.keys...)
 	r.mu.Unlock()
 
 	wanted := key.Marshal()
