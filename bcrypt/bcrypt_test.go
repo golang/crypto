@@ -107,22 +107,36 @@ func TestInvalidHashErrors(t *testing.T) {
 }
 
 func TestUnpaddedBase64Encoding(t *testing.T) {
-	original := []byte{101, 201, 101, 75, 19, 227, 199, 20, 239, 236, 133, 32, 30, 109, 243, 30}
-	encodedOriginal := []byte("XajjQvNhvvRt5GSeFk1xFe")
+	for _, tc := range []struct {
+		original        []byte
+		encodedOriginal []byte
+	}{
+		{
+			original:        []byte{101, 201, 101, 75, 19, 227, 199, 20, 239, 236, 133, 32, 30, 109, 243, 30},
+			encodedOriginal: []byte("XajjQvNhvvRt5GSeFk1xFe"),
+		},
+		{
+			original:        []byte("length multiple of three encodes without padding"),
+			encodedOriginal: []byte("ZETsX1PmGEzzZFPnaEvjGE7kGFPmakTjGETsW07iXVKeb0jyYE7zbA/uWUPiYU3l"),
+		},
+	} {
+		t.Run(string(tc.encodedOriginal), func(t *testing.T) {
 
-	encoded := base64Encode(original)
+			encoded := base64Encode(tc.original)
 
-	if !bytes.Equal(encodedOriginal, encoded) {
-		t.Errorf("Encoded %v should have equaled %v", encoded, encodedOriginal)
-	}
+			if !bytes.Equal(tc.encodedOriginal, encoded) {
+				t.Errorf("Encoded %v should have equaled %v", encoded, tc.encodedOriginal)
+			}
 
-	decoded, err := base64Decode(encodedOriginal)
-	if err != nil {
-		t.Fatalf("base64Decode blew up: %s", err)
-	}
+			decoded, err := base64Decode(tc.encodedOriginal)
+			if err != nil {
+				t.Fatalf("base64Decode blew up: %s", err)
+			}
 
-	if !bytes.Equal(decoded, original) {
-		t.Errorf("Decoded %v should have equaled %v", decoded, original)
+			if !bytes.Equal(decoded, tc.original) {
+				t.Errorf("Decoded %v should have equaled %v", decoded, tc.original)
+			}
+		})
 	}
 }
 
