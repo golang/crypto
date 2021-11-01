@@ -24,6 +24,22 @@ const (
 	serviceSSH      = "ssh-connection"
 )
 
+// These are string constants related to extensions and extension negotiation
+const (
+	extInfoServer = "ext-info-s"
+	extInfoClient = "ext-info-c"
+
+	ExtServerSigAlgs = "server-sig-algs"
+	// extDelayCompression = "delay-compression"
+	// extNoFlowControl    = "no-flow-control"
+	// extElevation        = "elevation"
+)
+
+// defaultExtensions lists extensions enabled by default.
+var defaultExtensions = []string{
+	ExtServerSigAlgs,
+}
+
 // supportedCiphers lists ciphers we support but might not recommend.
 var supportedCiphers = []string{
 	"aes128-ctr", "aes192-ctr", "aes256-ctr",
@@ -102,6 +118,18 @@ var hashFuncs = map[string]crypto.Hash{
 	CertAlgoECDSA521v01: crypto.SHA512,
 }
 
+// supportedSigAlgs returns a slice of algorithms supported for pubkey authentication
+// in no particular order.
+func supportedSigAlgs() []string {
+	// TODO(kxd) I'm not sure if hashFuncs is the best place to get this set but it seemed
+	// like a sensible first step. Should this be a curated list?
+	var serverSigAlgs []string
+	for k := range hashFuncs {
+		serverSigAlgs = append(serverSigAlgs, k)
+	}
+	return serverSigAlgs
+}
+
 // unexpectedMessageError results when the SSH message that we received didn't
 // match what we wanted.
 func unexpectedMessageError(expected, got uint8) error {
@@ -122,6 +150,16 @@ func findCommon(what string, client []string, server []string) (common string, e
 		}
 	}
 	return "", fmt.Errorf("ssh: no common algorithm for %s; client offered: %v, server offered: %v", what, client, server)
+}
+
+// hasString returns true if string "a" is in slice of strings "x", false otherwise.
+func hasString(a string, x []string) bool {
+	for _, s := range x {
+		if a == s {
+			return true
+		}
+	}
+	return false
 }
 
 // directionAlgorithms records algorithm choices in one direction (either read or write)
@@ -159,6 +197,11 @@ func findAgreedAlgorithms(isClient bool, clientKexInit, serverKexInit *kexInitMs
 	result.kex, err = findCommon("key exchange", clientKexInit.KexAlgos, serverKexInit.KexAlgos)
 	if err != nil {
 		return
+	} else if result.kex == extInfoClient || result.kex == extInfoServer {
+		// According to RFC8308 section 2.2 if either the client or server extension signal
+		// is chosen as the kex algorithm the parties must disconnect.
+		// chosen
+		return result, fmt.Errorf("ssh: invalid kex algorithm chosen")
 	}
 
 	result.hostKey, err = findCommon("host key", clientKexInit.ServerHostKeyAlgos, serverKexInit.ServerHostKeyAlgos)
@@ -232,6 +275,10 @@ type Config struct {
 	// The allowed MAC algorithms. If unspecified then a sensible default
 	// is used.
 	MACs []string
+
+	// A list of enabled extensions. If unspecified then a sensible
+	// default is used
+	Extensions []string
 }
 
 // SetDefaults sets sensible values for unset fields in config. This is
@@ -259,6 +306,10 @@ func (c *Config) SetDefaults() {
 
 	if c.MACs == nil {
 		c.MACs = supportedMACs
+	}
+
+	if c.Extensions == nil {
+		c.Extensions = defaultExtensions
 	}
 
 	if c.RekeyThreshold == 0 {

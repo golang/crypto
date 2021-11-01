@@ -88,7 +88,7 @@ func addNoiseTransport(t keyingTransport) keyingTransport {
 // handshakePair creates two handshakeTransports connected with each
 // other. If the noise argument is true, both transports will try to
 // confuse the other side by sending ignore and debug messages.
-func handshakePair(clientConf *ClientConfig, addr string, noise bool) (client *handshakeTransport, server *handshakeTransport, err error) {
+func handshakePair(serverConf *ServerConfig, clientConf *ClientConfig, addr string, noise bool) (client *handshakeTransport, server *handshakeTransport, err error) {
 	a, b, err := netPipe()
 	if err != nil {
 		return nil, nil, err
@@ -107,7 +107,6 @@ func handshakePair(clientConf *ClientConfig, addr string, noise bool) (client *h
 	v := []byte("version")
 	client = newClientTransport(trC, v, v, clientConf, addr, a.RemoteAddr())
 
-	serverConf := &ServerConfig{}
 	serverConf.AddHostKey(testSigners["ecdsa"])
 	serverConf.AddHostKey(testSigners["rsa"])
 	serverConf.SetDefaults()
@@ -132,9 +131,15 @@ func TestHandshakeBasic(t *testing.T) {
 		waitCall: make(chan int, 10),
 		called:   make(chan int, 10),
 	}
-
 	checker.waitCall <- 1
-	trC, trS, err := handshakePair(&ClientConfig{HostKeyCallback: checker.Check}, "addr", false)
+
+	serverConf := &ServerConfig{}
+	serverConf.Extensions = []string{}
+
+	clientConf := &ClientConfig{HostKeyCallback: checker.Check}
+	clientConf.Extensions = []string{}
+
+	trC, trS, err := handshakePair(serverConf, clientConf, "addr", false)
 	if err != nil {
 		t.Fatalf("handshakePair: %v", err)
 	}
@@ -260,9 +265,12 @@ func TestHandshakeAutoRekeyWrite(t *testing.T) {
 		called:   make(chan int, 10),
 		waitCall: nil,
 	}
+	serverConf := &ServerConfig{}
+	serverConf.Extensions = []string{}
 	clientConf := &ClientConfig{HostKeyCallback: checker.Check}
+	clientConf.Extensions = []string{}
 	clientConf.RekeyThreshold = 500
-	trC, trS, err := handshakePair(clientConf, "addr", false)
+	trC, trS, err := handshakePair(serverConf, clientConf, "addr", false)
 	if err != nil {
 		t.Fatalf("handshakePair: %v", err)
 	}
@@ -325,12 +333,13 @@ func TestHandshakeAutoRekeyRead(t *testing.T) {
 		called:   make(chan int, 2),
 		waitCall: nil,
 	}
+	serverConf := &ServerConfig{}
 	clientConf := &ClientConfig{
 		HostKeyCallback: sync.Check,
 	}
 	clientConf.RekeyThreshold = 500
 
-	trC, trS, err := handshakePair(clientConf, "addr", false)
+	trC, trS, err := handshakePair(serverConf, clientConf, "addr", false)
 	if err != nil {
 		t.Fatalf("handshakePair: %v", err)
 	}
@@ -496,13 +505,30 @@ func TestDisconnect(t *testing.T) {
 		t.Skip("see golang.org/issue/7237")
 	}
 	checker := &testChecker{}
-	trC, trS, err := handshakePair(&ClientConfig{HostKeyCallback: checker.Check}, "addr", false)
+	// TODO(kxd) Would it make more sense for this test to disable extensions? Then there
+	// wouldn't be a need to check for the ext-info packet explicitly in the test. I've
+	// waffled on this because then it's not testing the case of a disconnect right after
+	// connecting with extensions, but maybe that's not needed/not the intent of the test
+	// anyway?
+	serverConf := &ServerConfig{}
+	clientConf := &ClientConfig{
+		HostKeyCallback: checker.Check,
+	}
+	trC, trS, err := handshakePair(serverConf, clientConf, "addr", false)
 	if err != nil {
 		t.Fatalf("handshakePair: %v", err)
 	}
 
 	defer trC.Close()
 	defer trS.Close()
+
+	packet, err := trS.readPacket()
+	if err != nil {
+		t.Fatalf("readPacket 1: %v", err)
+	}
+	if packet[0] != msgExtInfo {
+		t.Errorf("got packet %v, want packet type %d", packet, msgExtInfo)
+	}
 
 	trC.writePacket([]byte{msgRequestSuccess, 0, 0})
 	errMsg := &disconnectMsg{
@@ -512,9 +538,9 @@ func TestDisconnect(t *testing.T) {
 	trC.writePacket(Marshal(errMsg))
 	trC.writePacket([]byte{msgRequestSuccess, 0, 0})
 
-	packet, err := trS.readPacket()
+	packet, err = trS.readPacket()
 	if err != nil {
-		t.Fatalf("readPacket 1: %v", err)
+		t.Fatalf("readPacket 2: %v", err)
 	}
 	if packet[0] != msgRequestSuccess {
 		t.Errorf("got packet %v, want packet type %d", packet, msgRequestSuccess)
@@ -522,25 +548,26 @@ func TestDisconnect(t *testing.T) {
 
 	_, err = trS.readPacket()
 	if err == nil {
-		t.Errorf("readPacket 2 succeeded")
+		t.Errorf("readPacket 3 succeeded")
 	} else if !reflect.DeepEqual(err, errMsg) {
 		t.Errorf("got error %#v, want %#v", err, errMsg)
 	}
 
 	_, err = trS.readPacket()
 	if err == nil {
-		t.Errorf("readPacket 3 succeeded")
+		t.Errorf("readPacket 4 succeeded")
 	}
 }
 
 func TestHandshakeRekeyDefault(t *testing.T) {
+	serverConf := &ServerConfig{}
 	clientConf := &ClientConfig{
 		Config: Config{
 			Ciphers: []string{"aes128-ctr"},
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	}
-	trC, trS, err := handshakePair(clientConf, "addr", false)
+	trC, trS, err := handshakePair(serverConf, clientConf, "addr", false)
 	if err != nil {
 		t.Fatalf("handshakePair: %v", err)
 	}
@@ -558,5 +585,223 @@ func TestHandshakeRekeyDefault(t *testing.T) {
 	}
 	if wgb != 64 {
 		t.Errorf("got rekey after %dG write, want 64G", wgb)
+	}
+}
+
+func TestHandshakeExtInfoSignal(t *testing.T) {
+	t.Run("no ext info signal from server when disabled", func(t *testing.T) {
+		a, b, err := netPipe()
+		if err != nil {
+			t.Fatalf("netPipe: %v", err)
+		}
+
+		var trC, trS keyingTransport
+
+		trC = newTransport(a, rand.Reader, true)
+		trS = newTransport(b, rand.Reader, false)
+
+		v := []byte("version")
+
+		serverConf := &ServerConfig{}
+		serverConf.SetDefaults()
+		serverConf.Extensions = []string{}
+		serverConf.AddHostKey(testSigners["ecdsa"])
+		serverConf.AddHostKey(testSigners["rsa"])
+		server := newServerTransport(trS, v, v, serverConf)
+
+		defer trC.Close()
+		defer server.Close()
+
+		data, err := trC.readPacket()
+		if err != nil {
+			t.Fatalf("could not read client packet: %v", err)
+		}
+
+		if data[0] != msgKexInit {
+			t.Fatalf("client didn't receive kexinit")
+		}
+		var serverInit kexInitMsg
+		if err = Unmarshal(data, &serverInit); err != nil {
+			t.Errorf("could not unmarshal kexinit: %v", err)
+		}
+
+		if hasString(extInfoServer, serverInit.KexAlgos) {
+			t.Errorf("server sent ext info signal when extension was disabled")
+		}
+	})
+	t.Run("ext info signal from server when enabled", func(t *testing.T) {
+		a, b, err := netPipe()
+		if err != nil {
+			t.Fatalf("netPipe: %v", err)
+		}
+
+		var trC, trS keyingTransport
+
+		trC = newTransport(a, rand.Reader, true)
+		trS = newTransport(b, rand.Reader, false)
+
+		v := []byte("version")
+
+		serverConf := &ServerConfig{}
+		serverConf.SetDefaults()
+		serverConf.Extensions = []string{ExtServerSigAlgs}
+		serverConf.AddHostKey(testSigners["ecdsa"])
+		serverConf.AddHostKey(testSigners["rsa"])
+		server := newServerTransport(trS, v, v, serverConf)
+
+		defer trC.Close()
+		defer server.Close()
+
+		data, err := trC.readPacket()
+		if err != nil {
+			t.Fatalf("could not read client packet: %v", err)
+		}
+
+		if data[0] != msgKexInit {
+			t.Fatalf("client didn't receive kexinit")
+		}
+		var serverInit kexInitMsg
+		if err = Unmarshal(data, &serverInit); err != nil {
+			t.Errorf("could not unmarshal kexinit: %v", err)
+		}
+
+		if !hasString(extInfoServer, serverInit.KexAlgos) {
+			t.Errorf("server did not send ext info signal")
+		}
+	})
+	t.Run("no ext info signal from client when disabled", func(t *testing.T) {
+		a, b, err := netPipe()
+		if err != nil {
+			t.Fatalf("netPipe: %v", err)
+		}
+
+		var trC, trS keyingTransport
+
+		trC = newTransport(a, rand.Reader, true)
+		trS = newTransport(b, rand.Reader, false)
+
+		v := []byte("version")
+
+		clientConf := &ClientConfig{}
+		clientConf.SetDefaults()
+		clientConf.Extensions = []string{}
+		client := newClientTransport(trC, v, v, clientConf, "addr", a.RemoteAddr())
+
+		defer client.Close()
+		defer trS.Close()
+
+		data, err := trS.readPacket()
+		if err != nil {
+			t.Fatalf("could not read server packet: %v", err)
+		}
+
+		if data[0] != msgKexInit {
+			t.Fatalf("server didn't receive kexinit")
+		}
+		var clientInit kexInitMsg
+		if err = Unmarshal(data, &clientInit); err != nil {
+			t.Errorf("could not unmarshal kexinit: %v", err)
+		}
+
+		if hasString(extInfoClient, clientInit.KexAlgos) {
+			t.Errorf("client sent ext info signal when extension was disabled")
+		}
+	})
+	t.Run("ext info signal from client when enabled", func(t *testing.T) {
+		a, b, err := netPipe()
+		if err != nil {
+			t.Fatalf("netPipe: %v", err)
+		}
+
+		var trC, trS keyingTransport
+
+		trC = newTransport(a, rand.Reader, true)
+		trS = newTransport(b, rand.Reader, false)
+
+		v := []byte("version")
+
+		clientConf := &ClientConfig{}
+		clientConf.SetDefaults()
+		clientConf.Extensions = []string{ExtServerSigAlgs}
+		client := newClientTransport(trC, v, v, clientConf, "addr", a.RemoteAddr())
+
+		defer client.Close()
+		defer trS.Close()
+
+		data, err := trS.readPacket()
+		if err != nil {
+			t.Fatalf("could not read server packet: %v", err)
+		}
+
+		if data[0] != msgKexInit {
+			t.Fatalf("server didn't receive kexinit")
+		}
+		var clientInit kexInitMsg
+		if err = Unmarshal(data, &clientInit); err != nil {
+			t.Errorf("could not unmarshal kexinit: %v", err)
+		}
+
+		if !hasString(extInfoClient, clientInit.KexAlgos) {
+			t.Errorf("client did not send ext info signal")
+		}
+	})
+}
+
+func TestHandshakeExtInfoAfterNewkeys(t *testing.T) {
+	serverConf := &ServerConfig{
+		Config: Config{
+			Extensions: []string{
+				ExtServerSigAlgs,
+			},
+		},
+	}
+	clientConf := &ClientConfig{
+		Config: Config{
+			Extensions: []string{
+				ExtServerSigAlgs,
+			},
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+	trC, trS, err := handshakePair(serverConf, clientConf, "addr", false)
+	if err != nil {
+		t.Fatalf("handshakePair: %v", err)
+	}
+	defer trC.Close()
+	defer trS.Close()
+
+	packet, err := trC.readPacket()
+	if err != nil {
+		t.Fatalf("readPacket 1: %v", err)
+	}
+
+	var extInfo extInfoMsg
+	if err := Unmarshal(packet, &extInfo); err != nil {
+		t.Fatalf("unable to unmarshal packet: %v", err)
+	}
+
+	if rawServerAlgs, ok := extInfo.Extensions[ExtServerSigAlgs]; ok {
+		expectedAlgs := supportedSigAlgs()
+		serverAlgs := strings.Split(string(rawServerAlgs), ",")
+
+		if len(expectedAlgs) != len(serverAlgs) {
+			t.Errorf("expected %d server-sig-algs but received %d",
+				len(expectedAlgs), len(serverAlgs))
+		}
+
+		for _, expected := range expectedAlgs {
+			foundAlg := false
+			for _, found := range serverAlgs {
+				if expected == found {
+					foundAlg = true
+					break
+				}
+			}
+			if !foundAlg {
+				t.Errorf("could not find expected alg '%s' in server-sig-algs", expected)
+			}
+		}
+	} else {
+		t.Error("could not find expected server-sig-algs extension")
 	}
 }

@@ -117,6 +117,75 @@ func TestClientAuthPublicKey(t *testing.T) {
 	}
 }
 
+func TestClientAuthPublicKeyExtensions(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	certChecker := CertChecker{
+		IsUserAuthority: func(k PublicKey) bool {
+			return bytes.Equal(k.Marshal(), testPublicKeys["ecdsa"].Marshal())
+		},
+		UserKeyFallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if conn.User() == "testuser" && bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+
+			return nil, fmt.Errorf("pubkey for %q not acceptable", conn.User())
+		},
+		IsRevoked: func(c *Certificate) bool {
+			return c.Serial == 666
+		},
+	}
+	serverConfig := &ServerConfig{
+		PublicKeyCallback: certChecker.Authenticate,
+	}
+	serverConfig.AddHostKey(testSigners["rsa"])
+
+	go newServer(c1, serverConfig)
+	clientConn, _, _, err := NewClientConn(c2, "", &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	})
+	if err != nil {
+		t.Fatalf("NewClientConn: %v", err)
+	}
+
+	conn, ok := clientConn.(*connection)
+	if !ok {
+		t.Fatalf("conn is not a *connection")
+	}
+
+	rawServerSigAlgs, ok := conn.transport.extensions[ExtServerSigAlgs]
+	if !ok {
+		t.Fatalf("did not receive server-sig-algs extension")
+	}
+
+	serverSigAlgs := strings.Split(string(rawServerSigAlgs), ",")
+	if len(serverSigAlgs) == 0 {
+		t.Fatalf("did not receive any server-sig-algs")
+	}
+
+	for _, expectedAlg := range supportedSigAlgs() {
+		hasAlg := false
+		for _, receivedAlg := range serverSigAlgs {
+			if receivedAlg == expectedAlg {
+				hasAlg = true
+				break
+			}
+		}
+		if !hasAlg {
+			t.Errorf("server-sig-algs did not have expected alg: %s", expectedAlg)
+		}
+	}
+}
+
 func TestAuthMethodPassword(t *testing.T) {
 	config := &ClientConfig{
 		User: "testuser",
@@ -128,6 +197,65 @@ func TestAuthMethodPassword(t *testing.T) {
 
 	if err := tryAuth(t, config); err != nil {
 		t.Fatalf("unable to dial remote side: %s", err)
+	}
+}
+
+func TestClientAuthPasswordExtensions(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConfig := &ServerConfig{
+		PasswordCallback: func(conn ConnMetadata, pass []byte) (*Permissions, error) {
+			if conn.User() == "testuser" && string(pass) == clientPassword {
+				return nil, nil
+			}
+			return nil, errors.New("password auth failed")
+		},
+	}
+	serverConfig.AddHostKey(testSigners["rsa"])
+
+	go newServer(c1, serverConfig)
+	clientConn, _, _, err := NewClientConn(c2, "", &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			Password(clientPassword),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	})
+	if err != nil {
+		t.Fatalf("NewClientConn: %v", err)
+	}
+
+	conn, ok := clientConn.(*connection)
+	if !ok {
+		t.Fatalf("conn is not a *connection")
+	}
+
+	rawServerSigAlgs, ok := conn.transport.extensions[ExtServerSigAlgs]
+	if !ok {
+		t.Fatalf("did not receive server-sig-algs extension")
+	}
+
+	serverSigAlgs := strings.Split(string(rawServerSigAlgs), ",")
+	if len(serverSigAlgs) == 0 {
+		t.Fatalf("did not receive any server-sig-algs")
+	}
+
+	for _, expectedAlg := range supportedSigAlgs() {
+		hasAlg := false
+		for _, receivedAlg := range serverSigAlgs {
+			if receivedAlg == expectedAlg {
+				hasAlg = true
+				break
+			}
+		}
+		if !hasAlg {
+			t.Errorf("server-sig-algs did not have expected alg: %s", expectedAlg)
+		}
 	}
 }
 

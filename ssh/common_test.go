@@ -111,6 +111,28 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 		},
 
 		testcase{
+			name: "server ext info kex chosen",
+			serverIn: kexInitMsg{
+				KexAlgos: []string{extInfoServer},
+			},
+			clientIn: kexInitMsg{
+				KexAlgos: []string{extInfoServer},
+			},
+			wantErr: true,
+		},
+
+		testcase{
+			name: "client ext info kex chosen",
+			serverIn: kexInitMsg{
+				KexAlgos: []string{extInfoClient},
+			},
+			clientIn: kexInitMsg{
+				KexAlgos: []string{extInfoClient},
+			},
+			wantErr: true,
+		},
+
+		testcase{
 			name: "client decides cipher",
 			serverIn: kexInitMsg{
 				CiphersClientServer: []string{"cipher1", "cipher2"},

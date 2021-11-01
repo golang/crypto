@@ -141,6 +141,15 @@ type serviceAcceptMsg struct {
 	Service string `sshtype:"6"`
 }
 
+// See RFC 4253, section 10.
+const msgExtInfo = 7
+
+// See RFC 8308, section 2.3.
+type extInfoMsg struct {
+	NumExtensions uint32            `sshtype:"7"`
+	Extensions    map[string][]byte `sshlen:"NumExtensions"`
+}
+
 // See RFC 4252, section 5.
 const msgUserAuthRequest = 50
 
@@ -467,6 +476,56 @@ func Unmarshal(data []byte, out interface{}) error {
 			default:
 				return fieldError(structType, i, "slice of unsupported type")
 			}
+		case reflect.Map:
+			if t.Key().Kind() != reflect.String {
+				return fieldError(structType, i, "map of unsupported key type")
+			}
+
+			lenTagVal := structType.Field(i).Tag.Get("sshlen")
+			if lenTagVal == "" {
+				return fieldError(structType, i, "unable to determine data length")
+			}
+			lenVal := v.FieldByName(lenTagVal)
+
+			mapLen := 0
+			switch lenVal.Kind() {
+			case reflect.Uint32:
+				mapLen = int(lenVal.Uint())
+			default:
+				return fieldError(structType, i, "len field of unsupported type")
+			}
+
+			newMap := reflect.MakeMapWithSize(t, mapLen)
+			for j := 0; j < mapLen; j++ {
+				var k, v []byte
+				if k, data, ok = parseString(data); !ok {
+					return errShortRead
+				}
+
+				switch t.Elem().Kind() {
+				case reflect.String:
+					if v, data, ok = parseString(data); !ok {
+						return errShortRead
+					}
+
+					newMap.SetMapIndex(reflect.ValueOf(string(k)), reflect.ValueOf(string(v)))
+				case reflect.Slice:
+					sliceElem := t.Elem()
+					switch sliceElem.Elem().Kind() {
+					case reflect.Uint8:
+						if v, data, ok = parseString(data); !ok {
+							return errShortRead
+						}
+						newMap.SetMapIndex(reflect.ValueOf(string(k)), reflect.ValueOf(v))
+					default:
+						return fieldError(structType, i, "map of unsupported element type")
+					}
+				default:
+					return fieldError(structType, i, "map of unsupported element type")
+				}
+			}
+
+			field.Set(newMap)
 		case reflect.Ptr:
 			if t == bigIntType {
 				var n *big.Int
@@ -555,6 +614,33 @@ func marshalStruct(out []byte, msg interface{}) []byte {
 				}
 			default:
 				panic(fmt.Sprintf("slice of unknown type in field %d: %T", i, field.Interface()))
+			}
+		case reflect.Map:
+			for _, k := range field.MapKeys() {
+				switch k.Kind() {
+				case reflect.String:
+					out = appendInt(out, len(k.String()))
+					out = append(out, k.String()...)
+
+					v := field.MapIndex(k)
+					switch v.Kind() {
+					case reflect.String:
+						out = appendInt(out, len(v.String()))
+						out = append(out, v.String()...)
+					case reflect.Slice:
+						switch v.Type().Elem().Kind() {
+						case reflect.Uint8:
+							out = appendInt(out, len(v.Bytes()))
+							out = append(out, v.Bytes()...)
+						default:
+							panic(fmt.Sprintf("map of unknown element type in field %d: %T", i, field.Interface()))
+						}
+					default:
+						panic(fmt.Sprintf("map of unknown element type in field %d: %T", i, field.Interface()))
+					}
+				default:
+					panic(fmt.Sprintf("map of unknown key type in field %d: %T", i, field.Interface()))
+				}
 			}
 		case reflect.Ptr:
 			if t == bigIntType {
@@ -782,6 +868,8 @@ func decode(packet []byte) (interface{}, error) {
 		msg = new(serviceRequestMsg)
 	case msgServiceAccept:
 		msg = new(serviceAcceptMsg)
+	case msgExtInfo:
+		msg = new(extInfoMsg)
 	case msgKexInit:
 		msg = new(kexInitMsg)
 	case msgKexDHInit:
@@ -843,6 +931,7 @@ var packetTypeNames = map[byte]string{
 	msgDisconnect:          "disconnectMsg",
 	msgServiceRequest:      "serviceRequestMsg",
 	msgServiceAccept:       "serviceAcceptMsg",
+	msgExtInfo:             "extInfoMsg",
 	msgKexInit:             "kexInitMsg",
 	msgKexDHInit:           "kexDHInitMsg",
 	msgKexDHReply:          "kexDHReplyMsg",
