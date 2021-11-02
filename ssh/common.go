@@ -69,10 +69,12 @@ var preferredKexAlgos = []string{
 // supportedHostKeyAlgos specifies the supported host-key algorithms (i.e. methods
 // of authenticating servers) in preference order.
 var supportedHostKeyAlgos = []string{
-	CertAlgoRSAv01, CertAlgoDSAv01, CertAlgoECDSA256v01,
+	CertAlgoRSASHA2512v01, CertAlgoRSASHA2256v01, CertAlgoRSAv01,
+	CertAlgoDSAv01, CertAlgoECDSA256v01,
 	CertAlgoECDSA384v01, CertAlgoECDSA521v01, CertAlgoED25519v01,
 
 	KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521,
+	KeyAlgoRSASHA2512, KeyAlgoRSASHA2256,
 	KeyAlgoRSA, KeyAlgoDSA,
 
 	KeyAlgoED25519,
@@ -91,6 +93,8 @@ var supportedCompressions = []string{compressionNone}
 // hashes needed for signature verification.
 var hashFuncs = map[string]crypto.Hash{
 	KeyAlgoRSA:          crypto.SHA1,
+	KeyAlgoRSASHA2256:   crypto.SHA256,
+	KeyAlgoRSASHA2512:   crypto.SHA512,
 	KeyAlgoDSA:          crypto.SHA1,
 	KeyAlgoECDSA256:     crypto.SHA256,
 	KeyAlgoECDSA384:     crypto.SHA384,
