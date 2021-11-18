@@ -977,12 +977,11 @@ func httpTokenCacheKey(tokenPath string) string {
 func (m *Manager) renew(ck certKey, key crypto.Signer, exp time.Time) {
 	m.renewalMu.Lock()
 	defer m.renewalMu.Unlock()
-	if m.renewal[ck] != nil {
-		// another goroutine is already on it
-		return
-	}
 	if m.renewal == nil {
 		m.renewal = make(map[certKey]*domainRenewal)
+	} else if m.renewal[ck] != nil {
+		// another goroutine is already on it
+		return
 	}
 	dr := &domainRenewal{m: m, ck: ck, key: key}
 	m.renewal[ck] = dr
