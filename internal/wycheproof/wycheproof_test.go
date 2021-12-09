@@ -33,6 +33,10 @@ func TestMain(m *testing.M) {
 		log.Printf("skipping test because 'go' command is unavailable: %v", err)
 		os.Exit(0)
 	}
+	if os.Getenv("GO_BUILDER_FLAKY_NET") != "" {
+		log.Printf("skipping test because GO_BUILDER_FLAKY_NET is set")
+		os.Exit(0)
+	}
 
 	// Download the JSON test files from github.com/google/wycheproof
 	// using `go mod download -json` so the cached source of the testdata
