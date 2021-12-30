@@ -59,7 +59,7 @@ type Agent interface {
 	// RemoveAll removes all identities.
 	RemoveAll() error
 
-	// Lock locks the agent. Sign and Remove will fail, and List will empty an empty list.
+	// Lock locks the agent. Sign and Remove will fail, and List will return an empty list.
 	Lock(passphrase []byte) error
 
 	// Unlock undoes the effect of Lock
