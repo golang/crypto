@@ -47,6 +47,8 @@ var createCertRetryAfter = time.Minute
 // pseudoRand is safe for concurrent use.
 var pseudoRand *lockedMathRand
 
+var errPreRFC = errors.New("autocert: ACME server doesn't support RFC 8555")
+
 func init() {
 	src := mathrand.NewSource(time.Now().UnixNano())
 	pseudoRand = &lockedMathRand{rnd: mathrand.New(src)}
@@ -658,99 +660,24 @@ func (m *Manager) authorizedCert(ctx context.Context, key crypto.Signer, ck cert
 	if err != nil {
 		return nil, nil, err
 	}
-
-	var chain [][]byte
-	switch {
-	// Pre-RFC legacy CA.
-	case dir.OrderURL == "":
-		if err := m.verify(ctx, client, ck.domain); err != nil {
-			return nil, nil, err
-		}
-		der, _, err := client.CreateCert(ctx, csr, 0, true)
-		if err != nil {
-			return nil, nil, err
-		}
-		chain = der
-	// RFC 8555 compliant CA.
-	default:
-		o, err := m.verifyRFC(ctx, client, ck.domain)
-		if err != nil {
-			return nil, nil, err
-		}
-		der, _, err := client.CreateOrderCert(ctx, o.FinalizeURL, csr, true)
-		if err != nil {
-			return nil, nil, err
-		}
-		chain = der
+	if dir.OrderURL == "" {
+		return nil, nil, errPreRFC
 	}
+
+	o, err := m.verifyRFC(ctx, client, ck.domain)
+	if err != nil {
+		return nil, nil, err
+	}
+	chain, _, err := client.CreateOrderCert(ctx, o.FinalizeURL, csr, true)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	leaf, err = validCert(ck, chain, key, m.now())
 	if err != nil {
 		return nil, nil, err
 	}
 	return chain, leaf, nil
-}
-
-// verify runs the identifier (domain) pre-authorization flow for legacy CAs
-// using each applicable ACME challenge type.
-func (m *Manager) verify(ctx context.Context, client *acme.Client, domain string) error {
-	// Remove all hanging authorizations to reduce rate limit quotas
-	// after we're done.
-	var authzURLs []string
-	defer func() {
-		go m.deactivatePendingAuthz(authzURLs)
-	}()
-
-	// errs accumulates challenge failure errors, printed if all fail
-	errs := make(map[*acme.Challenge]error)
-	challengeTypes := m.supportedChallengeTypes()
-	var nextTyp int // challengeType index of the next challenge type to try
-	for {
-		// Start domain authorization and get the challenge.
-		authz, err := client.Authorize(ctx, domain)
-		if err != nil {
-			return err
-		}
-		authzURLs = append(authzURLs, authz.URI)
-		// No point in accepting challenges if the authorization status
-		// is in a final state.
-		switch authz.Status {
-		case acme.StatusValid:
-			return nil // already authorized
-		case acme.StatusInvalid:
-			return fmt.Errorf("acme/autocert: invalid authorization %q", authz.URI)
-		}
-
-		// Pick the next preferred challenge.
-		var chal *acme.Challenge
-		for chal == nil && nextTyp < len(challengeTypes) {
-			chal = pickChallenge(challengeTypes[nextTyp], authz.Challenges)
-			nextTyp++
-		}
-		if chal == nil {
-			errorMsg := fmt.Sprintf("acme/autocert: unable to authorize %q", domain)
-			for chal, err := range errs {
-				errorMsg += fmt.Sprintf("; challenge %q failed with error: %v", chal.Type, err)
-			}
-			return errors.New(errorMsg)
-		}
-		cleanup, err := m.fulfill(ctx, client, chal, domain)
-		if err != nil {
-			errs[chal] = err
-			continue
-		}
-		defer cleanup()
-		if _, err := client.Accept(ctx, chal); err != nil {
-			errs[chal] = err
-			continue
-		}
-
-		// A challenge is fulfilled and accepted: wait for the CA to validate.
-		if _, err := client.WaitAuthorization(ctx, authz.URI); err != nil {
-			errs[chal] = err
-			continue
-		}
-		return nil
-	}
 }
 
 // verifyRFC runs the identifier (domain) order-based authorization flow for RFC compliant CAs

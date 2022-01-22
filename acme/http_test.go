@@ -115,8 +115,8 @@ func TestPostWithRetries(t *testing.T) {
 	if _, err := client.Authorize(context.Background(), "example.com"); err != nil {
 		t.Errorf("client.Authorize 1: %v", err)
 	}
-	if count != 4 {
-		t.Errorf("total requests count: %d; want 4", count)
+	if count != 3 {
+		t.Errorf("total requests count: %d; want 3", count)
 	}
 }
 
@@ -224,7 +224,7 @@ func TestUserAgent(t *testing.T) {
 			}
 
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{}`))
+			w.Write([]byte(`{"newOrder": "sure"}`))
 		}))
 		defer ts.Close()
 

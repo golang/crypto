@@ -50,14 +50,13 @@ import (
 
 var (
 	// ACME CA directory URL.
-	// Let's Encrypt v1 prod: https://acme-v01.api.letsencrypt.org/directory
 	// Let's Encrypt v2 prod: https://acme-v02.api.letsencrypt.org/directory
 	// Let's Encrypt v2 staging: https://acme-staging-v02.api.letsencrypt.org/directory
 	// See the following for more CAs implementing ACME protocol:
 	// https://en.wikipedia.org/wiki/Automated_Certificate_Management_Environment#CAs_&_PKIs_that_offer_ACME_certificates
 	directory = flag.String("d", "", "ACME directory URL.")
 	reginfo   = flag.String("r", "", "ACME account registration info.")
-	flow      = flag.String("f", "", "Flow to run: order, preauthz (RFC8555) or preauthz02 (draft-02).")
+	flow      = flag.String("f", "", `Flow to run: "order" or "preauthz" (RFC8555).`)
 	chaltyp   = flag.String("t", "", "Challenge type: tls-alpn-01, http-01 or dns-01.")
 	addr      = flag.String("a", "", "Local server address for tls-alpn-01 and http-01.")
 	dnsscript = flag.String("s", "", "Script to run for provisioning dns-01 challenges.")
@@ -127,8 +126,6 @@ When running with dns-01 challenge type, use -s argument instead of -a.
 		p.runOrder(ctx, identifiers)
 	case "preauthz":
 		p.runPreauthz(ctx, identifiers)
-	case "preauthz02":
-		p.runPreauthzLegacy(ctx, identifiers)
 	default:
 		log.Fatalf("unknown flow: %q", *flow)
 	}
@@ -274,50 +271,6 @@ func (p *prober) runPreauthz(ctx context.Context, identifiers []acme.AuthzID) {
 	if err := p.client.RevokeCert(ctx, certkey, der[0], acme.CRLReasonCessationOfOperation); err != nil {
 		p.errorf("RevokeCert: %v", err)
 	}
-}
-
-func (p *prober) runPreauthzLegacy(ctx context.Context, identifiers []acme.AuthzID) {
-	var zurls []string
-	for _, id := range identifiers {
-		z, err := authorize(ctx, p.client, id)
-		if err != nil {
-			log.Fatalf("AuthorizeID(%+v): %v", id, err)
-		}
-		if z.Status == acme.StatusValid {
-			log.Printf("authz %s is valid; skipping", z.URI)
-			continue
-		}
-		if err := p.fulfill(ctx, z); err != nil {
-			log.Fatalf("fulfill(%s): %v", z.URI, err)
-		}
-		zurls = append(zurls, z.URI)
-		log.Printf("authorized for %+v", id)
-	}
-
-	// We should be all set now.
-	log.Print("all authorizations are done")
-	csr, certkey := newCSR(identifiers)
-	der, curl, err := p.client.CreateCert(ctx, csr, 48*time.Hour, true)
-	if err != nil {
-		log.Fatalf("CreateCert: %v", err)
-	}
-	log.Printf("cert URL: %s", curl)
-	if err := checkCert(der, identifiers); err != nil {
-		p.errorf("invalid cert: %v", err)
-	}
-
-	// Deactivate all authorizations we satisfied earlier.
-	for _, v := range zurls {
-		if err := p.client.RevokeAuthorization(ctx, v); err != nil {
-			p.errorf("RevokAuthorization(%q): %v", v, err)
-			continue
-		}
-	}
-	// Try revoking the issued cert using its private key.
-	if err := p.client.RevokeCert(ctx, certkey, der[0], acme.CRLReasonCessationOfOperation); err != nil {
-		p.errorf("RevokeCert: %v", err)
-	}
-
 }
 
 func (p *prober) fulfill(ctx context.Context, z *acme.Authorization) error {

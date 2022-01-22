@@ -62,7 +62,7 @@ func TestRFC_Discover(t *testing.T) {
 		}`, nonce, reg, order, authz, revoke, keychange, metaTerms, metaWebsite, metaCAA)
 	}))
 	defer ts.Close()
-	c := Client{DirectoryURL: ts.URL}
+	c := &Client{DirectoryURL: ts.URL}
 	dir, err := c.Discover(context.Background())
 	if err != nil {
 		t.Fatal(err)

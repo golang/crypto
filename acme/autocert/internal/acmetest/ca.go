@@ -220,10 +220,10 @@ func (ca *CAServer) ResolveHandler(domain string, h http.Handler) {
 }
 
 type discovery struct {
-	NewNonce string `json:"newNonce"`
-	NewReg   string `json:"newAccount"`
-	NewOrder string `json:"newOrder"`
-	NewAuthz string `json:"newAuthz"`
+	NewNonce   string `json:"newNonce"`
+	NewAccount string `json:"newAccount"`
+	NewOrder   string `json:"newOrder"`
+	NewAuthz   string `json:"newAuthz"`
 }
 
 type challenge struct {
@@ -261,9 +261,9 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 	// Discovery request.
 	case r.URL.Path == "/":
 		resp := &discovery{
-			NewNonce: ca.serverURL("/new-nonce"),
-			NewReg:   ca.serverURL("/new-reg"),
-			NewOrder: ca.serverURL("/new-order"),
+			NewNonce:   ca.serverURL("/new-nonce"),
+			NewAccount: ca.serverURL("/new-account"),
+			NewOrder:   ca.serverURL("/new-order"),
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			panic(fmt.Sprintf("discovery response: %v", err))
@@ -275,7 +275,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 		return
 
 	// Client key registration request.
-	case r.URL.Path == "/new-reg":
+	case r.URL.Path == "/new-account":
 		ca.mu.Lock()
 		defer ca.mu.Unlock()
 		if ca.acctRegistered {
@@ -365,6 +365,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 			// Note we don't invalidate authorized orders as we should.
 			authz.Status = "deactivated"
 			ca.t.Logf("authz %d is now %s", authz.id, authz.Status)
+			ca.updatePendingOrders()
 		}
 		if err := json.NewEncoder(w).Encode(authz); err != nil {
 			panic(fmt.Sprintf("encoding authz %d: %v", authz.id, err))
@@ -440,6 +441,8 @@ func (ca *CAServer) storedOrder(i string) (*order, error) {
 	if idx > len(ca.orders)-1 {
 		return nil, fmt.Errorf("storedOrder: no such order %d", idx)
 	}
+
+	ca.updatePendingOrders()
 	return ca.orders[idx], nil
 }
 
@@ -568,30 +571,25 @@ func (ca *CAServer) validateChallenge(authz *authorization, typ string) {
 	}
 	ca.t.Logf("validated %q for %q, err: %v", typ, authz.domain, err)
 	ca.t.Logf("authz %d is now %s", authz.id, authz.Status)
+
+	ca.updatePendingOrders()
+}
+
+func (ca *CAServer) updatePendingOrders() {
 	// Update all pending orders.
 	// An order becomes "ready" if all authorizations are "valid".
 	// An order becomes "invalid" if any authorization is "invalid".
 	// Status changes: https://tools.ietf.org/html/rfc8555#section-7.1.6
-OrdersLoop:
 	for i, o := range ca.orders {
 		if o.Status != acme.StatusPending {
 			continue
 		}
-		var countValid int
-		for _, zurl := range o.AuthzURLs {
-			z, err := ca.storedAuthz(path.Base(zurl))
-			if err != nil {
-				ca.t.Logf("no authz %q for order %d", zurl, i)
-				continue OrdersLoop
-			}
-			if z.Status == acme.StatusInvalid {
-				o.Status = acme.StatusInvalid
-				ca.t.Logf("order %d is now invalid", i)
-				continue OrdersLoop
-			}
-			if z.Status == acme.StatusValid {
-				countValid++
-			}
+
+		countValid, countInvalid := ca.validateAuthzURLs(o.AuthzURLs, i)
+		if countInvalid > 0 {
+			o.Status = acme.StatusInvalid
+			ca.t.Logf("order %d is now invalid", i)
+			continue
 		}
 		if countValid == len(o.AuthzURLs) {
 			o.Status = acme.StatusReady
@@ -599,6 +597,23 @@ OrdersLoop:
 			ca.t.Logf("order %d is now ready", i)
 		}
 	}
+}
+
+func (ca *CAServer) validateAuthzURLs(urls []string, orderNum int) (countValid, countInvalid int) {
+	for _, zurl := range urls {
+		z, err := ca.storedAuthz(path.Base(zurl))
+		if err != nil {
+			ca.t.Logf("no authz %q for order %d", zurl, orderNum)
+			continue
+		}
+		if z.Status == acme.StatusInvalid {
+			countInvalid++
+		}
+		if z.Status == acme.StatusValid {
+			countValid++
+		}
+	}
+	return countValid, countInvalid
 }
 
 func (ca *CAServer) verifyALPNChallenge(a *authorization) error {
