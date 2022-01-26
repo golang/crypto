@@ -154,7 +154,7 @@ func dateDummyCert(pub interface{}, start, end time.Time, san ...string) ([]byte
 		return nil, err
 	}
 	t := &x509.Certificate{
-		SerialNumber:          big.NewInt(1),
+		SerialNumber:          randomSerial(),
 		NotBefore:             start,
 		NotAfter:              end,
 		BasicConstraintsValid: true,
@@ -165,6 +165,14 @@ func dateDummyCert(pub interface{}, start, end time.Time, san ...string) ([]byte
 		pub = &key.PublicKey
 	}
 	return x509.CreateCertificate(rand.Reader, t, t, pub, key)
+}
+
+func randomSerial() *big.Int {
+	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 32))
+	if err != nil {
+		panic(err)
+	}
+	return serial
 }
 
 func decodePayload(v interface{}, r io.Reader) error {
@@ -276,15 +284,54 @@ func TestGetCertificate_nilPrompt(t *testing.T) {
 	}
 }
 
+func TestGetCertificate_goodCache(t *testing.T) {
+	// Make a valid cert and cache it.
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serial := randomSerial()
+	tmpl := &x509.Certificate{
+		SerialNumber: serial,
+		DNSNames:     []string{exampleDomain},
+		// Use a time before the Let's Encrypt revocation cutoff to also test
+		// that non-Let's Encrypt certificates are not renewed.
+		NotBefore: time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC),
+		NotAfter:  time.Date(2122, time.January, 1, 0, 0, 0, 0, time.UTC),
+	}
+	pub, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &pk.PublicKey, pk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlscert := &tls.Certificate{
+		Certificate: [][]byte{pub},
+		PrivateKey:  pk,
+	}
+
+	man := &Manager{Prompt: AcceptTOS, Cache: newMemCache(t)}
+	defer man.stopRenew()
+	if err := man.cachePut(context.Background(), exampleCertKey, tlscert); err != nil {
+		t.Fatalf("man.cachePut: %v", err)
+	}
+
+	hello := clientHelloInfo(exampleDomain, algECDSA)
+	gotCert := testGetCertificate(t, man, exampleDomain, hello)
+	if gotCert.SerialNumber.Cmp(serial) != 0 {
+		t.Error("good certificate was replaced")
+	}
+}
+
 func TestGetCertificate_expiredCache(t *testing.T) {
 	// Make an expired cert and cache it.
 	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
+	serial := randomSerial()
 	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: exampleDomain},
+		SerialNumber: serial,
+		DNSNames:     []string{exampleDomain},
+		NotBefore:    time.Now().Add(-1 * time.Minute),
 		NotAfter:     time.Now(),
 	}
 	pub, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &pk.PublicKey, pk)
@@ -305,7 +352,89 @@ func TestGetCertificate_expiredCache(t *testing.T) {
 	// The expired cached cert should trigger a new cert issuance
 	// and return without an error.
 	hello := clientHelloInfo(exampleDomain, algECDSA)
-	testGetCertificate(t, man, exampleDomain, hello)
+	gotCert := testGetCertificate(t, man, exampleDomain, hello)
+	if gotCert.SerialNumber.Cmp(serial) == 0 {
+		t.Error("expired certificate was not replaced")
+	}
+}
+
+func TestGetCertificate_goodLetsEncrypt(t *testing.T) {
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer := &x509.Certificate{
+		Subject: pkix.Name{Country: []string{"US"},
+			Organization: []string{"Let's Encrypt"}, CommonName: "R3"},
+	}
+	serial := randomSerial()
+	tmpl := &x509.Certificate{
+		SerialNumber: serial,
+		DNSNames:     []string{exampleDomain},
+		NotBefore:    time.Date(2022, time.January, 26, 12, 0, 0, 0, time.UTC),
+		NotAfter:     time.Date(2122, time.January, 1, 0, 0, 0, 0, time.UTC),
+	}
+	pub, err := x509.CreateCertificate(rand.Reader, tmpl, issuer, &pk.PublicKey, pk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlscert := &tls.Certificate{
+		Certificate: [][]byte{pub},
+		PrivateKey:  pk,
+	}
+
+	man := &Manager{Prompt: AcceptTOS, Cache: newMemCache(t)}
+	defer man.stopRenew()
+	if err := man.cachePut(context.Background(), exampleCertKey, tlscert); err != nil {
+		t.Fatalf("man.cachePut: %v", err)
+	}
+
+	hello := clientHelloInfo(exampleDomain, algECDSA)
+	gotCert := testGetCertificate(t, man, exampleDomain, hello)
+	if gotCert.SerialNumber.Cmp(serial) != 0 {
+		t.Error("good certificate was replaced")
+	}
+}
+
+func TestGetCertificate_revokedLetsEncrypt(t *testing.T) {
+	// Make a presumably revoked Let's Encrypt cert and cache it.
+	pk, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	issuer := &x509.Certificate{
+		Subject: pkix.Name{Country: []string{"US"},
+			Organization: []string{"Let's Encrypt"}, CommonName: "R3"},
+	}
+	serial := randomSerial()
+	tmpl := &x509.Certificate{
+		SerialNumber: serial,
+		DNSNames:     []string{exampleDomain},
+		NotBefore:    time.Date(2022, time.January, 1, 0, 0, 0, 0, time.UTC),
+		NotAfter:     time.Date(2122, time.January, 1, 0, 0, 0, 0, time.UTC),
+	}
+	pub, err := x509.CreateCertificate(rand.Reader, tmpl, issuer, &pk.PublicKey, pk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlscert := &tls.Certificate{
+		Certificate: [][]byte{pub},
+		PrivateKey:  pk,
+	}
+
+	man := &Manager{Prompt: AcceptTOS, Cache: newMemCache(t)}
+	defer man.stopRenew()
+	if err := man.cachePut(context.Background(), exampleCertKey, tlscert); err != nil {
+		t.Fatalf("man.cachePut: %v", err)
+	}
+
+	// The presumably revoked cached cert should trigger a new cert issuance
+	// and return without an error.
+	hello := clientHelloInfo(exampleDomain, algECDSA)
+	gotCert := testGetCertificate(t, man, exampleDomain, hello)
+	if gotCert.SerialNumber.Cmp(serial) == 0 {
+		t.Error("certificate was not replaced")
+	}
 }
 
 func TestGetCertificate_failedAttempt(t *testing.T) {
@@ -441,7 +570,7 @@ func TestGetCertificate_wrongCacheKeyType(t *testing.T) {
 	}
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(1),
-		Subject:      pkix.Name{CommonName: exampleDomain},
+		DNSNames:     []string{exampleDomain},
 		NotAfter:     time.Now().Add(90 * 24 * time.Hour),
 	}
 	pub, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &pk.PublicKey, pk)
@@ -599,7 +728,7 @@ func startACMEServerStub(t *testing.T, tokenCert getCertificateFunc, domain stri
 
 // tests man.GetCertificate flow using the provided hello argument.
 // The domain argument is the expected domain name of a certificate request.
-func testGetCertificate(t *testing.T, man *Manager, domain string, hello *tls.ClientHelloInfo) {
+func testGetCertificate(t *testing.T, man *Manager, domain string, hello *tls.ClientHelloInfo) *x509.Certificate {
 	url, finish := startACMEServerStub(t, tokenCertFn(man, algECDSA), domain)
 	defer finish()
 	man.Client = &acme.Client{DirectoryURL: url}
@@ -633,6 +762,7 @@ func testGetCertificate(t *testing.T, man *Manager, domain string, hello *tls.Cl
 		t.Errorf("cert.DNSNames = %v; want %q", cert.DNSNames, domain)
 	}
 
+	return cert
 }
 
 func TestVerifyHTTP01(t *testing.T) {
