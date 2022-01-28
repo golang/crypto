@@ -13,6 +13,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -639,7 +640,15 @@ func TestClientAuthMaxAuthTriesPublicKey(t *testing.T) {
 	if err := tryAuth(t, invalidConfig); err == nil {
 		t.Fatalf("client: got no error, want %s", expectedErr)
 	} else if err.Error() != expectedErr.Error() {
-		t.Fatalf("client: got %s, want %s", err, expectedErr)
+		// On Windows we can see a WSAECONNABORTED error
+		// if the client writes another authentication request
+		// before the client goroutine reads the disconnection
+		// message.  See issue 50805.
+		if runtime.GOOS == "windows" && strings.Contains(err.Error(), "wsarecv: An established connection was aborted") {
+			// OK.
+		} else {
+			t.Fatalf("client: got %s, want %s", err, expectedErr)
+		}
 	}
 }
 
