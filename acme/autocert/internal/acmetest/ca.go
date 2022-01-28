@@ -8,27 +8,30 @@
 package acmetest
 
 import (
+	"context"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
 	"io"
-	"log"
 	"math/big"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"path"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"golang.org/x/crypto/acme"
@@ -36,56 +39,64 @@ import (
 
 // CAServer is a simple test server which implements ACME spec bits needed for testing.
 type CAServer struct {
-	URL   string         // server URL after it has been started
-	Roots *x509.CertPool // CA root certificates; initialized in NewCAServer
-
 	rootKey      crypto.Signer
 	rootCert     []byte // DER encoding
 	rootTemplate *x509.Certificate
 
-	server           *httptest.Server
-	challengeTypes   []string // supported challenge types
-	domainsWhitelist []string // only these domains are valid for issuing, unless empty
+	t              *testing.T
+	server         *httptest.Server
+	issuer         pkix.Name
+	challengeTypes []string
+	url            string
+	roots          *x509.CertPool
 
 	mu             sync.Mutex
-	certCount      int                       // number of issued certs
-	domainAddr     map[string]string         // domain name to addr:port resolution
-	authorizations map[string]*authorization // keyed by domain name
-	orders         []*order                  // index is used as order ID
-	errors         []error                   // encountered client errors
+	certCount      int                           // number of issued certs
+	acctRegistered bool                          // set once an account has been registered
+	domainAddr     map[string]string             // domain name to addr:port resolution
+	domainGetCert  map[string]getCertificateFunc // domain name to GetCertificate function
+	domainHandler  map[string]http.Handler       // domain name to Handle function
+	validAuthz     map[string]*authorization     // valid authz, keyed by domain name
+	authorizations []*authorization              // all authz, index is used as ID
+	orders         []*order                      // index is used as order ID
+	errors         []error                       // encountered client errors
 }
 
-// NewCAServer creates a new ACME test server and starts serving requests.
-// The returned CAServer issues certs signed with the CA roots
-// available in the Roots field.
-//
-// The challengeTypes argument defines the supported ACME challenge types
-// sent to a client in a response for a domain authorization.
-// If domainsWhitelist is non-empty, the certs will be issued only for the specified
-// list of domains. Otherwise, any domain name is allowed.
-func NewCAServer(challengeTypes []string, domainsWhitelist []string) *CAServer {
-	var whitelist []string
-	for _, name := range domainsWhitelist {
-		whitelist = append(whitelist, name)
-	}
-	sort.Strings(whitelist)
-	ca := &CAServer{
-		challengeTypes:   challengeTypes,
-		domainsWhitelist: whitelist,
-		domainAddr:       make(map[string]string),
-		authorizations:   make(map[string]*authorization),
+type getCertificateFunc func(hello *tls.ClientHelloInfo) (*tls.Certificate, error)
+
+// NewCAServer creates a new ACME test server. The returned CAServer issues
+// certs signed with the CA roots available in the Roots field.
+func NewCAServer(t *testing.T) *CAServer {
+	ca := &CAServer{t: t,
+		challengeTypes: []string{"fake-01", "tls-alpn-01", "http-01"},
+		domainAddr:     make(map[string]string),
+		domainGetCert:  make(map[string]getCertificateFunc),
+		domainHandler:  make(map[string]http.Handler),
+		validAuthz:     make(map[string]*authorization),
 	}
 
+	ca.server = httptest.NewUnstartedServer(http.HandlerFunc(ca.handle))
+
+	r, err := rand.Int(rand.Reader, big.NewInt(1000000))
+	if err != nil {
+		panic(fmt.Sprintf("rand.Int: %v", err))
+	}
+	ca.issuer = pkix.Name{
+		Organization: []string{"Test Acme Co"},
+		CommonName:   "Root CA " + r.String(),
+	}
+
+	return ca
+}
+
+func (ca *CAServer) generateRoot() {
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		panic(fmt.Sprintf("ecdsa.GenerateKey: %v", err))
 	}
 	tmpl := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			Organization: []string{"Test Acme Co"},
-			CommonName:   "Root CA",
-		},
+		SerialNumber:          big.NewInt(1),
+		Subject:               ca.issuer,
 		NotBefore:             time.Now(),
 		NotAfter:              time.Now().Add(365 * 24 * time.Hour),
 		KeyUsage:              x509.KeyUsageCertSign,
@@ -100,40 +111,87 @@ func NewCAServer(challengeTypes []string, domainsWhitelist []string) *CAServer {
 	if err != nil {
 		panic(fmt.Sprintf("x509.ParseCertificate: %v", err))
 	}
-	ca.Roots = x509.NewCertPool()
-	ca.Roots.AddCert(cert)
+	ca.roots = x509.NewCertPool()
+	ca.roots.AddCert(cert)
 	ca.rootKey = key
 	ca.rootCert = der
 	ca.rootTemplate = tmpl
+}
 
-	ca.server = httptest.NewServer(http.HandlerFunc(ca.handle))
-	ca.URL = ca.server.URL
+// IssuerName sets the name of the issuing CA.
+func (ca *CAServer) IssuerName(name pkix.Name) *CAServer {
+	if ca.url != "" {
+		panic("IssuerName must be called before Start")
+	}
+	ca.issuer = name
 	return ca
 }
 
-// Close shuts down the server and blocks until all outstanding
-// requests on this server have completed.
-func (ca *CAServer) Close() {
-	ca.server.Close()
+// ChallengeTypes sets the supported challenge types.
+func (ca *CAServer) ChallengeTypes(types ...string) *CAServer {
+	if ca.url != "" {
+		panic("ChallengeTypes must be called before Start")
+	}
+	ca.challengeTypes = types
+	return ca
+}
+
+// URL returns the server address, after Start has been called.
+func (ca *CAServer) URL() string {
+	if ca.url == "" {
+		panic("URL called before Start")
+	}
+	return ca.url
+}
+
+// Roots returns a pool cointaining the CA root.
+func (ca *CAServer) Roots() *x509.CertPool {
+	if ca.url == "" {
+		panic("Roots called before Start")
+	}
+	return ca.roots
+}
+
+// Start starts serving requests. The server address becomes available in the
+// URL field.
+func (ca *CAServer) Start() *CAServer {
+	if ca.url == "" {
+		ca.generateRoot()
+		ca.server.Start()
+		ca.t.Cleanup(ca.server.Close)
+		ca.url = ca.server.URL
+	}
+	return ca
 }
 
 func (ca *CAServer) serverURL(format string, arg ...interface{}) string {
 	return ca.server.URL + fmt.Sprintf(format, arg...)
 }
 
-func (ca *CAServer) addr(domain string) (string, error) {
+func (ca *CAServer) addr(domain string) (string, bool) {
 	ca.mu.Lock()
 	defer ca.mu.Unlock()
 	addr, ok := ca.domainAddr[domain]
-	if !ok {
-		return "", fmt.Errorf("CAServer: no addr resolution for %q", domain)
-	}
-	return addr, nil
+	return addr, ok
+}
+
+func (ca *CAServer) getCert(domain string) (getCertificateFunc, bool) {
+	ca.mu.Lock()
+	defer ca.mu.Unlock()
+	f, ok := ca.domainGetCert[domain]
+	return f, ok
+}
+
+func (ca *CAServer) getHandler(domain string) (http.Handler, bool) {
+	ca.mu.Lock()
+	defer ca.mu.Unlock()
+	h, ok := ca.domainHandler[domain]
+	return h, ok
 }
 
 func (ca *CAServer) httpErrorf(w http.ResponseWriter, code int, format string, a ...interface{}) {
 	s := fmt.Sprintf(format, a...)
-	log.Println(s)
+	ca.t.Errorf(format, a...)
 	http.Error(w, s, code)
 }
 
@@ -143,6 +201,22 @@ func (ca *CAServer) Resolve(domain, addr string) {
 	ca.mu.Lock()
 	defer ca.mu.Unlock()
 	ca.domainAddr[domain] = addr
+}
+
+// ResolveGetCertificate redirects TLS connections for domain to f when
+// validating challenges for the domain authorization.
+func (ca *CAServer) ResolveGetCertificate(domain string, f getCertificateFunc) {
+	ca.mu.Lock()
+	defer ca.mu.Unlock()
+	ca.domainGetCert[domain] = f
+}
+
+// ResolveHandler redirects HTTP requests for domain to f when
+// validating challenges for the domain authorization.
+func (ca *CAServer) ResolveHandler(domain string, h http.Handler) {
+	ca.mu.Lock()
+	defer ca.mu.Unlock()
+	ca.domainHandler[domain] = h
 }
 
 type discovery struct {
@@ -163,6 +237,7 @@ type authorization struct {
 	Challenges []challenge `json:"challenges"`
 
 	domain string
+	id     int
 }
 
 type order struct {
@@ -175,7 +250,7 @@ type order struct {
 }
 
 func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
-	log.Printf("%s %s", r.Method, r.URL)
+	ca.t.Logf("%s %s", r.Method, r.URL)
 	w.Header().Set("Replay-Nonce", "nonce")
 	// TODO: Verify nonce header for all POST requests.
 
@@ -189,7 +264,6 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 			NewNonce: ca.serverURL("/new-nonce"),
 			NewReg:   ca.serverURL("/new-reg"),
 			NewOrder: ca.serverURL("/new-order"),
-			NewAuthz: ca.serverURL("/new-authz"),
 		}
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			panic(fmt.Sprintf("discovery response: %v", err))
@@ -202,6 +276,13 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 
 	// Client key registration request.
 	case r.URL.Path == "/new-reg":
+		ca.mu.Lock()
+		defer ca.mu.Unlock()
+		if ca.acctRegistered {
+			ca.httpErrorf(w, http.StatusServiceUnavailable, "multiple accounts are not implemented")
+			return
+		}
+		ca.acctRegistered = true
 		// TODO: Check the user account key against a ca.accountKeys?
 		w.Header().Set("Location", ca.serverURL("/accounts/1"))
 		w.WriteHeader(http.StatusCreated)
@@ -221,7 +302,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 		o := &order{Status: acme.StatusPending}
 		for _, id := range req.Identifiers {
 			z := ca.authz(id.Value)
-			o.AuthzURLs = append(o.AuthzURLs, ca.serverURL("/authz/%s", z.domain))
+			o.AuthzURLs = append(o.AuthzURLs, ca.serverURL("/authz/%d", z.id))
 		}
 		orderID := len(ca.orders)
 		ca.orders = append(ca.orders, o)
@@ -244,49 +325,49 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 			panic(err)
 		}
 
-	// Identifier authorization request.
-	case r.URL.Path == "/new-authz":
-		var req struct {
-			Identifier struct{ Value string }
-		}
-		if err := decodePayload(&req, r.Body); err != nil {
-			ca.httpErrorf(w, http.StatusBadRequest, err.Error())
-			return
-		}
+	// Accept challenge requests.
+	case strings.HasPrefix(r.URL.Path, "/challenge/"):
+		parts := strings.Split(r.URL.Path, "/")
+		typ, id := parts[len(parts)-2], parts[len(parts)-1]
 		ca.mu.Lock()
-		defer ca.mu.Unlock()
-		z := ca.authz(req.Identifier.Value)
-		w.Header().Set("Location", ca.serverURL("/authz/%s", z.domain))
-		w.WriteHeader(http.StatusCreated)
-		if err := json.NewEncoder(w).Encode(z); err != nil {
-			panic(fmt.Sprintf("new authz response: %v", err))
+		supported := false
+		for _, suppTyp := range ca.challengeTypes {
+			if suppTyp == typ {
+				supported = true
+			}
 		}
-
-	// Accept tls-alpn-01 challenge type requests.
-	case strings.HasPrefix(r.URL.Path, "/challenge/tls-alpn-01/"):
-		domain := strings.TrimPrefix(r.URL.Path, "/challenge/tls-alpn-01/")
-		ca.mu.Lock()
-		_, exist := ca.authorizations[domain]
+		a, err := ca.storedAuthz(id)
 		ca.mu.Unlock()
-		if !exist {
-			ca.httpErrorf(w, http.StatusBadRequest, "challenge accept: no authz for %q", domain)
+		if !supported {
+			ca.httpErrorf(w, http.StatusBadRequest, "unsupported challenge: %v", typ)
 			return
 		}
-		go ca.validateChallenge("tls-alpn-01", domain)
+		if err != nil {
+			ca.httpErrorf(w, http.StatusBadRequest, "challenge accept: %v", err)
+			return
+		}
+		go ca.validateChallenge(a, typ)
 		w.Write([]byte("{}"))
 
 	// Get authorization status requests.
 	case strings.HasPrefix(r.URL.Path, "/authz/"):
-		domain := strings.TrimPrefix(r.URL.Path, "/authz/")
+		var req struct{ Status string }
+		decodePayload(&req, r.Body)
+		deactivate := req.Status == "deactivated"
 		ca.mu.Lock()
 		defer ca.mu.Unlock()
-		authz, ok := ca.authorizations[domain]
-		if !ok {
-			ca.httpErrorf(w, http.StatusNotFound, "no authz for %q", domain)
+		authz, err := ca.storedAuthz(strings.TrimPrefix(r.URL.Path, "/authz/"))
+		if err != nil {
+			ca.httpErrorf(w, http.StatusNotFound, "%v", err)
 			return
 		}
+		if deactivate {
+			// Note we don't invalidate authorized orders as we should.
+			authz.Status = "deactivated"
+			ca.t.Logf("authz %d is now %s", authz.id, authz.Status)
+		}
 		if err := json.NewEncoder(w).Encode(authz); err != nil {
-			panic(fmt.Sprintf("get authz for %q response: %v", domain, err))
+			panic(fmt.Sprintf("encoding authz %d: %v", authz.id, err))
 		}
 
 	// Certificate issuance request.
@@ -312,15 +393,6 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 		csr, err := x509.ParseCertificateRequest(b)
 		if err != nil {
 			ca.httpErrorf(w, http.StatusBadRequest, err.Error())
-			return
-		}
-		names := unique(append(csr.DNSNames, csr.Subject.CommonName))
-		if err := ca.matchWhitelist(names); err != nil {
-			ca.httpErrorf(w, http.StatusUnauthorized, err.Error())
-			return
-		}
-		if err := ca.authorized(names); err != nil {
-			ca.httpErrorf(w, http.StatusUnauthorized, err.Error())
 			return
 		}
 		// Issue the certificate.
@@ -355,25 +427,6 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// matchWhitelist reports whether all dnsNames are whitelisted.
-// The whitelist is provided in NewCAServer.
-func (ca *CAServer) matchWhitelist(dnsNames []string) error {
-	if len(ca.domainsWhitelist) == 0 {
-		return nil
-	}
-	var nomatch []string
-	for _, name := range dnsNames {
-		i := sort.SearchStrings(ca.domainsWhitelist, name)
-		if i == len(ca.domainsWhitelist) || ca.domainsWhitelist[i] != name {
-			nomatch = append(nomatch, name)
-		}
-	}
-	if len(nomatch) > 0 {
-		return fmt.Errorf("matchWhitelist: some domains don't match: %q", nomatch)
-	}
-	return nil
-}
-
 // storedOrder retrieves a previously created order at index i.
 // It requires ca.mu to be locked.
 func (ca *CAServer) storedOrder(i string) (*order, error) {
@@ -390,41 +443,43 @@ func (ca *CAServer) storedOrder(i string) (*order, error) {
 	return ca.orders[idx], nil
 }
 
-// authz returns an existing authorization for the identifier or creates a new one.
+// storedAuthz retrieves a previously created authz at index i.
 // It requires ca.mu to be locked.
+func (ca *CAServer) storedAuthz(i string) (*authorization, error) {
+	idx, err := strconv.Atoi(i)
+	if err != nil {
+		return nil, fmt.Errorf("storedAuthz: %v", err)
+	}
+	if idx < 0 {
+		return nil, fmt.Errorf("storedAuthz: invalid authz index %d", idx)
+	}
+	if idx > len(ca.authorizations)-1 {
+		return nil, fmt.Errorf("storedAuthz: no such authz %d", idx)
+	}
+	return ca.authorizations[idx], nil
+}
+
+// authz returns an existing valid authorization for the identifier or creates a
+// new one. It requires ca.mu to be locked.
 func (ca *CAServer) authz(identifier string) *authorization {
-	authz, ok := ca.authorizations[identifier]
+	authz, ok := ca.validAuthz[identifier]
 	if !ok {
+		authzId := len(ca.authorizations)
 		authz = &authorization{
+			id:     authzId,
 			domain: identifier,
 			Status: acme.StatusPending,
 		}
 		for _, typ := range ca.challengeTypes {
 			authz.Challenges = append(authz.Challenges, challenge{
 				Type:  typ,
-				URI:   ca.serverURL("/challenge/%s/%s", typ, authz.domain),
-				Token: challengeToken(authz.domain, typ),
+				URI:   ca.serverURL("/challenge/%s/%d", typ, authzId),
+				Token: challengeToken(authz.domain, typ, authzId),
 			})
 		}
-		ca.authorizations[authz.domain] = authz
+		ca.authorizations = append(ca.authorizations, authz)
 	}
 	return authz
-}
-
-// authorized reports whether all authorizations for dnsNames have been satisfied.
-// It requires ca.mu to be locked.
-func (ca *CAServer) authorized(dnsNames []string) error {
-	var noauthz []string
-	for _, name := range dnsNames {
-		authz, ok := ca.authorizations[name]
-		if !ok || authz.Status != acme.StatusValid {
-			noauthz = append(noauthz, name)
-		}
-	}
-	if len(noauthz) > 0 {
-		return fmt.Errorf("CAServer: no authz for %q", noauthz)
-	}
-	return nil
 }
 
 // leafCert issues a new certificate.
@@ -447,24 +502,72 @@ func (ca *CAServer) leafCert(csr *x509.CertificateRequest) (der []byte, err erro
 	return x509.CreateCertificate(rand.Reader, leaf, ca.rootTemplate, csr.PublicKey, ca.rootKey)
 }
 
-// TODO: Only tls-alpn-01 is currently supported: implement http-01 and dns-01.
-func (ca *CAServer) validateChallenge(typ, identifier string) {
+// LeafCert issues a leaf certificate.
+func (ca *CAServer) LeafCert(name, keyType string, notBefore, notAfter time.Time) *tls.Certificate {
+	if ca.url == "" {
+		panic("LeafCert called before Start")
+	}
+
+	ca.mu.Lock()
+	defer ca.mu.Unlock()
+	var pk crypto.Signer
+	switch keyType {
+	case "RSA":
+		var err error
+		pk, err = rsa.GenerateKey(rand.Reader, 1024)
+		if err != nil {
+			ca.t.Fatal(err)
+		}
+	case "ECDSA":
+		var err error
+		pk, err = ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+		if err != nil {
+			ca.t.Fatal(err)
+		}
+	default:
+		panic("LeafCert: unknown key type")
+	}
+	ca.certCount++ // next leaf cert serial number
+	leaf := &x509.Certificate{
+		SerialNumber:          big.NewInt(int64(ca.certCount)),
+		Subject:               pkix.Name{Organization: []string{"Test Acme Co"}},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		DNSNames:              []string{name},
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, leaf, ca.rootTemplate, pk.Public(), ca.rootKey)
+	if err != nil {
+		ca.t.Fatal(err)
+	}
+	return &tls.Certificate{
+		Certificate: [][]byte{der},
+		PrivateKey:  pk,
+	}
+}
+
+func (ca *CAServer) validateChallenge(authz *authorization, typ string) {
 	var err error
 	switch typ {
 	case "tls-alpn-01":
-		err = ca.verifyALPNChallenge(identifier)
+		err = ca.verifyALPNChallenge(authz)
+	case "http-01":
+		err = ca.verifyHTTPChallenge(authz)
 	default:
 		panic(fmt.Sprintf("validation of %q is not implemented", typ))
 	}
 	ca.mu.Lock()
 	defer ca.mu.Unlock()
-	authz := ca.authorizations[identifier]
 	if err != nil {
 		authz.Status = "invalid"
 	} else {
 		authz.Status = "valid"
+		ca.validAuthz[authz.domain] = authz
 	}
-	log.Printf("validated %q for %q; authz status is now: %s", typ, identifier, authz.Status)
+	ca.t.Logf("validated %q for %q, err: %v", typ, authz.domain, err)
+	ca.t.Logf("authz %d is now %s", authz.id, authz.Status)
 	// Update all pending orders.
 	// An order becomes "ready" if all authorizations are "valid".
 	// An order becomes "invalid" if any authorization is "invalid".
@@ -476,14 +579,14 @@ OrdersLoop:
 		}
 		var countValid int
 		for _, zurl := range o.AuthzURLs {
-			z, ok := ca.authorizations[path.Base(zurl)]
-			if !ok {
-				log.Printf("no authz %q for order %d", zurl, i)
+			z, err := ca.storedAuthz(path.Base(zurl))
+			if err != nil {
+				ca.t.Logf("no authz %q for order %d", zurl, i)
 				continue OrdersLoop
 			}
 			if z.Status == acme.StatusInvalid {
 				o.Status = acme.StatusInvalid
-				log.Printf("order %d is now invalid", i)
+				ca.t.Logf("order %d is now invalid", i)
 				continue OrdersLoop
 			}
 			if z.Status == acme.StatusValid {
@@ -493,33 +596,125 @@ OrdersLoop:
 		if countValid == len(o.AuthzURLs) {
 			o.Status = acme.StatusReady
 			o.FinalizeURL = ca.serverURL("/new-cert/%d", i)
-			log.Printf("order %d is now ready", i)
+			ca.t.Logf("order %d is now ready", i)
 		}
 	}
 }
 
-func (ca *CAServer) verifyALPNChallenge(domain string) error {
+func (ca *CAServer) verifyALPNChallenge(a *authorization) error {
 	const acmeALPNProto = "acme-tls/1"
 
-	addr, err := ca.addr(domain)
-	if err != nil {
-		return err
+	addr, haveAddr := ca.addr(a.domain)
+	getCert, haveGetCert := ca.getCert(a.domain)
+	if !haveAddr && !haveGetCert {
+		return fmt.Errorf("no resolution information for %q", a.domain)
 	}
-	conn, err := tls.Dial("tcp", addr, &tls.Config{
-		ServerName:         domain,
-		InsecureSkipVerify: true,
-		NextProtos:         []string{acmeALPNProto},
-	})
-	if err != nil {
-		return err
+	if haveAddr && haveGetCert {
+		return fmt.Errorf("overlapping resolution information for %q", a.domain)
 	}
-	if v := conn.ConnectionState().NegotiatedProtocol; v != acmeALPNProto {
-		return fmt.Errorf("CAServer: verifyALPNChallenge: negotiated proto is %q; want %q", v, acmeALPNProto)
+
+	var crt *x509.Certificate
+	switch {
+	case haveAddr:
+		conn, err := tls.Dial("tcp", addr, &tls.Config{
+			ServerName:         a.domain,
+			InsecureSkipVerify: true,
+			NextProtos:         []string{acmeALPNProto},
+			MinVersion:         tls.VersionTLS12,
+		})
+		if err != nil {
+			return err
+		}
+		if v := conn.ConnectionState().NegotiatedProtocol; v != acmeALPNProto {
+			return fmt.Errorf("CAServer: verifyALPNChallenge: negotiated proto is %q; want %q", v, acmeALPNProto)
+		}
+		if n := len(conn.ConnectionState().PeerCertificates); n != 1 {
+			return fmt.Errorf("len(PeerCertificates) = %d; want 1", n)
+		}
+		crt = conn.ConnectionState().PeerCertificates[0]
+	case haveGetCert:
+		hello := &tls.ClientHelloInfo{
+			ServerName: a.domain,
+			// TODO: support selecting ECDSA.
+			CipherSuites:      []uint16{tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305},
+			SupportedProtos:   []string{acme.ALPNProto},
+			SupportedVersions: []uint16{tls.VersionTLS12},
+		}
+		c, err := getCert(hello)
+		if err != nil {
+			return err
+		}
+		crt, err = x509.ParseCertificate(c.Certificate[0])
+		if err != nil {
+			return err
+		}
 	}
-	if n := len(conn.ConnectionState().PeerCertificates); n != 1 {
-		return fmt.Errorf("len(PeerCertificates) = %d; want 1", n)
+
+	if err := crt.VerifyHostname(a.domain); err != nil {
+		return fmt.Errorf("verifyALPNChallenge: VerifyHostname: %v", err)
 	}
-	// TODO: verify conn.ConnectionState().PeerCertificates[0]
+	// See RFC 8737, Section 6.1.
+	oid := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}
+	for _, x := range crt.Extensions {
+		if x.Id.Equal(oid) {
+			// TODO: check the token.
+			return nil
+		}
+	}
+	return fmt.Errorf("verifyTokenCert: no id-pe-acmeIdentifier extension found")
+}
+
+func (ca *CAServer) verifyHTTPChallenge(a *authorization) error {
+	addr, haveAddr := ca.addr(a.domain)
+	handler, haveHandler := ca.getHandler(a.domain)
+	if !haveAddr && !haveHandler {
+		return fmt.Errorf("no resolution information for %q", a.domain)
+	}
+	if haveAddr && haveHandler {
+		return fmt.Errorf("overlapping resolution information for %q", a.domain)
+	}
+
+	token := challengeToken(a.domain, "http-01", a.id)
+	path := "/.well-known/acme-challenge/" + token
+
+	var body string
+	switch {
+	case haveAddr:
+		t := &http.Transport{
+			DialContext: func(ctx context.Context, network, _ string) (net.Conn, error) {
+				return (&net.Dialer{}).DialContext(ctx, network, addr)
+			},
+		}
+		req, err := http.NewRequest("GET", "http://"+a.domain+path, nil)
+		if err != nil {
+			return err
+		}
+		res, err := t.RoundTrip(req)
+		if err != nil {
+			return err
+		}
+		if res.StatusCode != http.StatusOK {
+			return fmt.Errorf("http token: w.Code = %d; want %d", res.StatusCode, http.StatusOK)
+		}
+		b, err := io.ReadAll(res.Body)
+		if err != nil {
+			return err
+		}
+		body = string(b)
+	case haveHandler:
+		r := httptest.NewRequest("GET", path, nil)
+		r.Host = a.domain
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if w.Code != http.StatusOK {
+			return fmt.Errorf("http token: w.Code = %d; want %d", w.Code, http.StatusOK)
+		}
+		body = w.Body.String()
+	}
+
+	if !strings.HasPrefix(body, token) {
+		return fmt.Errorf("http token value = %q; want 'token-http-01.' prefix", body)
+	}
 	return nil
 }
 
@@ -535,8 +730,8 @@ func decodePayload(v interface{}, r io.Reader) error {
 	return json.Unmarshal(payload, v)
 }
 
-func challengeToken(domain, challType string) string {
-	return fmt.Sprintf("token-%s-%s", domain, challType)
+func challengeToken(domain, challType string, authzID int) string {
+	return fmt.Sprintf("token-%s-%s-%d", domain, challType, authzID)
 }
 
 func unique(a []string) []string {
