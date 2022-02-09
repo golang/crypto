@@ -458,7 +458,7 @@ func (m *Manager) cert(ctx context.Context, ck certKey) (*tls.Certificate, error
 		leaf: cert.Leaf,
 	}
 	m.state[ck] = s
-	go m.renew(ck, s.key, s.leaf.NotAfter)
+	go m.startRenew(ck, s.key, s.leaf.NotAfter)
 	return cert, nil
 }
 
@@ -584,8 +584,9 @@ func (m *Manager) createCert(ctx context.Context, ck certKey) (*tls.Certificate,
 	if err != nil {
 		// Remove the failed state after some time,
 		// making the manager call createCert again on the following TLS hello.
+		didRemove := testDidRemoveState // The lifetime of this timer is untracked, so copy mutable local state to avoid races.
 		time.AfterFunc(createCertRetryAfter, func() {
-			defer testDidRemoveState(ck)
+			defer didRemove(ck)
 			m.stateMu.Lock()
 			defer m.stateMu.Unlock()
 			// Verify the state hasn't changed and it's still invalid
@@ -603,7 +604,7 @@ func (m *Manager) createCert(ctx context.Context, ck certKey) (*tls.Certificate,
 	}
 	state.cert = der
 	state.leaf = leaf
-	go m.renew(ck, state.key, state.leaf.NotAfter)
+	go m.startRenew(ck, state.key, state.leaf.NotAfter)
 	return state.tlscert()
 }
 
@@ -893,7 +894,7 @@ func httpTokenCacheKey(tokenPath string) string {
 	return path.Base(tokenPath) + "+http-01"
 }
 
-// renew starts a cert renewal timer loop, one per domain.
+// startRenew starts a cert renewal timer loop, one per domain.
 //
 // The loop is scheduled in two cases:
 // - a cert was fetched from cache for the first time (wasn't in m.state)
@@ -901,7 +902,7 @@ func httpTokenCacheKey(tokenPath string) string {
 //
 // The key argument is a certificate private key.
 // The exp argument is the cert expiration time (NotAfter).
-func (m *Manager) renew(ck certKey, key crypto.Signer, exp time.Time) {
+func (m *Manager) startRenew(ck certKey, key crypto.Signer, exp time.Time) {
 	m.renewalMu.Lock()
 	defer m.renewalMu.Unlock()
 	if m.renewal[ck] != nil {

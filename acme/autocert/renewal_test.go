@@ -61,11 +61,23 @@ func TestRenewFromCache(t *testing.T) {
 
 	// verify the renewal happened
 	defer func() {
+		// Stop the timers that read and execute testDidRenewLoop before restoring it.
+		// Otherwise the timer callback may race with the deferred write.
+		man.stopRenew()
 		testDidRenewLoop = func(next time.Duration, err error) {}
 	}()
-	done := make(chan struct{})
+	renewed := make(chan bool, 1)
 	testDidRenewLoop = func(next time.Duration, err error) {
-		defer close(done)
+		defer func() {
+			select {
+			case renewed <- true:
+			default:
+				// The renewal timer uses a random backoff. If the first renewal fails for
+				// some reason, we could end up with multiple calls here before the test
+				// stops the timer.
+			}
+		}()
+
 		if err != nil {
 			t.Errorf("testDidRenewLoop: %v", err)
 		}
@@ -81,7 +93,8 @@ func TestRenewFromCache(t *testing.T) {
 		after := time.Now().Add(future)
 		tlscert, err := man.cacheGet(context.Background(), exampleCertKey)
 		if err != nil {
-			t.Fatalf("man.cacheGet: %v", err)
+			t.Errorf("man.cacheGet: %v", err)
+			return
 		}
 		if !tlscert.Leaf.NotAfter.After(after) {
 			t.Errorf("cache leaf.NotAfter = %v; want > %v", tlscert.Leaf.NotAfter, after)
@@ -92,11 +105,13 @@ func TestRenewFromCache(t *testing.T) {
 		defer man.stateMu.Unlock()
 		s := man.state[exampleCertKey]
 		if s == nil {
-			t.Fatalf("m.state[%q] is nil", exampleCertKey)
+			t.Errorf("m.state[%q] is nil", exampleCertKey)
+			return
 		}
 		tlscert, err = s.tlscert()
 		if err != nil {
-			t.Fatalf("s.tlscert: %v", err)
+			t.Errorf("s.tlscert: %v", err)
+			return
 		}
 		if !tlscert.Leaf.NotAfter.After(after) {
 			t.Errorf("state leaf.NotAfter = %v; want > %v", tlscert.Leaf.NotAfter, after)
@@ -108,13 +123,7 @@ func TestRenewFromCache(t *testing.T) {
 	if _, err := man.GetCertificate(hello); err != nil {
 		t.Fatal(err)
 	}
-
-	// wait for renew loop
-	select {
-	case <-time.After(10 * time.Second):
-		t.Fatal("renew took too long to occur")
-	case <-done:
-	}
+	<-renewed
 }
 
 func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
@@ -159,11 +168,23 @@ func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
 
 	// verify the renewal accepted the newer cached cert
 	defer func() {
+		// Stop the timers that read and execute testDidRenewLoop before restoring it.
+		// Otherwise the timer callback may race with the deferred write.
+		man.stopRenew()
 		testDidRenewLoop = func(next time.Duration, err error) {}
 	}()
-	done := make(chan struct{})
+	renewed := make(chan bool, 1)
 	testDidRenewLoop = func(next time.Duration, err error) {
-		defer close(done)
+		defer func() {
+			select {
+			case renewed <- true:
+			default:
+				// The renewal timer uses a random backoff. If the first renewal fails for
+				// some reason, we could end up with multiple calls here before the test
+				// stops the timer.
+			}
+		}()
+
 		if err != nil {
 			t.Errorf("testDidRenewLoop: %v", err)
 		}
@@ -177,7 +198,8 @@ func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
 		// ensure the cached cert was not modified
 		tlscert, err := man.cacheGet(context.Background(), exampleCertKey)
 		if err != nil {
-			t.Fatalf("man.cacheGet: %v", err)
+			t.Errorf("man.cacheGet: %v", err)
+			return
 		}
 		if !tlscert.Leaf.NotAfter.Equal(newLeaf.NotAfter) {
 			t.Errorf("cache leaf.NotAfter = %v; want == %v", tlscert.Leaf.NotAfter, newLeaf.NotAfter)
@@ -188,30 +210,22 @@ func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
 		defer man.stateMu.Unlock()
 		s := man.state[exampleCertKey]
 		if s == nil {
-			t.Fatalf("m.state[%q] is nil", exampleCertKey)
+			t.Errorf("m.state[%q] is nil", exampleCertKey)
+			return
 		}
 		stateKey := s.key.Public().(*ecdsa.PublicKey)
 		if !stateKey.Equal(newLeaf.PublicKey) {
-			t.Fatal("state key was not updated from cache")
+			t.Error("state key was not updated from cache")
+			return
 		}
 		tlscert, err = s.tlscert()
 		if err != nil {
-			t.Fatalf("s.tlscert: %v", err)
+			t.Errorf("s.tlscert: %v", err)
+			return
 		}
 		if !tlscert.Leaf.NotAfter.Equal(newLeaf.NotAfter) {
 			t.Errorf("state leaf.NotAfter = %v; want == %v", tlscert.Leaf.NotAfter, newLeaf.NotAfter)
 		}
-
-		// verify the private key is replaced in the renewal state
-		r := man.renewal[exampleCertKey]
-		if r == nil {
-			t.Fatalf("m.renewal[%q] is nil", exampleCertKey)
-		}
-		renewalKey := r.key.Public().(*ecdsa.PublicKey)
-		if !renewalKey.Equal(newLeaf.PublicKey) {
-			t.Fatal("renewal private key was not updated from cache")
-		}
-
 	}
 
 	// assert the expiring cert is returned from state
@@ -225,21 +239,31 @@ func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
 	}
 
 	// trigger renew
-	go man.renew(exampleCertKey, s.key, s.leaf.NotAfter)
+	man.startRenew(exampleCertKey, s.key, s.leaf.NotAfter)
+	<-renewed
+	func() {
+		man.renewalMu.Lock()
+		defer man.renewalMu.Unlock()
 
-	// wait for renew loop
-	select {
-	case <-time.After(10 * time.Second):
-		t.Fatal("renew took too long to occur")
-	case <-done:
-		// assert the new cert is returned from state after renew
-		hello := clientHelloInfo(exampleDomain, algECDSA)
-		tlscert, err := man.GetCertificate(hello)
-		if err != nil {
-			t.Fatal(err)
+		// verify the private key is replaced in the renewal state
+		r := man.renewal[exampleCertKey]
+		if r == nil {
+			t.Errorf("m.renewal[%q] is nil", exampleCertKey)
+			return
 		}
-		if !newLeaf.NotAfter.Equal(tlscert.Leaf.NotAfter) {
-			t.Errorf("state leaf.NotAfter = %v; want == %v", tlscert.Leaf.NotAfter, newLeaf.NotAfter)
+		renewalKey := r.key.Public().(*ecdsa.PublicKey)
+		if !renewalKey.Equal(newLeaf.PublicKey) {
+			t.Error("renewal private key was not updated from cache")
 		}
+	}()
+
+	// assert the new cert is returned from state after renew
+	hello = clientHelloInfo(exampleDomain, algECDSA)
+	tlscert, err = man.GetCertificate(hello)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !newLeaf.NotAfter.Equal(tlscert.Leaf.NotAfter) {
+		t.Errorf("state leaf.NotAfter = %v; want == %v", tlscert.Leaf.NotAfter, newLeaf.NotAfter)
 	}
 }
