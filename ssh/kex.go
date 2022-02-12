@@ -20,12 +20,13 @@ import (
 )
 
 const (
-	kexAlgoDH1SHA1          = "diffie-hellman-group1-sha1"
-	kexAlgoDH14SHA1         = "diffie-hellman-group14-sha1"
-	kexAlgoECDH256          = "ecdh-sha2-nistp256"
-	kexAlgoECDH384          = "ecdh-sha2-nistp384"
-	kexAlgoECDH521          = "ecdh-sha2-nistp521"
-	kexAlgoCurve25519SHA256 = "curve25519-sha256@libssh.org"
+	kexAlgoDH1SHA1                = "diffie-hellman-group1-sha1"
+	kexAlgoDH14SHA1               = "diffie-hellman-group14-sha1"
+	kexAlgoECDH256                = "ecdh-sha2-nistp256"
+	kexAlgoECDH384                = "ecdh-sha2-nistp384"
+	kexAlgoECDH521                = "ecdh-sha2-nistp521"
+	kexAlgoCurve25519SHA256LibSSH = "curve25519-sha256@libssh.org"
+	kexAlgoCurve25519SHA256       = "curve25519-sha256"
 
 	// For the following kex only the client half contains a production
 	// ready implementation. The server half only consists of a minimal
@@ -410,13 +411,13 @@ func init() {
 	kexAlgoMap[kexAlgoECDH384] = &ecdh{elliptic.P384()}
 	kexAlgoMap[kexAlgoECDH256] = &ecdh{elliptic.P256()}
 	kexAlgoMap[kexAlgoCurve25519SHA256] = &curve25519sha256{}
+	kexAlgoMap[kexAlgoCurve25519SHA256LibSSH] = &curve25519sha256{}
 	kexAlgoMap[kexAlgoDHGEXSHA1] = &dhGEXSHA{hashFunc: crypto.SHA1}
 	kexAlgoMap[kexAlgoDHGEXSHA256] = &dhGEXSHA{hashFunc: crypto.SHA256}
 }
 
-// curve25519sha256 implements the curve25519-sha256@libssh.org key
-// agreement protocol, as described in
-// https://git.libssh.org/projects/libssh.git/tree/doc/curve25519-sha256@libssh.org.txt
+// curve25519sha256 implements the curve25519-sha256 (formerly known as
+// curve25519-sha256@libssh.org) key exchange method, as described in RFC 8731.
 type curve25519sha256 struct{}
 
 type curve25519KeyPair struct {
