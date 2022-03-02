@@ -152,6 +152,11 @@ func (a *directionAlgorithms) rekeyBytes() int64 {
 	return 1 << 30
 }
 
+var aeadCiphers = map[string]bool{
+	gcmCipherID:        true,
+	chacha20Poly1305ID: true,
+}
+
 type algorithms struct {
 	kex     string
 	hostKey string
@@ -187,14 +192,18 @@ func findAgreedAlgorithms(isClient bool, clientKexInit, serverKexInit *kexInitMs
 		return
 	}
 
-	ctos.MAC, err = findCommon("client to server MAC", clientKexInit.MACsClientServer, serverKexInit.MACsClientServer)
-	if err != nil {
-		return
+	if !aeadCiphers[ctos.Cipher] {
+		ctos.MAC, err = findCommon("client to server MAC", clientKexInit.MACsClientServer, serverKexInit.MACsClientServer)
+		if err != nil {
+			return
+		}
 	}
 
-	stoc.MAC, err = findCommon("server to client MAC", clientKexInit.MACsServerClient, serverKexInit.MACsServerClient)
-	if err != nil {
-		return
+	if !aeadCiphers[stoc.Cipher] {
+		stoc.MAC, err = findCommon("server to client MAC", clientKexInit.MACsServerClient, serverKexInit.MACsServerClient)
+		if err != nil {
+			return
+		}
 	}
 
 	ctos.Compression, err = findCommon("client to server compression", clientKexInit.CompressionClientServer, serverKexInit.CompressionClientServer)

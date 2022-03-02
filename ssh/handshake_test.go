@@ -560,3 +560,26 @@ func TestHandshakeRekeyDefault(t *testing.T) {
 		t.Errorf("got rekey after %dG write, want 64G", wgb)
 	}
 }
+
+func TestHandshakeAEADCipherNoMAC(t *testing.T) {
+	for _, cipher := range []string{chacha20Poly1305ID, gcmCipherID} {
+		checker := &syncChecker{
+			called: make(chan int, 1),
+		}
+		clientConf := &ClientConfig{
+			Config: Config{
+				Ciphers: []string{cipher},
+				MACs:    []string{},
+			},
+			HostKeyCallback: checker.Check,
+		}
+		trC, trS, err := handshakePair(clientConf, "addr", false)
+		if err != nil {
+			t.Fatalf("handshakePair: %v", err)
+		}
+		defer trC.Close()
+		defer trS.Close()
+
+		<-checker.called
+	}
+}
