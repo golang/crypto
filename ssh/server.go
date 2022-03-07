@@ -634,7 +634,7 @@ userAuthLoop:
 
 		authFailures++
 		if config.MaxAuthTries > 0 && authFailures >= config.MaxAuthTries {
-			// If we have hit the max attemps, don't bother sending the
+			// If we have hit the max attempts, don't bother sending the
 			// final SSH_MSG_USERAUTH_FAILURE message, since there are
 			// no more authentication methods which can be attempted,
 			// and this message may cause the client to re-attempt
