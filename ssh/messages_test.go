@@ -34,16 +34,20 @@ func TestIntLength(t *testing.T) {
 }
 
 type msgAllTypes struct {
-	Bool    bool `sshtype:"21"`
-	Array   [16]byte
-	Uint64  uint64
-	Uint32  uint32
-	Uint8   uint8
-	String  string
-	Strings []string
-	Bytes   []byte
-	Int     *big.Int
-	Rest    []byte `ssh:"rest"`
+	Bool         bool `sshtype:"21"`
+	Array        [16]byte
+	Uint64       uint64
+	Uint32       uint32
+	Uint8        uint8
+	String       string
+	Strings      []string
+	StringMapLen uint32
+	StringMap    map[string]string `sshlen:"StringMapLen"`
+	Bytes        []byte
+	BytesMapLen  uint32
+	BytesMap     map[string][]byte `sshlen:"BytesMapLen"`
+	Int          *big.Int
+	Rest         []byte `ssh:"rest"`
 }
 
 func (t *msgAllTypes) Generate(rand *rand.Rand, size int) reflect.Value {
@@ -53,8 +57,12 @@ func (t *msgAllTypes) Generate(rand *rand.Rand, size int) reflect.Value {
 	m.Uint64 = uint64(rand.Int63n(1<<63 - 1))
 	m.Uint32 = uint32(rand.Intn((1 << 31) - 1))
 	m.Uint8 = uint8(rand.Intn(1 << 8))
-	m.String = string(m.Array[:])
+	m.String = randomString(rand)
 	m.Strings = randomNameList(rand)
+	m.StringMap = randomStringMap(rand)
+	m.StringMapLen = uint32(len(m.StringMap))
+	m.BytesMap = randomBytesMap(rand)
+	m.BytesMapLen = uint32(len(m.BytesMap))
 	m.Bytes = m.Array[:]
 	m.Int = randomInt(rand)
 	m.Rest = m.Array[:]
@@ -212,15 +220,39 @@ func randomBytes(out []byte, rand *rand.Rand) {
 	}
 }
 
+func randomString(rand *rand.Rand) string {
+	s := make([]byte, 1+(rand.Int31()&15))
+	for j := range s {
+		s[j] = 'a' + uint8(rand.Int31()&15)
+	}
+	return string(s)
+}
+
 func randomNameList(rand *rand.Rand) []string {
 	ret := make([]string, rand.Int31()&15)
 	for i := range ret {
-		s := make([]byte, 1+(rand.Int31()&15))
-		for j := range s {
-			s[j] = 'a' + uint8(rand.Int31()&15)
-		}
-		ret[i] = string(s)
+		ret[i] = randomString(rand)
 	}
+	return ret
+}
+
+func randomStringMap(rand *rand.Rand) map[string]string {
+	mapSize := rand.Int31() & 15
+	ret := make(map[string]string, mapSize)
+	for i := 0; i < int(mapSize); i++ {
+		ret[randomString(rand)] = randomString(rand)
+	}
+	return ret
+}
+func randomBytesMap(rand *rand.Rand) map[string][]byte {
+	mapSize := rand.Int31() & 15
+	ret := make(map[string][]byte, mapSize)
+	for i := 0; i < int(mapSize); i++ {
+		mapData := make([]byte, rand.Int31()&15)
+		randomBytes(mapData, rand)
+		ret[randomString(rand)] = mapData
+	}
+
 	return ret
 }
 

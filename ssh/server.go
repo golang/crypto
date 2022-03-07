@@ -255,18 +255,35 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	// We just did the key change, so the session ID is established.
 	s.sessionID = s.transport.getSessionID()
 
-	var packet []byte
-	if packet, err = s.transport.readPacket(); err != nil {
-		return nil, err
+	var serviceRequest serviceRequestMsg
+readServiceRequestLoop:
+	for {
+		var packet []byte
+		if packet, err = s.transport.readPacket(); err != nil {
+			return nil, err
+		}
+
+		switch packet[0] {
+		case msgExtInfo:
+			var extInfo extInfoMsg
+			if err := Unmarshal(packet, &extInfo); err != nil {
+				return nil, err
+			}
+			s.transport.extensions = extInfo.Extensions
+			continue
+		case msgServiceRequest:
+			if err = Unmarshal(packet, &serviceRequest); err != nil {
+				return nil, err
+			}
+			if serviceRequest.Service != serviceUserAuth {
+				return nil, errors.New("ssh: requested service '" + serviceRequest.Service + "' before authenticating")
+			}
+			break readServiceRequestLoop
+		default:
+			return nil, fmt.Errorf("ssh: unexpected message received")
+		}
 	}
 
-	var serviceRequest serviceRequestMsg
-	if err = Unmarshal(packet, &serviceRequest); err != nil {
-		return nil, err
-	}
-	if serviceRequest.Service != serviceUserAuth {
-		return nil, errors.New("ssh: requested service '" + serviceRequest.Service + "' before authenticating")
-	}
 	serviceAccept := serviceAcceptMsg{
 		Service: serviceUserAuth,
 	}
@@ -681,6 +698,14 @@ userAuthLoop:
 			return nil, err
 		}
 	}
+
+	// TODO(kxd) This is where the second ext info message was being sent as per
+	// RFC8308 section 2.4, but OpenSSH 8.8's client doesn't seem to like it. It
+	// thinks it's an unexpected packet for some reason. It seems like all the
+	// server implementations I've been able to find so far don't actually send
+	// this message, so it's probably fine to not have it. There aren't currently
+	// any extension values you'd want to hide from anonymous users at this point
+	// anyway, as far as I'm aware.
 
 	if err := s.transport.writePacket([]byte{msgUserAuthSuccess}); err != nil {
 		return nil, err
