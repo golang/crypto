@@ -22,6 +22,7 @@ import (
 const (
 	kexAlgoDH1SHA1                = "diffie-hellman-group1-sha1"
 	kexAlgoDH14SHA1               = "diffie-hellman-group14-sha1"
+	kexAlgoDH14SHA256             = "diffie-hellman-group14-sha256"
 	kexAlgoECDH256                = "ecdh-sha2-nistp256"
 	kexAlgoECDH384                = "ecdh-sha2-nistp384"
 	kexAlgoECDH521                = "ecdh-sha2-nistp521"
@@ -87,6 +88,7 @@ type kexAlgorithm interface {
 // dhGroup is a multiplicative group suitable for implementing Diffie-Hellman key agreement.
 type dhGroup struct {
 	g, p, pMinus1 *big.Int
+	hashFunc      crypto.Hash
 }
 
 func (group *dhGroup) diffieHellman(theirPublic, myPrivate *big.Int) (*big.Int, error) {
@@ -97,8 +99,6 @@ func (group *dhGroup) diffieHellman(theirPublic, myPrivate *big.Int) (*big.Int, 
 }
 
 func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handshakeMagics) (*kexResult, error) {
-	hashFunc := crypto.SHA1
-
 	var x *big.Int
 	for {
 		var err error
@@ -133,7 +133,7 @@ func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handsha
 		return nil, err
 	}
 
-	h := hashFunc.New()
+	h := group.hashFunc.New()
 	magics.write(h)
 	writeString(h, kexDHReply.HostKey)
 	writeInt(h, X)
@@ -147,12 +147,11 @@ func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handsha
 		K:         K,
 		HostKey:   kexDHReply.HostKey,
 		Signature: kexDHReply.Signature,
-		Hash:      crypto.SHA1,
+		Hash:      group.hashFunc,
 	}, nil
 }
 
 func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
-	hashFunc := crypto.SHA1
 	packet, err := c.readPacket()
 	if err != nil {
 		return
@@ -180,7 +179,7 @@ func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handsha
 
 	hostKeyBytes := priv.PublicKey().Marshal()
 
-	h := hashFunc.New()
+	h := group.hashFunc.New()
 	magics.write(h)
 	writeString(h, hostKeyBytes)
 	writeInt(h, kexDHInit.X)
@@ -212,7 +211,7 @@ func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handsha
 		K:         K,
 		HostKey:   hostKeyBytes,
 		Signature: sig,
-		Hash:      crypto.SHA1,
+		Hash:      group.hashFunc,
 	}, err
 }
 
@@ -388,23 +387,33 @@ func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, p
 var kexAlgoMap = map[string]kexAlgorithm{}
 
 func init() {
-	// This is the group called diffie-hellman-group1-sha1 in RFC
-	// 4253 and Oakley Group 2 in RFC 2409.
+	// This is the group called diffie-hellman-group1-sha1 in
+	// RFC 4253 and Oakley Group 2 in RFC 2409.
 	p, _ := new(big.Int).SetString("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE65381FFFFFFFFFFFFFFFF", 16)
 	kexAlgoMap[kexAlgoDH1SHA1] = &dhGroup{
+		g:        new(big.Int).SetInt64(2),
+		p:        p,
+		pMinus1:  new(big.Int).Sub(p, bigOne),
+		hashFunc: crypto.SHA1,
+	}
+
+	// This are the groups called diffie-hellman-group14-sha1 and
+	// diffie-hellman-group14-sha256 in RFC 4253 and RFC 8268,
+	// and Oakley Group 14 in RFC 3526.
+	p, _ = new(big.Int).SetString("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF", 16)
+	group14 := &dhGroup{
 		g:       new(big.Int).SetInt64(2),
 		p:       p,
 		pMinus1: new(big.Int).Sub(p, bigOne),
 	}
 
-	// This is the group called diffie-hellman-group14-sha1 in RFC
-	// 4253 and Oakley Group 14 in RFC 3526.
-	p, _ = new(big.Int).SetString("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF", 16)
-
 	kexAlgoMap[kexAlgoDH14SHA1] = &dhGroup{
-		g:       new(big.Int).SetInt64(2),
-		p:       p,
-		pMinus1: new(big.Int).Sub(p, bigOne),
+		g: group14.g, p: group14.p, pMinus1: group14.pMinus1,
+		hashFunc: crypto.SHA1,
+	}
+	kexAlgoMap[kexAlgoDH14SHA256] = &dhGroup{
+		g: group14.g, p: group14.p, pMinus1: group14.pMinus1,
+		hashFunc: crypto.SHA256,
 	}
 
 	kexAlgoMap[kexAlgoECDH521] = &ecdh{elliptic.P521()}
