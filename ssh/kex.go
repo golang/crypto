@@ -563,7 +563,6 @@ func (kex *curve25519sha256) Server(c packetConn, rand io.Reader, magics *handsh
 // diffie-hellman-group-exchange-sha256 key agreement protocols,
 // as described in RFC 4419
 type dhGEXSHA struct {
-	g, p     *big.Int
 	hashFunc crypto.Hash
 }
 
@@ -573,14 +572,7 @@ const (
 	dhGroupExchangeMaximumBits   = 8192
 )
 
-func (gex *dhGEXSHA) diffieHellman(theirPublic, myPrivate *big.Int) (*big.Int, error) {
-	if theirPublic.Sign() <= 0 || theirPublic.Cmp(gex.p) >= 0 {
-		return nil, fmt.Errorf("ssh: DH parameter out of bounds")
-	}
-	return new(big.Int).Exp(theirPublic, myPrivate, gex.p), nil
-}
-
-func (gex dhGEXSHA) Client(c packetConn, randSource io.Reader, magics *handshakeMagics) (*kexResult, error) {
+func (gex *dhGEXSHA) Client(c packetConn, randSource io.Reader, magics *handshakeMagics) (*kexResult, error) {
 	// Send GexRequest
 	kexDHGexRequest := kexDHGexRequestMsg{
 		MinBits:      dhGroupExchangeMinimumBits,
@@ -597,35 +589,29 @@ func (gex dhGEXSHA) Client(c packetConn, randSource io.Reader, magics *handshake
 		return nil, err
 	}
 
-	var kexDHGexGroup kexDHGexGroupMsg
-	if err = Unmarshal(packet, &kexDHGexGroup); err != nil {
+	var msg kexDHGexGroupMsg
+	if err = Unmarshal(packet, &msg); err != nil {
 		return nil, err
 	}
 
 	// reject if p's bit length < dhGroupExchangeMinimumBits or > dhGroupExchangeMaximumBits
-	if kexDHGexGroup.P.BitLen() < dhGroupExchangeMinimumBits || kexDHGexGroup.P.BitLen() > dhGroupExchangeMaximumBits {
-		return nil, fmt.Errorf("ssh: server-generated gex p is out of range (%d bits)", kexDHGexGroup.P.BitLen())
+	if msg.P.BitLen() < dhGroupExchangeMinimumBits || msg.P.BitLen() > dhGroupExchangeMaximumBits {
+		return nil, fmt.Errorf("ssh: server-generated gex p is out of range (%d bits)", msg.P.BitLen())
 	}
 
-	gex.p = kexDHGexGroup.P
-	gex.g = kexDHGexGroup.G
-
-	// Check if g is safe by verifing that g > 1 and g < p - 1
-	one := big.NewInt(1)
-	var pMinusOne = &big.Int{}
-	pMinusOne.Sub(gex.p, one)
-	if gex.g.Cmp(one) != 1 && gex.g.Cmp(pMinusOne) != -1 {
+	// Check if g is safe by verifying that 1 < g < p-1
+	pMinusOne := new(big.Int).Sub(msg.P, bigOne)
+	if msg.G.Cmp(bigOne) <= 0 || msg.G.Cmp(pMinusOne) >= 0 {
 		return nil, fmt.Errorf("ssh: server provided gex g is not safe")
 	}
 
 	// Send GexInit
-	var pHalf = &big.Int{}
-	pHalf.Rsh(gex.p, 1)
+	pHalf := new(big.Int).Rsh(msg.P, 1)
 	x, err := rand.Int(randSource, pHalf)
 	if err != nil {
 		return nil, err
 	}
-	X := new(big.Int).Exp(gex.g, x, gex.p)
+	X := new(big.Int).Exp(msg.G, x, msg.P)
 	kexDHGexInit := kexDHGexInitMsg{
 		X: X,
 	}
@@ -644,13 +630,13 @@ func (gex dhGEXSHA) Client(c packetConn, randSource io.Reader, magics *handshake
 		return nil, err
 	}
 
-	kInt, err := gex.diffieHellman(kexDHGexReply.Y, x)
-	if err != nil {
-		return nil, err
+	if kexDHGexReply.Y.Cmp(bigOne) <= 0 || kexDHGexReply.Y.Cmp(pMinusOne) >= 0 {
+		return nil, errors.New("ssh: DH parameter out of bounds")
 	}
+	kInt := new(big.Int).Exp(kexDHGexReply.Y, x, msg.P)
 
-	// Check if k is safe by verifing that k > 1 and k < p - 1
-	if kInt.Cmp(one) != 1 && kInt.Cmp(pMinusOne) != -1 {
+	// Check if k is safe by verifying that k > 1 and k < p - 1
+	if kInt.Cmp(bigOne) <= 0 || kInt.Cmp(pMinusOne) >= 0 {
 		return nil, fmt.Errorf("ssh: derived k is not safe")
 	}
 
@@ -660,8 +646,8 @@ func (gex dhGEXSHA) Client(c packetConn, randSource io.Reader, magics *handshake
 	binary.Write(h, binary.BigEndian, uint32(dhGroupExchangeMinimumBits))
 	binary.Write(h, binary.BigEndian, uint32(dhGroupExchangePreferredBits))
 	binary.Write(h, binary.BigEndian, uint32(dhGroupExchangeMaximumBits))
-	writeInt(h, gex.p)
-	writeInt(h, gex.g)
+	writeInt(h, msg.P)
+	writeInt(h, msg.G)
 	writeInt(h, X)
 	writeInt(h, kexDHGexReply.Y)
 	K := make([]byte, intLength(kInt))
@@ -691,35 +677,17 @@ func (gex dhGEXSHA) Server(c packetConn, randSource io.Reader, magics *handshake
 		return
 	}
 
-	// smoosh the user's preferred size into our own limits
-	if kexDHGexRequest.PreferedBits > dhGroupExchangeMaximumBits {
-		kexDHGexRequest.PreferedBits = dhGroupExchangeMaximumBits
-	}
-	if kexDHGexRequest.PreferedBits < dhGroupExchangeMinimumBits {
-		kexDHGexRequest.PreferedBits = dhGroupExchangeMinimumBits
-	}
-	// fix min/max if they're inconsistent.  technically, we could just pout
-	// and hang up, but there's no harm in giving them the benefit of the
-	// doubt and just picking a bitsize for them.
-	if kexDHGexRequest.MinBits > kexDHGexRequest.PreferedBits {
-		kexDHGexRequest.MinBits = kexDHGexRequest.PreferedBits
-	}
-	if kexDHGexRequest.MaxBits < kexDHGexRequest.PreferedBits {
-		kexDHGexRequest.MaxBits = kexDHGexRequest.PreferedBits
-	}
-
 	// Send GexGroup
 	// This is the group called diffie-hellman-group14-sha1 in RFC
 	// 4253 and Oakley Group 14 in RFC 3526.
 	p, _ := new(big.Int).SetString("FFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF", 16)
-	gex.p = p
-	gex.g = big.NewInt(2)
+	g := big.NewInt(2)
 
-	kexDHGexGroup := kexDHGexGroupMsg{
-		P: gex.p,
-		G: gex.g,
+	msg := &kexDHGexGroupMsg{
+		P: p,
+		G: g,
 	}
-	if err := c.writePacket(Marshal(&kexDHGexGroup)); err != nil {
+	if err := c.writePacket(Marshal(msg)); err != nil {
 		return nil, err
 	}
 
@@ -733,19 +701,19 @@ func (gex dhGEXSHA) Server(c packetConn, randSource io.Reader, magics *handshake
 		return
 	}
 
-	var pHalf = &big.Int{}
-	pHalf.Rsh(gex.p, 1)
+	pHalf := new(big.Int).Rsh(p, 1)
 
 	y, err := rand.Int(randSource, pHalf)
 	if err != nil {
 		return
 	}
+	Y := new(big.Int).Exp(g, y, p)
 
-	Y := new(big.Int).Exp(gex.g, y, gex.p)
-	kInt, err := gex.diffieHellman(kexDHGexInit.X, y)
-	if err != nil {
-		return nil, err
+	pMinusOne := new(big.Int).Sub(p, bigOne)
+	if kexDHGexInit.X.Cmp(bigOne) <= 0 || kexDHGexInit.X.Cmp(pMinusOne) >= 0 {
+		return nil, errors.New("ssh: DH parameter out of bounds")
 	}
+	kInt := new(big.Int).Exp(kexDHGexInit.X, y, p)
 
 	hostKeyBytes := priv.PublicKey().Marshal()
 
@@ -755,8 +723,8 @@ func (gex dhGEXSHA) Server(c packetConn, randSource io.Reader, magics *handshake
 	binary.Write(h, binary.BigEndian, uint32(dhGroupExchangeMinimumBits))
 	binary.Write(h, binary.BigEndian, uint32(dhGroupExchangePreferredBits))
 	binary.Write(h, binary.BigEndian, uint32(dhGroupExchangeMaximumBits))
-	writeInt(h, gex.p)
-	writeInt(h, gex.g)
+	writeInt(h, p)
+	writeInt(h, g)
 	writeInt(h, kexDHGexInit.X)
 	writeInt(h, Y)
 
