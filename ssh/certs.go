@@ -14,8 +14,10 @@ import (
 	"time"
 )
 
-// These constants from [PROTOCOL.certkeys] represent the key algorithm names
-// for certificate types supported by this package.
+// Certificate algorithm names from [PROTOCOL.certkeys]. These values can appear
+// in Certificate.Type, PublicKey.Type, and ClientConfig.HostKeyAlgorithms.
+// Unlike key algorithm names, these are not passed to AlgorithmSigner and don't
+// appear in the Signature.Format field.
 const (
 	CertAlgoRSAv01        = "ssh-rsa-cert-v01@openssh.com"
 	CertAlgoDSAv01        = "ssh-dss-cert-v01@openssh.com"
@@ -25,14 +27,21 @@ const (
 	CertAlgoSKECDSA256v01 = "sk-ecdsa-sha2-nistp256-cert-v01@openssh.com"
 	CertAlgoED25519v01    = "ssh-ed25519-cert-v01@openssh.com"
 	CertAlgoSKED25519v01  = "sk-ssh-ed25519-cert-v01@openssh.com"
+
+	// CertAlgoRSASHA256v01 and CertAlgoRSASHA512v01 can't appear as a
+	// Certificate.Type (or PublicKey.Type), but only in
+	// ClientConfig.HostKeyAlgorithms.
+	CertAlgoRSASHA256v01 = "rsa-sha2-256-cert-v01@openssh.com"
+	CertAlgoRSASHA512v01 = "rsa-sha2-512-cert-v01@openssh.com"
 )
 
-// These constants from [PROTOCOL.certkeys] represent additional signature
-// algorithm names for certificate types supported by this package.
 const (
-	CertSigAlgoRSAv01        = "ssh-rsa-cert-v01@openssh.com"
-	CertSigAlgoRSASHA2256v01 = "rsa-sha2-256-cert-v01@openssh.com"
-	CertSigAlgoRSASHA2512v01 = "rsa-sha2-512-cert-v01@openssh.com"
+	// Deprecated: use CertAlgoRSAv01.
+	CertSigAlgoRSAv01 = CertAlgoRSAv01
+	// Deprecated: use CertAlgoRSASHA256v01.
+	CertSigAlgoRSASHA2256v01 = CertAlgoRSASHA256v01
+	// Deprecated: use CertAlgoRSASHA512v01.
+	CertSigAlgoRSASHA2512v01 = CertAlgoRSASHA512v01
 )
 
 // Certificate types distinguish between host and user
@@ -433,7 +442,7 @@ func (c *Certificate) SignCert(rand io.Reader, authority Signer) error {
 
 	if v, ok := authority.(AlgorithmSigner); ok {
 		if v.PublicKey().Type() == KeyAlgoRSA {
-			authority = &rsaSigner{v, SigAlgoRSASHA2512}
+			authority = &rsaSigner{v, KeyAlgoRSASHA512}
 		}
 	}
 
@@ -446,13 +455,11 @@ func (c *Certificate) SignCert(rand io.Reader, authority Signer) error {
 }
 
 // certAlgoNames includes a mapping from signature algorithms to the
-// corresponding certificate signature algorithm. When a key type (such
-// as ED25516) is associated with only one algorithm, the KeyAlgo
-// constant is used instead of the SigAlgo.
+// corresponding certificate signature algorithm.
 var certAlgoNames = map[string]string{
-	SigAlgoRSA:        CertSigAlgoRSAv01,
-	SigAlgoRSASHA2256: CertSigAlgoRSASHA2256v01,
-	SigAlgoRSASHA2512: CertSigAlgoRSASHA2512v01,
+	KeyAlgoRSA:        CertAlgoRSAv01,
+	KeyAlgoRSASHA256:  CertAlgoRSASHA256v01,
+	KeyAlgoRSASHA512:  CertAlgoRSASHA512v01,
 	KeyAlgoDSA:        CertAlgoDSAv01,
 	KeyAlgoECDSA256:   CertAlgoECDSA256v01,
 	KeyAlgoECDSA384:   CertAlgoECDSA384v01,
@@ -514,7 +521,7 @@ func (c *Certificate) Marshal() []byte {
 	return result
 }
 
-// Type returns the key name. It is part of the PublicKey interface.
+// Type returns the certificate algorithm name. It is part of the PublicKey interface.
 func (c *Certificate) Type() string {
 	algo, ok := certAlgoNames[c.Key.Type()]
 	if !ok {

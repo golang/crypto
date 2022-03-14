@@ -37,9 +37,9 @@ func init() {
 		if v, ok := testSigners[t].(*rsaSigner); ok {
 			switch t {
 			case "rsa-sha2-256":
-				testSigners[t] = &rsaSigner{v, SigAlgoRSASHA2256}
+				testSigners[t] = &rsaSigner{v, KeyAlgoRSASHA256}
 			case "rsa-sha2-512":
-				testSigners[t] = &rsaSigner{v, SigAlgoRSASHA2512}
+				testSigners[t] = &rsaSigner{v, KeyAlgoRSASHA512}
 			}
 		}
 		if err != nil {

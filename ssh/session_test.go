@@ -757,11 +757,11 @@ func TestHostKeyAlgorithms(t *testing.T) {
 	connect(clientConf, KeyAlgoECDSA256)
 
 	// Client asks for RSA explicitly.
-	clientConf.HostKeyAlgorithms = []string{SigAlgoRSA}
+	clientConf.HostKeyAlgorithms = []string{KeyAlgoRSA}
 	connect(clientConf, KeyAlgoRSA)
 
 	// Client asks for RSA-SHA2-512 explicitly.
-	clientConf.HostKeyAlgorithms = []string{SigAlgoRSASHA2512}
+	clientConf.HostKeyAlgorithms = []string{KeyAlgoRSASHA512}
 	// We get back an "ssh-rsa" key but the verification happened
 	// with an RSA-SHA2-512 signature.
 	connect(clientConf, KeyAlgoRSA)

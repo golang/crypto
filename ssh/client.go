@@ -237,11 +237,11 @@ type ClientConfig struct {
 	// be used for the connection. If empty, a reasonable default is used.
 	ClientVersion string
 
-	// HostKeyAlgorithms lists the key types that the client will
-	// accept from the server as host key, in order of
+	// HostKeyAlgorithms lists the public key algorithms that the client will
+	// accept from the server for host key authentication, in order of
 	// preference. If empty, a reasonable default is used. Any
-	// string returned from PublicKey.Type method may be used, or
-	// any of the CertAlgoXxxx and KeyAlgoXxxx constants.
+	// string returned from a PublicKey.Type method may be used, or
+	// any of the CertAlgo and KeyAlgo constants.
 	HostKeyAlgorithms []string
 
 	// Timeout is the maximum amount of time for the TCP connection to establish.

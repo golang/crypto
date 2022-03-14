@@ -30,8 +30,9 @@ import (
 	"golang.org/x/crypto/ssh/internal/bcrypt_pbkdf"
 )
 
-// These constants represent the algorithm names for key types supported by this
-// package.
+// Public key algorithms names. These values can appear in PublicKey.Type,
+// ClientConfig.HostKeyAlgorithms, Signature.Format, or as AlgorithmSigner
+// arguments.
 const (
 	KeyAlgoRSA        = "ssh-rsa"
 	KeyAlgoDSA        = "ssh-dss"
@@ -41,16 +42,21 @@ const (
 	KeyAlgoECDSA521   = "ecdsa-sha2-nistp521"
 	KeyAlgoED25519    = "ssh-ed25519"
 	KeyAlgoSKED25519  = "sk-ssh-ed25519@openssh.com"
+
+	// KeyAlgoRSASHA256 and KeyAlgoRSASHA512 are only public key algorithms, not
+	// public key formats, so they can't appear as a PublicKey.Type. The
+	// corresponding PublicKey.Type is KeyAlgoRSA. See RFC 8332, Section 2.
+	KeyAlgoRSASHA256 = "rsa-sha2-256"
+	KeyAlgoRSASHA512 = "rsa-sha2-512"
 )
 
-// These constants represent non-default signature algorithms that are supported
-// as algorithm parameters to AlgorithmSigner.SignWithAlgorithm methods. See
-// [PROTOCOL.agent] section 4.5.1 and
-// https://tools.ietf.org/html/draft-ietf-curdle-rsa-sha2-10
 const (
-	SigAlgoRSA        = "ssh-rsa"
-	SigAlgoRSASHA2256 = "rsa-sha2-256"
-	SigAlgoRSASHA2512 = "rsa-sha2-512"
+	// Deprecated: use KeyAlgoRSA.
+	SigAlgoRSA = KeyAlgoRSA
+	// Deprecated: use KeyAlgoRSASHA256.
+	SigAlgoRSASHA2256 = KeyAlgoRSASHA256
+	// Deprecated: use KeyAlgoRSASHA512.
+	SigAlgoRSASHA2512 = KeyAlgoRSASHA512
 )
 
 // parsePubKey parses a public key of the given algorithm.
@@ -325,11 +331,9 @@ type Signer interface {
 type AlgorithmSigner interface {
 	Signer
 
-	// SignWithAlgorithm is like Signer.Sign, but allows specification of a
-	// non-default signing algorithm. See the SigAlgo* constants in this
-	// package for signature algorithms supported by this package. Callers may
-	// pass an empty string for the algorithm in which case the AlgorithmSigner
-	// will use its default algorithm.
+	// SignWithAlgorithm is like Signer.Sign, but allows specifying a desired
+	// signing algorithm. Callers may pass an empty string for the algorithm in
+	// which case the AlgorithmSigner will use a default algorithm.
 	SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error)
 }
 
@@ -383,11 +387,11 @@ func (r *rsaPublicKey) Marshal() []byte {
 func (r *rsaPublicKey) Verify(data []byte, sig *Signature) error {
 	var hash crypto.Hash
 	switch sig.Format {
-	case SigAlgoRSA:
+	case KeyAlgoRSA:
 		hash = crypto.SHA1
-	case SigAlgoRSASHA2256:
+	case KeyAlgoRSASHA256:
 		hash = crypto.SHA256
-	case SigAlgoRSASHA2512:
+	case KeyAlgoRSASHA512:
 		hash = crypto.SHA512
 	default:
 		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, r.Type())
@@ -979,12 +983,12 @@ func (s *wrappedSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm
 	if _, ok := s.pubKey.(*rsaPublicKey); ok {
 		// RSA keys support a few hash functions determined by the requested signature algorithm
 		switch algorithm {
-		case "", SigAlgoRSA:
-			algorithm = SigAlgoRSA
+		case "", KeyAlgoRSA:
+			algorithm = KeyAlgoRSA
 			hashFunc = crypto.SHA1
-		case SigAlgoRSASHA2256:
+		case KeyAlgoRSASHA256:
 			hashFunc = crypto.SHA256
-		case SigAlgoRSASHA2512:
+		case KeyAlgoRSASHA512:
 			hashFunc = crypto.SHA512
 		default:
 			return nil, fmt.Errorf("ssh: unsupported signature algorithm %s", algorithm)

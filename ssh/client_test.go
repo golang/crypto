@@ -125,9 +125,9 @@ func TestVerifyHostKeySignature(t *testing.T) {
 		verifyAlgo string
 		wantError  string
 	}{
-		{"rsa", SigAlgoRSA, SigAlgoRSA, ""},
-		{"rsa", SigAlgoRSASHA2256, SigAlgoRSASHA2256, ""},
-		{"rsa", SigAlgoRSA, SigAlgoRSASHA2512, `ssh: invalid signature algorithm "ssh-rsa", expected "rsa-sha2-512"`},
+		{"rsa", KeyAlgoRSA, KeyAlgoRSA, ""},
+		{"rsa", KeyAlgoRSASHA256, KeyAlgoRSASHA256, ""},
+		{"rsa", KeyAlgoRSA, KeyAlgoRSASHA512, `ssh: invalid signature algorithm "ssh-rsa", expected "rsa-sha2-512"`},
 		{"ed25519", KeyAlgoED25519, KeyAlgoED25519, ""},
 	} {
 		key := testSigners[tt.key].PublicKey()

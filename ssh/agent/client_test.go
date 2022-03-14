@@ -182,9 +182,9 @@ func testAgentInterface(t *testing.T, agent ExtendedAgent, key interface{}, cert
 				t.Fatalf("Verify(%s): %v", pubKey.Type(), err)
 			}
 		}
-		sshFlagTest(0, ssh.SigAlgoRSA)
-		sshFlagTest(SignatureFlagRsaSha256, ssh.SigAlgoRSASHA2256)
-		sshFlagTest(SignatureFlagRsaSha512, ssh.SigAlgoRSASHA2512)
+		sshFlagTest(0, ssh.KeyAlgoRSA)
+		sshFlagTest(SignatureFlagRsaSha256, ssh.KeyAlgoRSASHA256)
+		sshFlagTest(SignatureFlagRsaSha512, ssh.KeyAlgoRSASHA512)
 	}
 
 	// If the key has a lifetime, is it removed when it should be?

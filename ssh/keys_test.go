@@ -145,7 +145,7 @@ func TestKeySignWithAlgorithmVerify(t *testing.T) {
 
 			// RSA keys are the only ones which currently support more than one signing algorithm
 			if pub.Type() == KeyAlgoRSA {
-				for _, algorithm := range []string{SigAlgoRSA, SigAlgoRSASHA2256, SigAlgoRSASHA2512} {
+				for _, algorithm := range []string{KeyAlgoRSA, KeyAlgoRSASHA256, KeyAlgoRSASHA512} {
 					signWithAlgTestCase(algorithm, algorithm)
 				}
 			}
