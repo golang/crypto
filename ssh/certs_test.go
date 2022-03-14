@@ -216,12 +216,12 @@ func TestHostKeyCert(t *testing.T) {
 		_, _, _, err = NewClientConn(c2, test.addr, config)
 
 		if (err == nil) != test.succeed {
-			t.Fatalf("NewClientConn(%q): %v", test.addr, err)
+			t.Errorf("NewClientConn(%q): %v", test.addr, err)
 		}
 
 		err = <-errc
 		if (err == nil) != test.succeed {
-			t.Fatalf("NewServerConn(%q): %v", test.addr, err)
+			t.Errorf("NewServerConn(%q): %v", test.addr, err)
 		}
 	}
 }
@@ -249,9 +249,7 @@ func TestCertTypes(t *testing.T) {
 		{CertAlgoECDSA521v01, testSigners["ecdsap521"], ""},
 		{CertAlgoED25519v01, testSigners["ed25519"], ""},
 		{CertAlgoRSAv01, testSigners["rsa"], KeyAlgoRSASHA512},
-		{CertAlgoRSAv01, &legacyRSASigner{testSigners["rsa"]}, KeyAlgoRSA},
-		{CertAlgoRSAv01, testSigners["rsa-sha2-256"], KeyAlgoRSASHA512},
-		{CertAlgoRSAv01, testSigners["rsa-sha2-512"], KeyAlgoRSASHA512},
+		{"legacyRSASigner", &legacyRSASigner{testSigners["rsa"]}, KeyAlgoRSA},
 		{CertAlgoDSAv01, testSigners["dsa"], ""},
 	}
 

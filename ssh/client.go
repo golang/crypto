@@ -113,25 +113,16 @@ func (c *connection) clientHandshake(dialAddress string, config *ClientConfig) e
 	return c.clientAuthenticate(config)
 }
 
-// verifyHostKeySignature verifies the host key obtained in the key
-// exchange.
+// verifyHostKeySignature verifies the host key obtained in the key exchange.
+// algo is the negotiated algorithm, and may be a certificate type.
 func verifyHostKeySignature(hostKey PublicKey, algo string, result *kexResult) error {
 	sig, rest, ok := parseSignatureBody(result.Signature)
 	if len(rest) > 0 || !ok {
 		return errors.New("ssh: signature parse error")
 	}
 
-	// For keys, underlyingAlgo is exactly algo. For certificates,
-	// we have to look up the underlying key algorithm that SSH
-	// uses to evaluate signatures.
-	underlyingAlgo := algo
-	for sigAlgo, certAlgo := range certAlgoNames {
-		if certAlgo == algo {
-			underlyingAlgo = sigAlgo
-		}
-	}
-	if sig.Format != underlyingAlgo {
-		return fmt.Errorf("ssh: invalid signature algorithm %q, expected %q", sig.Format, underlyingAlgo)
+	if a := underlyingAlgo(algo); sig.Format != a {
+		return fmt.Errorf("ssh: invalid signature algorithm %q, expected %q", sig.Format, a)
 	}
 
 	return hostKey.Verify(result.H, sig)

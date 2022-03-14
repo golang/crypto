@@ -89,23 +89,33 @@ var supportedMACs = []string{
 
 var supportedCompressions = []string{compressionNone}
 
-// hashFuncs keeps the mapping of supported algorithms to their respective
-// hashes needed for signature verification.
+// hashFuncs keeps the mapping of supported signature algorithms to their
+// respective hashes needed for signing and verification.
 var hashFuncs = map[string]crypto.Hash{
-	KeyAlgoRSA:           crypto.SHA1,
-	KeyAlgoRSASHA256:     crypto.SHA256,
-	KeyAlgoRSASHA512:     crypto.SHA512,
-	KeyAlgoDSA:           crypto.SHA1,
-	KeyAlgoECDSA256:      crypto.SHA256,
-	KeyAlgoECDSA384:      crypto.SHA384,
-	KeyAlgoECDSA521:      crypto.SHA512,
-	CertAlgoRSAv01:       crypto.SHA1,
-	CertAlgoRSASHA256v01: crypto.SHA256,
-	CertAlgoRSASHA512v01: crypto.SHA512,
-	CertAlgoDSAv01:       crypto.SHA1,
-	CertAlgoECDSA256v01:  crypto.SHA256,
-	CertAlgoECDSA384v01:  crypto.SHA384,
-	CertAlgoECDSA521v01:  crypto.SHA512,
+	KeyAlgoRSA:       crypto.SHA1,
+	KeyAlgoRSASHA256: crypto.SHA256,
+	KeyAlgoRSASHA512: crypto.SHA512,
+	KeyAlgoDSA:       crypto.SHA1,
+	KeyAlgoECDSA256:  crypto.SHA256,
+	KeyAlgoECDSA384:  crypto.SHA384,
+	KeyAlgoECDSA521:  crypto.SHA512,
+	// KeyAlgoED25519 doesn't pre-hash.
+	KeyAlgoSKECDSA256: crypto.SHA256,
+	KeyAlgoSKED25519:  crypto.SHA256,
+}
+
+// algorithmsForKeyFormat returns the supported signature algorithms for a given
+// public key format (PublicKey.Type), in order of preference. See RFC 8332,
+// Section 2. See also the note in sendKexInit on backwards compatibility.
+func algorithmsForKeyFormat(keyFormat string) []string {
+	switch keyFormat {
+	case KeyAlgoRSA:
+		return []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512, KeyAlgoRSA}
+	case CertAlgoRSAv01:
+		return []string{CertAlgoRSASHA256v01, CertAlgoRSASHA512v01, CertAlgoRSAv01}
+	default:
+		return []string{keyFormat}
+	}
 }
 
 // unexpectedMessageError results when the SSH message that we received didn't

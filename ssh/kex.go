@@ -77,8 +77,9 @@ func (m *handshakeMagics) write(w io.Writer) {
 // kexAlgorithm abstracts different key exchange algorithms.
 type kexAlgorithm interface {
 	// Server runs server-side key agreement, signing the result
-	// with a hostkey.
-	Server(p packetConn, rand io.Reader, magics *handshakeMagics, s Signer) (*kexResult, error)
+	// with a hostkey. algo is the negotiated algorithm, and may
+	// be a certificate type.
+	Server(p packetConn, rand io.Reader, magics *handshakeMagics, s AlgorithmSigner, algo string) (*kexResult, error)
 
 	// Client runs the client-side key agreement. Caller is
 	// responsible for verifying the host key signature.
@@ -151,7 +152,7 @@ func (group *dhGroup) Client(c packetConn, randSource io.Reader, magics *handsha
 	}, nil
 }
 
-func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
+func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handshakeMagics, priv AlgorithmSigner, algo string) (result *kexResult, err error) {
 	packet, err := c.readPacket()
 	if err != nil {
 		return
@@ -193,7 +194,7 @@ func (group *dhGroup) Server(c packetConn, randSource io.Reader, magics *handsha
 
 	// H is already a hash, but the hostkey signing will apply its
 	// own key-specific hash algorithm.
-	sig, err := signAndMarshal(priv, randSource, H)
+	sig, err := signAndMarshal(priv, randSource, H, algo)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +315,7 @@ func validateECPublicKey(curve elliptic.Curve, x, y *big.Int) bool {
 	return true
 }
 
-func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
+func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, priv AlgorithmSigner, algo string) (result *kexResult, err error) {
 	packet, err := c.readPacket()
 	if err != nil {
 		return nil, err
@@ -359,7 +360,7 @@ func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, p
 
 	// H is already a hash, but the hostkey signing will apply its
 	// own key-specific hash algorithm.
-	sig, err := signAndMarshal(priv, rand, H)
+	sig, err := signAndMarshal(priv, rand, H, algo)
 	if err != nil {
 		return nil, err
 	}
@@ -382,6 +383,19 @@ func (kex *ecdh) Server(c packetConn, rand io.Reader, magics *handshakeMagics, p
 		Signature: sig,
 		Hash:      ecHash(kex.curve),
 	}, nil
+}
+
+// ecHash returns the hash to match the given elliptic curve, see RFC
+// 5656, section 6.2.1
+func ecHash(curve elliptic.Curve) crypto.Hash {
+	bitSize := curve.Params().BitSize
+	switch {
+	case bitSize <= 256:
+		return crypto.SHA256
+	case bitSize <= 384:
+		return crypto.SHA384
+	}
+	return crypto.SHA512
 }
 
 var kexAlgoMap = map[string]kexAlgorithm{}
@@ -496,7 +510,7 @@ func (kex *curve25519sha256) Client(c packetConn, rand io.Reader, magics *handsh
 	}, nil
 }
 
-func (kex *curve25519sha256) Server(c packetConn, rand io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
+func (kex *curve25519sha256) Server(c packetConn, rand io.Reader, magics *handshakeMagics, priv AlgorithmSigner, algo string) (result *kexResult, err error) {
 	packet, err := c.readPacket()
 	if err != nil {
 		return
@@ -537,7 +551,7 @@ func (kex *curve25519sha256) Server(c packetConn, rand io.Reader, magics *handsh
 
 	H := h.Sum(nil)
 
-	sig, err := signAndMarshal(priv, rand, H)
+	sig, err := signAndMarshal(priv, rand, H, algo)
 	if err != nil {
 		return nil, err
 	}
@@ -666,7 +680,7 @@ func (gex *dhGEXSHA) Client(c packetConn, randSource io.Reader, magics *handshak
 // Server half implementation of the Diffie Hellman Key Exchange with SHA1 and SHA256.
 //
 // This is a minimal implementation to satisfy the automated tests.
-func (gex dhGEXSHA) Server(c packetConn, randSource io.Reader, magics *handshakeMagics, priv Signer) (result *kexResult, err error) {
+func (gex dhGEXSHA) Server(c packetConn, randSource io.Reader, magics *handshakeMagics, priv AlgorithmSigner, algo string) (result *kexResult, err error) {
 	// Receive GexRequest
 	packet, err := c.readPacket()
 	if err != nil {
@@ -736,7 +750,7 @@ func (gex dhGEXSHA) Server(c packetConn, randSource io.Reader, magics *handshake
 
 	// H is already a hash, but the hostkey signing will apply its
 	// own key-specific hash algorithm.
-	sig, err := signAndMarshal(priv, randSource, H)
+	sig, err := signAndMarshal(priv, randSource, H, algo)
 	if err != nil {
 		return nil, err
 	}

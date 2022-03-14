@@ -583,3 +583,38 @@ func TestHandshakeAEADCipherNoMAC(t *testing.T) {
 		<-checker.called
 	}
 }
+
+// TestNoSHA2Support tests a host key Signer that is not an AlgorithmSigner and
+// therefore can't do SHA-2 signatures. Ensures the server does not advertise
+// support for them in this case.
+func TestNoSHA2Support(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			return &Permissions{}, nil
+		},
+	}
+	serverConf.AddHostKey(&legacyRSASigner{testSigners["rsa"]})
+	go func() {
+		_, _, _, err := NewServerConn(c1, serverConf)
+		if err != nil {
+			t.Error(err)
+		}
+	}()
+
+	clientConf := &ClientConfig{
+		User:            "test",
+		Auth:            []AuthMethod{Password("testpw")},
+		HostKeyCallback: FixedHostKey(testSigners["rsa"].PublicKey()),
+	}
+
+	if _, _, _, err := NewClientConn(c2, "", clientConf); err != nil {
+		t.Fatal(err)
+	}
+}

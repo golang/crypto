@@ -41,7 +41,7 @@ func TestKexes(t *testing.T) {
 						c <- kexResultErr{r, e}
 					}()
 					go func() {
-						r, e := kex.Server(b, rand.Reader, &magics, testSigners["ecdsa"])
+						r, e := kex.Server(b, rand.Reader, &magics, testSigners["ecdsa"].(AlgorithmSigner), testSigners["ecdsa"].PublicKey().Type())
 						b.Close()
 						s <- kexResultErr{r, e}
 					}()
