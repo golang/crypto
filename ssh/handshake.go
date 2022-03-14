@@ -476,6 +476,13 @@ func (t *handshakeTransport) sendKexInit() error {
 		}
 	} else {
 		msg.ServerHostKeyAlgos = t.hostKeyAlgorithms
+
+		// As a client we opt in to receiving SSH_MSG_EXT_INFO so we know what
+		// algorithms the server supports for public key authentication. See RFC
+		// 8303, Section 2.1.
+		msg.KexAlgos = make([]string, 0, len(t.config.KeyExchanges)+1)
+		msg.KexAlgos = append(msg.KexAlgos, t.config.KeyExchanges...)
+		msg.KexAlgos = append(msg.KexAlgos, "ext-info-c")
 	}
 
 	packet := Marshal(msg)
