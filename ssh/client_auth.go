@@ -380,10 +380,10 @@ func handleBannerResponse(c packetConn, packet []byte) error {
 // disabling echoing (e.g. for passwords), and return all the answers.
 // Challenge may be called multiple times in a single session. After
 // successful authentication, the server may send a challenge with no
-// questions, for which the user and instruction messages should be
+// questions, for which the name and instruction messages should be
 // printed.  RFC 4256 section 3.3 details how the UI should behave for
 // both CLI and GUI environments.
-type KeyboardInteractiveChallenge func(user, instruction string, questions []string, echos []bool) (answers []string, err error)
+type KeyboardInteractiveChallenge func(name, instruction string, questions []string, echos []bool) (answers []string, err error)
 
 // KeyboardInteractive returns an AuthMethod using a prompt/response
 // sequence controlled by the server.
@@ -465,7 +465,7 @@ func (cb KeyboardInteractiveChallenge) auth(session []byte, user string, c packe
 			return authFailure, nil, errors.New("ssh: extra data following keyboard-interactive pairs")
 		}
 
-		answers, err := cb(msg.User, msg.Instruction, prompts, echos)
+		answers, err := cb(msg.Name, msg.Instruction, prompts, echos)
 		if err != nil {
 			return authFailure, nil, err
 		}

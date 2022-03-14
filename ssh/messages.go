@@ -180,11 +180,11 @@ const msgUserAuthInfoRequest = 60
 const msgUserAuthInfoResponse = 61
 
 type userAuthInfoRequestMsg struct {
-	User               string `sshtype:"60"`
-	Instruction        string
-	DeprecatedLanguage string
-	NumPrompts         uint32
-	Prompts            []byte `ssh:"rest"`
+	Name        string `sshtype:"60"`
+	Instruction string
+	Language    string
+	NumPrompts  uint32
+	Prompts     []byte `ssh:"rest"`
 }
 
 // See RFC 4254, section 5.1.
