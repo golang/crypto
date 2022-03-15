@@ -483,6 +483,17 @@ func underlyingAlgo(algo string) string {
 	return algo
 }
 
+// certificateAlgo returns the certificate algorithms that uses the provided
+// underlying signature algorithm.
+func certificateAlgo(algo string) (certAlgo string, ok bool) {
+	for certName, algoName := range certKeyAlgoNames {
+		if algoName == algo {
+			return certName, true
+		}
+	}
+	return "", false
+}
+
 func (cert *Certificate) bytesForSigning() []byte {
 	c2 := *cert
 	c2.Signature = nil
@@ -526,13 +537,11 @@ func (c *Certificate) Marshal() []byte {
 
 // Type returns the certificate algorithm name. It is part of the PublicKey interface.
 func (c *Certificate) Type() string {
-	keyType := c.Key.Type()
-	for certName, keyName := range certKeyAlgoNames {
-		if keyName == keyType {
-			return certName
-		}
+	certName, ok := certificateAlgo(c.Key.Type())
+	if !ok {
+		panic("unknown certificate type for key type " + c.Key.Type())
 	}
-	panic("unknown certificate type for key type " + keyType)
+	return certName
 }
 
 // Verify verifies a signature against the certificate's public

@@ -234,7 +234,17 @@ func pickSignatureAlgorithm(signer Signer, extensions map[string][]byte) (as Alg
 		return as, keyFormat
 	}
 
+	// The server-sig-algs extension only carries underlying signature
+	// algorithm, but we are trying to select a protocol-level public key
+	// algorithm, which might be a certificate type. Extend the list of server
+	// supported algorithms to include the corresponding certificate algorithms.
 	serverAlgos := strings.Split(string(extPayload), ",")
+	for _, algo := range serverAlgos {
+		if certAlgo, ok := certificateAlgo(algo); ok {
+			serverAlgos = append(serverAlgos, certAlgo)
+		}
+	}
+
 	keyAlgos := algorithmsForKeyFormat(keyFormat)
 	algo, err := findCommon("public key signature algorithm", keyAlgos, serverAlgos)
 	if err != nil {
