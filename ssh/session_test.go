@@ -780,3 +780,54 @@ func TestHostKeyAlgorithms(t *testing.T) {
 		t.Fatal("succeeded connecting with unknown hostkey algorithm")
 	}
 }
+
+func TestServerClientAuthCallback(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	userCh := make(chan string, 1)
+
+	serverConf := &ServerConfig{
+		NoClientAuth: true,
+		NoClientAuthCallback: func(conn ConnMetadata) (*Permissions, error) {
+			userCh <- conn.User()
+			return nil, nil
+		},
+	}
+	const someUsername = "some-username"
+
+	serverConf.AddHostKey(testSigners["ecdsa"])
+	clientConf := &ClientConfig{
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		User:            someUsername,
+	}
+
+	go func() {
+		_, chans, reqs, err := NewServerConn(c1, serverConf)
+		if err != nil {
+			t.Errorf("server handshake: %v", err)
+			userCh <- "error"
+			return
+		}
+		go DiscardRequests(reqs)
+		for ch := range chans {
+			ch.Reject(Prohibited, "")
+		}
+	}()
+
+	conn, _, _, err := NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client handshake: %v", err)
+		return
+	}
+	conn.Close()
+
+	got := <-userCh
+	if got != someUsername {
+		t.Errorf("username = %q; want %q", got, someUsername)
+	}
+}
