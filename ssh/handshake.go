@@ -95,10 +95,6 @@ type handshakeTransport struct {
 
 	// The session ID or nil if first kex did not complete yet.
 	sessionID []byte
-
-	// True if the first ext info message has been sent immediately following
-	// SSH_MSG_NEWKEYS, false otherwise.
-	extInfoSent bool
 }
 
 type pendingKex struct {
@@ -625,7 +621,8 @@ func (t *handshakeTransport) enterKeyExchange(otherInitPacket []byte) error {
 		return err
 	}
 
-	if t.sessionID == nil {
+	firstKeyExchange := t.sessionID == nil
+	if firstKeyExchange {
 		t.sessionID = result.H
 	}
 	result.SessionID = t.sessionID
@@ -643,29 +640,27 @@ func (t *handshakeTransport) enterKeyExchange(otherInitPacket []byte) error {
 	}
 
 	if !isClient {
-		// We're on the server side, see if the client sent the extension signal
-		if !t.extInfoSent && contains(clientInit.KexAlgos, extInfoClient) {
-			// The other side supports ext info, an ext info message hasn't been sent this session,
-			// and we have at least one extension enabled, so send an SSH_MSG_EXT_INFO message.
+		// We're on the server side, if this is the first key exchange
+		// see if the client sent the extension signal
+		if firstKeyExchange && contains(clientInit.KexAlgos, extInfoClient) {
+			// The other side supports ext info, and this is the first key exchange,
+			// so send an SSH_MSG_EXT_INFO message.
 			extensions := map[string][]byte{}
-			// We're the server, the client supports SSH_MSG_EXT_INFO and server-sig-algs
-			// is enabled. Prepare the server-sig-algos extension message to send.
+			// Prepare the server-sig-algos extension message to send.
 			extensions[extServerSigAlgs] = []byte(strings.Join(supportedServerSigAlgs, ","))
-			var payload []byte
-			for k, v := range extensions {
-				payload = appendInt(payload, len(k))
-				payload = append(payload, k...)
-				payload = appendInt(payload, len(v))
-				payload = append(payload, v...)
-			}
-			extInfo := extInfoMsg{
+
+			extInfo := &extInfoMsg{
 				NumExtensions: uint32(len(extensions)),
-				Payload:       payload,
 			}
-			if err := t.conn.writePacket(Marshal(&extInfo)); err != nil {
+			for k, v := range extensions {
+				extInfo.Payload = appendInt(extInfo.Payload, len(k))
+				extInfo.Payload = append(extInfo.Payload, k...)
+				extInfo.Payload = appendInt(extInfo.Payload, len(v))
+				extInfo.Payload = append(extInfo.Payload, v...)
+			}
+			if err := t.conn.writePacket(Marshal(extInfo)); err != nil {
 				return err
 			}
-			t.extInfoSent = true
 		}
 	}
 
