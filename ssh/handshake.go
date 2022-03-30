@@ -479,9 +479,7 @@ func (t *handshakeTransport) sendKexInit() error {
 				msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, keyFormat)
 			}
 		}
-		if contains(t.config.Extensions, ExtServerSigAlgs) {
-			msg.KexAlgos = append(msg.KexAlgos, extInfoServer)
-		}
+		msg.KexAlgos = append(msg.KexAlgos, extInfoServer)
 	} else {
 		msg.ServerHostKeyAlgos = t.hostKeyAlgorithms
 
@@ -642,13 +640,13 @@ func (t *handshakeTransport) enterKeyExchange(otherInitPacket []byte) error {
 
 	if !isClient {
 		// We're on the server side, see if the client sent the extension signal
-		if !t.extInfoSent && contains(clientInit.KexAlgos, extInfoClient) && contains(t.config.Extensions, ExtServerSigAlgs) {
+		if !t.extInfoSent && contains(clientInit.KexAlgos, extInfoClient) {
 			// The other side supports ext info, an ext info message hasn't been sent this session,
 			// and we have at least one extension enabled, so send an SSH_MSG_EXT_INFO message.
 			extensions := map[string][]byte{}
 			// We're the server, the client supports SSH_MSG_EXT_INFO and server-sig-algs
 			// is enabled. Prepare the server-sig-algos extension message to send.
-			extensions[ExtServerSigAlgs] = []byte(strings.Join(supportedServerSigAlgs, ","))
+			extensions[extServerSigAlgs] = []byte(strings.Join(supportedServerSigAlgs, ","))
 			var payload []byte
 			for k, v := range extensions {
 				payload = appendInt(payload, len(k))

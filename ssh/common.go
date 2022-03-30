@@ -28,13 +28,8 @@ const (
 const (
 	extInfoServer    = "ext-info-s"
 	extInfoClient    = "ext-info-c"
-	ExtServerSigAlgs = "server-sig-algs"
+	extServerSigAlgs = "server-sig-algs"
 )
-
-// defaultExtensions lists extensions enabled by default.
-var defaultExtensions = []string{
-	ExtServerSigAlgs,
-}
 
 // supportedCiphers lists ciphers we support but might not recommend.
 var supportedCiphers = []string{
@@ -282,10 +277,6 @@ type Config struct {
 	// The allowed MAC algorithms. If unspecified then a sensible default
 	// is used.
 	MACs []string
-
-	// A list of enabled extensions. If unspecified then a sensible
-	// default is used
-	Extensions []string
 }
 
 // SetDefaults sets sensible values for unset fields in config. This is
@@ -313,10 +304,6 @@ func (c *Config) SetDefaults() {
 
 	if c.MACs == nil {
 		c.MACs = supportedMACs
-	}
-
-	if c.Extensions == nil {
-		c.Extensions = defaultExtensions
 	}
 
 	if c.RekeyThreshold == 0 {
