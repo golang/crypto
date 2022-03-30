@@ -479,7 +479,11 @@ func (t *handshakeTransport) sendKexInit() error {
 				msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, keyFormat)
 			}
 		}
-		msg.KexAlgos = append(msg.KexAlgos, extInfoServer)
+		if firstKeyExchange := t.sessionID == nil; firstKeyExchange {
+			msg.KexAlgos = make([]string, 0, len(t.config.KeyExchanges)+1)
+			msg.KexAlgos = append(msg.KexAlgos, t.config.KeyExchanges...)
+			msg.KexAlgos = append(msg.KexAlgos, extInfoServer)
+		}
 	} else {
 		msg.ServerHostKeyAlgos = t.hostKeyAlgorithms
 
