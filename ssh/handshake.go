@@ -457,6 +457,7 @@ func (t *handshakeTransport) sendKexInit() error {
 	io.ReadFull(rand.Reader, msg.Cookie[:])
 
 	isServer := len(t.hostKeys) > 0
+	firstKeyExchange := t.sessionID == nil
 	if isServer {
 		for _, k := range t.hostKeys {
 			// If k is an AlgorithmSigner, presume it supports all signature algorithms
@@ -475,7 +476,7 @@ func (t *handshakeTransport) sendKexInit() error {
 				msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, keyFormat)
 			}
 		}
-		if firstKeyExchange := t.sessionID == nil; firstKeyExchange {
+		if firstKeyExchange {
 			msg.KexAlgos = make([]string, 0, len(t.config.KeyExchanges)+1)
 			msg.KexAlgos = append(msg.KexAlgos, t.config.KeyExchanges...)
 			msg.KexAlgos = append(msg.KexAlgos, extInfoServer)
@@ -486,7 +487,7 @@ func (t *handshakeTransport) sendKexInit() error {
 		// As a client we opt in to receiving SSH_MSG_EXT_INFO so we know what
 		// algorithms the server supports for public key authentication. See RFC
 		// 8308, Section 2.1.
-		if firstKeyExchange := t.sessionID == nil; firstKeyExchange {
+		if firstKeyExchange {
 			msg.KexAlgos = make([]string, 0, len(t.config.KeyExchanges)+1)
 			msg.KexAlgos = append(msg.KexAlgos, t.config.KeyExchanges...)
 			msg.KexAlgos = append(msg.KexAlgos, extInfoClient)
