@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -94,6 +95,10 @@ type handshakeTransport struct {
 
 	// The session ID or nil if first kex did not complete yet.
 	sessionID []byte
+
+	// True if the first ext info message has been sent immediately following
+	// SSH_MSG_NEWKEYS, false otherwise.
+	extInfoSent bool
 }
 
 type pendingKex struct {
@@ -474,6 +479,9 @@ func (t *handshakeTransport) sendKexInit() error {
 				msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, keyFormat)
 			}
 		}
+		if contains(t.config.Extensions, ExtServerSigAlgs) {
+			msg.KexAlgos = append(msg.KexAlgos, extInfoServer)
+		}
 	} else {
 		msg.ServerHostKeyAlgos = t.hostKeyAlgorithms
 
@@ -483,7 +491,7 @@ func (t *handshakeTransport) sendKexInit() error {
 		if firstKeyExchange := t.sessionID == nil; firstKeyExchange {
 			msg.KexAlgos = make([]string, 0, len(t.config.KeyExchanges)+1)
 			msg.KexAlgos = append(msg.KexAlgos, t.config.KeyExchanges...)
-			msg.KexAlgos = append(msg.KexAlgos, "ext-info-c")
+			msg.KexAlgos = append(msg.KexAlgos, extInfoClient)
 		}
 	}
 
@@ -630,6 +638,33 @@ func (t *handshakeTransport) enterKeyExchange(otherInitPacket []byte) error {
 		return err
 	} else if packet[0] != msgNewKeys {
 		return unexpectedMessageError(msgNewKeys, packet[0])
+	}
+
+	if !isClient {
+		// We're on the server side, see if the client sent the extension signal
+		if !t.extInfoSent && contains(clientInit.KexAlgos, extInfoClient) && contains(t.config.Extensions, ExtServerSigAlgs) {
+			// The other side supports ext info, an ext info message hasn't been sent this session,
+			// and we have at least one extension enabled, so send an SSH_MSG_EXT_INFO message.
+			extensions := map[string][]byte{}
+			// We're the server, the client supports SSH_MSG_EXT_INFO and server-sig-algs
+			// is enabled. Prepare the server-sig-algos extension message to send.
+			extensions[ExtServerSigAlgs] = []byte(strings.Join(supportedServerSigAlgs, ","))
+			var payload []byte
+			for k, v := range extensions {
+				payload = appendInt(payload, len(k))
+				payload = append(payload, k...)
+				payload = appendInt(payload, len(v))
+				payload = append(payload, v...)
+			}
+			extInfo := extInfoMsg{
+				NumExtensions: uint32(len(extensions)),
+				Payload:       payload,
+			}
+			if err := t.conn.writePacket(Marshal(&extInfo)); err != nil {
+				return err
+			}
+			t.extInfoSent = true
+		}
 	}
 
 	return nil
