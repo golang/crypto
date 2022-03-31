@@ -476,6 +476,9 @@ func (t *handshakeTransport) sendKexInit() error {
 				msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, keyFormat)
 			}
 		}
+		// As a server we add ext-info-s to the KEX algorithms to indicate that we support
+		// the Extension Negotiation Mechanism. The ext-info-s indicator must be added only
+		// in the first key exchange. See RFC 8308, Section 2.1.
 		if firstKeyExchange {
 			msg.KexAlgos = make([]string, 0, len(t.config.KeyExchanges)+1)
 			msg.KexAlgos = append(msg.KexAlgos, t.config.KeyExchanges...)
@@ -642,12 +645,10 @@ func (t *handshakeTransport) enterKeyExchange(otherInitPacket []byte) error {
 
 	if !isClient {
 		// We're on the server side, if this is the first key exchange
-		// see if the client sent the extension signal
+		// and the client sent the ext-info-c indicator, we send an SSH_MSG_EXT_INFO
+		// message with the server-sig-algs extension. See RFC 8308, Section 3.1.
 		if firstKeyExchange && contains(clientInit.KexAlgos, extInfoClient) {
-			// The other side supports ext info, and this is the first key exchange,
-			// so send an SSH_MSG_EXT_INFO message.
 			extensions := map[string][]byte{}
-			// Prepare the server-sig-algos extension message to send.
 			extensions[extServerSigAlgs] = []byte(strings.Join(supportedServerSigAlgs, ","))
 
 			extInfo := &extInfoMsg{

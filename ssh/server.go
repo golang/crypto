@@ -256,13 +256,13 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	// We just did the key change, so the session ID is established.
 	s.sessionID = s.transport.getSessionID()
 
-	// the client could send a SSH_MSG_EXT_INFO before SSH_MSG_SERVICE_REQUEST
+	// the client could send a SSH_MSG_EXT_INFO after the first SSH_MSG_NEWKEYS
+	// and so before SSH_MSG_SERVICE_REQUEST. See RFC 8308, Section 2.4.
 	var packet []byte
 	if packet, err = s.transport.readPacket(); err != nil {
 		return nil, err
 	}
 
-	// be permissive and don't add contains(s.transport.config.Extensions, ExtServerSigAlgs)
 	if len(packet) > 0 && packet[0] == msgExtInfo {
 		// read SSH_MSG_EXT_INFO
 		var extInfo extInfoMsg

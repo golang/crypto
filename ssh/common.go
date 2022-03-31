@@ -24,7 +24,8 @@ const (
 	serviceSSH      = "ssh-connection"
 )
 
-// These are string constants related to extensions and extension negotiation
+// These are string constants related to extensions and extension negotiation.
+// See RFC 8308
 const (
 	extInfoServer    = "ext-info-s"
 	extInfoClient    = "ext-info-c"
@@ -97,7 +98,7 @@ var supportedMACs = []string{
 var supportedCompressions = []string{compressionNone}
 
 // supportedServerSigAlgs defines the algorithms supported for pubkey authentication
-// in no particular order.
+// in no particular order. See RFC 8308, Section 3.1.
 var supportedServerSigAlgs = []string{KeyAlgoRSASHA256,
 	KeyAlgoRSASHA512, KeyAlgoRSA,
 	KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521,
