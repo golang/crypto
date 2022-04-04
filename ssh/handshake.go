@@ -139,6 +139,11 @@ func newClientTransport(conn keyingTransport, clientVersion, serverVersion []byt
 func newServerTransport(conn keyingTransport, clientVersion, serverVersion []byte, config *ServerConfig) *handshakeTransport {
 	t := newHandshakeTransport(conn, &config.Config, clientVersion, serverVersion)
 	t.hostKeys = config.hostKeys
+	if config.HostKeyAlgorithms != nil {
+		t.hostKeyAlgorithms = config.HostKeyAlgorithms
+	} else {
+		t.hostKeyAlgorithms = supportedHostKeyAlgos
+	}
 	go t.readLoop()
 	go t.kexLoop()
 	return t
@@ -469,9 +474,15 @@ func (t *handshakeTransport) sendKexInit() error {
 			// a different default.)
 			keyFormat := k.PublicKey().Type()
 			if _, ok := k.(AlgorithmSigner); ok {
-				msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, algorithmsForKeyFormat(keyFormat)...)
+				for _, algo := range algorithmsForKeyFormat(keyFormat) {
+					if contains(t.hostKeyAlgorithms, algo) {
+						msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, algo)
+					}
+				}
 			} else {
-				msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, keyFormat)
+				if contains(t.hostKeyAlgorithms, keyFormat) {
+					msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, keyFormat)
+				}
 			}
 		}
 	} else {

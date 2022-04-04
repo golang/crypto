@@ -117,6 +117,10 @@ type ServerConfig struct {
 	// GSSAPIWithMICConfig includes gssapi server and callback, which if both non-nil, is used
 	// when gssapi-with-mic authentication is selected (RFC 4462 section 3).
 	GSSAPIWithMICConfig *GSSAPIWithMICConfig
+
+	// A list of enabled host key algorithms. If unspecified then a sensible
+	// default is used.
+	HostKeyAlgorithms []string
 }
 
 // AddHostKey adds a private key as a host key. If an existing host

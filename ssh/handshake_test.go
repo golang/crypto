@@ -618,3 +618,35 @@ func TestNoSHA2Support(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNoCommonHostKeyAlgo(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	// ssh-rsa is disabled server side
+	serverConf := &ServerConfig{
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			return &Permissions{}, nil
+		},
+		HostKeyAlgorithms: []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	go NewServerConn(c1, serverConf)
+
+	// the client only supports ssh-rsa
+	clientConf := &ClientConfig{
+		User:              "test",
+		Auth:              []AuthMethod{Password("testpw")},
+		HostKeyCallback:   FixedHostKey(testSigners["rsa"].PublicKey()),
+		HostKeyAlgorithms: []string{KeyAlgoRSA},
+	}
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err == nil {
+		t.Fatal("succeeded connecting with no common hostkey algorithm")
+	}
+}
