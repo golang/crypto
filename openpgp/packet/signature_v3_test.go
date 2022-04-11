@@ -66,18 +66,23 @@ func v3KeyReader(t *testing.T) io.Reader {
 
 // keySigV3Armor is some V3 public key I found in an SKS dump.
 // Old: Public Key Packet(tag 6)(141 bytes)
-//      Ver 4 - new
-//      Public key creation time - Fri Sep 16 17:13:54 CDT 1994
-//      Pub alg - unknown(pub 0)
-//      Unknown public key(pub 0)
+//
+//	Ver 4 - new
+//	Public key creation time - Fri Sep 16 17:13:54 CDT 1994
+//	Pub alg - unknown(pub 0)
+//	Unknown public key(pub 0)
+//
 // Old: User ID Packet(tag 13)(39 bytes)
-//      User ID - Armin M. Warda <warda@nephilim.ruhr.de>
+//
+//	User ID - Armin M. Warda <warda@nephilim.ruhr.de>
+//
 // Old: Signature Packet(tag 2)(149 bytes)
-//      Ver 4 - new
-//      Sig type - unknown(05)
-//      Pub alg - ElGamal Encrypt-Only(pub 16)
-//      Hash alg - unknown(hash 46)
-//      Hashed Sub: unknown(sub 81, critical)(1988 bytes)
+//
+//	Ver 4 - new
+//	Sig type - unknown(05)
+//	Pub alg - ElGamal Encrypt-Only(pub 16)
+//	Hash alg - unknown(hash 46)
+//	Hashed Sub: unknown(sub 81, critical)(1988 bytes)
 const keySigV3Armor = `-----BEGIN PGP PUBLIC KEY BLOCK-----
 Version: SKS 1.0.10
 

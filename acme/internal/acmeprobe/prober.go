@@ -11,12 +11,12 @@
 //
 // A usage example:
 //
-//     go run prober.go \
-//       -d https://acme-staging-v02.api.letsencrypt.org/directory \
-//       -f order \
-//       -t http-01 \
-//       -a :8080 \
-//       -domain some.example.org
+//	go run prober.go \
+//	  -d https://acme-staging-v02.api.letsencrypt.org/directory \
+//	  -f order \
+//	  -t http-01 \
+//	  -a :8080 \
+//	  -domain some.example.org
 //
 // The above assumes a TCP tunnel from some.example.org:80 to 0.0.0.0:8080
 // in order for the test to be able to fulfill http-01 challenge.
