@@ -195,6 +195,44 @@ func TestJWSEncodeJSON(t *testing.T) {
 	}
 }
 
+func TestJWSEncodeNoNonce(t *testing.T) {
+	kid := KeyID("https://example.org/account/1")
+	claims := "RawString"
+	const (
+		// {"alg":"ES256","kid":"https://example.org/account/1","nonce":"nonce","url":"url"}
+		protected = "eyJhbGciOiJFUzI1NiIsImtpZCI6Imh0dHBzOi8vZXhhbXBsZS5vcmcvYWNjb3VudC8xIiwidXJsIjoidXJsIn0"
+		// "Raw String"
+		payload = "RawString"
+	)
+
+	b, err := jwsEncodeJSON(claims, testKeyEC, kid, "", "url")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var jws struct{ Protected, Payload, Signature string }
+	if err := json.Unmarshal(b, &jws); err != nil {
+		t.Fatal(err)
+	}
+	if jws.Protected != protected {
+		t.Errorf("protected:\n%s\nwant:\n%s", jws.Protected, protected)
+	}
+	if jws.Payload != payload {
+		t.Errorf("payload:\n%s\nwant:\n%s", jws.Payload, payload)
+	}
+
+	sig, err := base64.RawURLEncoding.DecodeString(jws.Signature)
+	if err != nil {
+		t.Fatalf("jws.Signature: %v", err)
+	}
+	r, s := big.NewInt(0), big.NewInt(0)
+	r.SetBytes(sig[:len(sig)/2])
+	s.SetBytes(sig[len(sig)/2:])
+	h := sha256.Sum256([]byte(protected + "." + payload))
+	if !ecdsa.Verify(testKeyEC.Public().(*ecdsa.PublicKey), h[:], r, s) {
+		t.Error("invalid signature")
+	}
+}
+
 func TestJWSEncodeKID(t *testing.T) {
 	kid := KeyID("https://example.org/account/1")
 	claims := struct{ Msg string }{"Hello JWS"}
