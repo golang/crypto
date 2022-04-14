@@ -100,6 +100,23 @@ func (b *Builder) AddBytes(v []byte) {
 	b.add(v...)
 }
 
+func (b *Builder) AddString(s string) {
+	if b.err != nil {
+		return
+	}
+	if b.child != nil {
+		panic("cryptobyte: attempted write while child is pending")
+	}
+	if len(b.result)+len(s) < len(s) {
+		b.err = errors.New("cryptobyte: length overflow")
+	}
+	if b.fixedSize && len(b.result)+len(s) > cap(b.result) {
+		b.err = errors.New("cryptobyte: Builder is exceeding its fixed-size buffer")
+		return
+	}
+	b.result = append(b.result, s...)
+}
+
 // BuilderContinuation is a continuation-passing interface for building
 // length-prefixed byte sequences. Builder methods for length-prefixed
 // sequences (AddUint8LengthPrefixed etc) will invoke the BuilderContinuation
