@@ -310,6 +310,19 @@ func isAcceptableAlgo(algo string) bool {
 	return false
 }
 
+// WithBannerError is an error wrapper type that can be returned from an authentication
+// function to additionally write out a banner error message.
+type WithBannerError struct {
+	Err     error
+	Message string
+}
+
+func (e WithBannerError) Unwrap() error {
+	return e.Err
+}
+
+func (e WithBannerError) Error() string { return e.Err.Error() }
+
 func checkSourceAddress(addr net.Addr, sourceAddrs string) error {
 	if addr == nil {
 		return errors.New("ssh: no address known for client, but source-address match required")
@@ -668,6 +681,13 @@ userAuthLoop:
 			break userAuthLoop
 		}
 
+		var w WithBannerError
+		if errors.As(authErr, &w) && w.Message != "" {
+			bannerMsg := &userAuthBannerMsg{Message: w.Message}
+			if err := s.transport.writePacket(Marshal(bannerMsg)); err != nil {
+				return nil, err
+			}
+		}
 		if errors.Is(authErr, ErrDenied) {
 			var failureMsg userAuthFailureMsg
 			if config.ImplictAuthMethod != "" {
