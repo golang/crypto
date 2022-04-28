@@ -697,7 +697,7 @@ userAuthLoop:
 				return nil, err
 			}
 
-			return nil, nil
+			return nil, authErr
 		}
 
 		authFailures++
