@@ -380,7 +380,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 			ca.httpErrorf(w, http.StatusBadRequest, "challenge accept: %v", err)
 			return
 		}
-		go ca.validateChallenge(a, typ)
+		ca.validateChallenge(a, typ)
 		w.Write([]byte("{}"))
 
 	// Get authorization status requests.

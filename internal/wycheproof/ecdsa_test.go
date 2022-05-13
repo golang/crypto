@@ -9,126 +9,47 @@ import (
 	"testing"
 )
 
-func TestEcdsa(t *testing.T) {
-	// AsnSignatureTestVector
-	type AsnSignatureTestVector struct {
-
+func TestECDSA(t *testing.T) {
+	type ASNSignatureTestVector struct {
 		// A brief description of the test case
-		Comment string `json:"comment,omitempty"`
-
+		Comment string `json:"comment"`
 		// A list of flags
-		Flags []string `json:"flags,omitempty"`
-
+		Flags []string `json:"flags"`
 		// The message to sign
-		Msg string `json:"msg,omitempty"`
-
+		Msg string `json:"msg"`
 		// Test result
-		Result string `json:"result,omitempty"`
-
-		// An ASN encoded signature for msg
-		Sig string `json:"sig,omitempty"`
-
+		Result string `json:"result"`
+		// An ASN.1 encoded signature for msg
+		Sig string `json:"sig"`
 		// Identifier of the test case
-		TcId int `json:"tcId,omitempty"`
+		TcID int `json:"tcId"`
 	}
 
-	// EcPublicKey
-	type EcPublicKey struct {
-
-		// the EC group used by this public key
-		Curve interface{} `json:"curve,omitempty"`
-
-		// the key size in bits
-		KeySize int `json:"keySize,omitempty"`
-
-		// the key type
-		Type string `json:"type,omitempty"`
-
-		// encoded public key point
-		Uncompressed string `json:"uncompressed,omitempty"`
-
-		// the x-coordinate of the public key point
-		Wx string `json:"wx,omitempty"`
-
-		// the y-coordinate of the public key point
-		Wy string `json:"wy,omitempty"`
+	type ECPublicKey struct {
+		// The EC group used by this public key
+		Curve interface{} `json:"curve"`
 	}
 
-	// EcUnnamedGroup
-	type EcUnnamedGroup struct {
-
-		// coefficient a of the elliptic curve equation
-		A string `json:"a,omitempty"`
-
-		// coefficient b of the elliptic curve equation
-		B string `json:"b,omitempty"`
-
-		// the x-coordinate of the generator
-		Gx string `json:"gx,omitempty"`
-
-		// the y-coordinate of the generator
-		Gy string `json:"gy,omitempty"`
-
-		// the cofactor
-		H int `json:"h,omitempty"`
-
-		// the order of the generator
-		N string `json:"n,omitempty"`
-
-		// the order of the underlying field
-		P string `json:"p,omitempty"`
-
-		// an unnamed EC group over a prime field in Weierstrass form
-		Type string `json:"type,omitempty"`
-	}
-
-	// EcdsaTestGroup
-	type EcdsaTestGroup struct {
-
-		// unenocded EC public key
-		Key *EcPublicKey `json:"key,omitempty"`
-
+	type ECDSATestGroup struct {
+		// Unencoded EC public key
+		Key *ECPublicKey `json:"key"`
 		// DER encoded public key
-		KeyDer string `json:"keyDer,omitempty"`
-
-		// Pem encoded public key
-		KeyPem string `json:"keyPem,omitempty"`
-
+		KeyDER string `json:"keyDer"`
 		// the hash function used for ECDSA
-		Sha   string                    `json:"sha,omitempty"`
-		Tests []*AsnSignatureTestVector `json:"tests,omitempty"`
-		Type  interface{}               `json:"type,omitempty"`
+		SHA   string                    `json:"sha"`
+		Tests []*ASNSignatureTestVector `json:"tests"`
 	}
 
-	// Notes a description of the labels used in the test vectors
-	type Notes struct {
-	}
-
-	// Root
 	type Root struct {
-
-		// the primitive tested in the test file
-		Algorithm string `json:"algorithm,omitempty"`
-
-		// the version of the test vectors.
-		GeneratorVersion string `json:"generatorVersion,omitempty"`
-
-		// additional documentation
-		Header []string `json:"header,omitempty"`
-
-		// a description of the labels used in the test vectors
-		Notes *Notes `json:"notes,omitempty"`
-
-		// the number of test vectors in this test
-		NumberOfTests int               `json:"numberOfTests,omitempty"`
-		Schema        interface{}       `json:"schema,omitempty"`
-		TestGroups    []*EcdsaTestGroup `json:"testGroups,omitempty"`
+		TestGroups []*ECDSATestGroup `json:"testGroups"`
 	}
 
 	flagsShouldPass := map[string]bool{
-		// An encoded ASN.1 integer missing a leading zero is invalid, but accepted by some implementations.
+		// An encoded ASN.1 integer missing a leading zero is invalid, but
+		// accepted by some implementations.
 		"MissingZero": false,
-		// A signature using a weaker hash than the EC params is not a security risk, as long as the hash is secure.
+		// A signature using a weaker hash than the EC params is not a security
+		// risk, as long as the hash is secure.
 		// https://www.imperialviolet.org/2014/05/25/strengthmatching.html
 		"WeakHash": true,
 	}
@@ -149,15 +70,15 @@ func TestEcdsa(t *testing.T) {
 		if !supportedCurves[curve] {
 			continue
 		}
-		pub := decodePublicKey(tg.KeyDer).(*ecdsa.PublicKey)
-		h := parseHash(tg.Sha).New()
+		pub := decodePublicKey(tg.KeyDER).(*ecdsa.PublicKey)
+		h := parseHash(tg.SHA).New()
 		for _, sig := range tg.Tests {
 			h.Reset()
 			h.Write(decodeHex(sig.Msg))
 			hashed := h.Sum(nil)
-			got := verifyASN1(pub, hashed, decodeHex(sig.Sig))
+			got := ecdsa.VerifyASN1(pub, hashed, decodeHex(sig.Sig))
 			if want := shouldPass(sig.Result, sig.Flags, flagsShouldPass); got != want {
-				t.Errorf("tcid: %d, type: %s, comment: %q, wanted success: %t", sig.TcId, sig.Result, sig.Comment, want)
+				t.Errorf("tcid: %d, type: %s, comment: %q, wanted success: %t", sig.TcID, sig.Result, sig.Comment, want)
 			}
 		}
 	}
