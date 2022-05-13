@@ -148,7 +148,7 @@ func responseAccount(res *http.Response) (*Account, error) {
 	}, nil
 }
 
-// Attempt to perform account key rollover.
+// accountKeyRollover attempts to perform account key rollover.
 // On success it will change client.Key to the new key.
 func (c *Client) accountKeyRollover(ctx context.Context, newKey crypto.Signer) error {
 	dir, err := c.Discover(ctx) // Also required by c.accountKID
