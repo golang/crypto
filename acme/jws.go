@@ -52,11 +52,11 @@ type jsonWebSignature struct {
 // The claimset is marshalled using json.Marshal unless it is a string.
 // In which case it is inserted directly into the message.
 //
-// If kid is non-empty, its quoted value is inserted in the protected head
+// If kid is non-empty, its quoted value is inserted in the protected header
 // as "kid" field value. Otherwise, JWK is computed using jwkEncode and inserted
 // as "jwk" field value. The "jwk" and "kid" fields are mutually exclusive.
 //
-// If nonce is non-empty, its quoted value is inserted in the protected head.
+// If nonce is non-empty, its quoted value is inserted in the protected header.
 //
 // See https://tools.ietf.org/html/rfc7515#section-7.
 func jwsEncodeJSON(claimset interface{}, key crypto.Signer, kid KeyID, nonce, url string) ([]byte, error) {

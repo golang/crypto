@@ -309,7 +309,7 @@ func (c *Client) UpdateReg(ctx context.Context, acct *Account) (*Account, error)
 // AccountKeyRollover attempts to transition a client's account key to a new key.
 // On success client's Key is updated which is not concurrency safe.
 // On failure an error will be returned.
-// If the error is already registered with the ACME provider the following is true:
+// The new key is already registered with the ACME provider if the following is true:
 //  - error is of type acme.Error
 //  - StatusCode should be 409 (Conflict)
 //  - Location header will have the KID of the associated account
