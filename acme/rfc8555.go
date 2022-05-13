@@ -148,6 +148,42 @@ func responseAccount(res *http.Response) (*Account, error) {
 	}, nil
 }
 
+// accountKeyRollover attempts to perform account key rollover.
+// On success it will change client.Key to the new key.
+func (c *Client) accountKeyRollover(ctx context.Context, newKey crypto.Signer) error {
+	dir, err := c.Discover(ctx) // Also required by c.accountKID
+	if err != nil {
+		return err
+	}
+	kid := c.accountKID(ctx)
+	if kid == noKeyID {
+		return ErrNoAccount
+	}
+	oldKey, err := jwkEncode(c.Key.Public())
+	if err != nil {
+		return err
+	}
+	payload := struct {
+		Account string          `json:"account"`
+		OldKey  json.RawMessage `json:"oldKey"`
+	}{
+		Account: string(kid),
+		OldKey:  json.RawMessage(oldKey),
+	}
+	inner, err := jwsEncodeJSON(payload, newKey, noKeyID, noNonce, dir.KeyChangeURL)
+	if err != nil {
+		return err
+	}
+
+	res, err := c.post(ctx, nil, dir.KeyChangeURL, base64.RawURLEncoding.EncodeToString(inner), wantStatus(http.StatusOK))
+	if err != nil {
+		return err
+	}
+	defer res.Body.Close()
+	c.Key = newKey
+	return nil
+}
+
 // AuthorizeOrder initiates the order-based application for certificate issuance,
 // as opposed to pre-authorization in Authorize.
 // It is only supported by CAs implementing RFC 8555.

@@ -232,6 +232,7 @@ func (s *acmeServer) start() {
 				"newOrder": %q,
 				"newAuthz": %q,
 				"revokeCert": %q,
+				"keyChange": %q,
 				"meta": {"termsOfService": %q}
 				}`,
 				s.url("/acme/new-nonce"),
@@ -239,6 +240,7 @@ func (s *acmeServer) start() {
 				s.url("/acme/new-order"),
 				s.url("/acme/new-authz"),
 				s.url("/acme/revoke-cert"),
+				s.url("/acme/key-change"),
 				s.url("/terms"),
 			)
 			return
@@ -618,6 +620,27 @@ func TestRFC_GetRegOtherError(t *testing.T) {
 	cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
 	if _, err := cl.GetReg(context.Background(), ""); err == nil || err == ErrNoAccount {
 		t.Errorf("GetReg: %v; want any other non-nil err", err)
+	}
+}
+
+func TestRFC_AccountKeyRollover(t *testing.T) {
+	s := newACMEServer()
+	s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", s.url("/accounts/1"))
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"status": "valid"}`))
+	})
+	s.handle("/acme/key-change", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	s.start()
+	defer s.close()
+
+	cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
+	if err := cl.AccountKeyRollover(context.Background(), testKeyEC384); err != nil {
+		t.Errorf("AccountKeyRollover: %v, wanted no error", err)
+	} else if cl.Key != testKeyEC384 {
+		t.Error("AccountKeyRollover did not rotate the client key")
 	}
 }
 
