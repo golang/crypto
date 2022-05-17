@@ -24,6 +24,9 @@ import (
 //
 // It only works with CAs implementing RFC 8555.
 func (c *Client) DeactivateReg(ctx context.Context) error {
+	if _, err := c.Discover(ctx); err != nil { // required by c.accountKID
+		return err
+	}
 	url := string(c.accountKID(ctx))
 	if url == "" {
 		return ErrNoAccount
