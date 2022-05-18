@@ -22,6 +22,7 @@ const (
 	MinCost     int = 4  // the minimum allowable cost as passed in to GenerateFromPassword
 	MaxCost     int = 31 // the maximum allowable cost as passed in to GenerateFromPassword
 	DefaultCost int = 10 // the cost that will actually be set if a cost below MinCost is passed into GenerateFromPassword
+	MaxSaltSize int = 16 // the maximum salt length
 )
 
 // The error returned from CompareHashAndPassword when a password and hash do
@@ -56,7 +57,6 @@ func (ic InvalidCostError) Error() string {
 const (
 	majorVersion       = '2'
 	minorVersion       = 'a'
-	maxSaltSize        = 16
 	maxCryptedHashSize = 23
 	encodedSaltSize    = 22
 	encodedHashSize    = 31
@@ -88,6 +88,17 @@ type hashed struct {
 // to compare the returned hashed password with its cleartext version.
 func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
 	p, err := newFromPassword(password, cost)
+	if err != nil {
+		return nil, err
+	}
+	return p.Hash(), nil
+}
+
+// GenerateFromPasswordAndSalt returns the bcrypt hash of the password at the given
+// cost using custom salt. If the cost given is less than MinCost, the cost will
+// be set to DefaultCost, instead.
+func GenerateFromPasswordAndSalt(password []byte, cost int, salt []byte) ([]byte, error) {
+	p, err := newFromPasswordAndSalt(password, cost, salt)
 	if err != nil {
 		return nil, err
 	}
@@ -141,13 +152,36 @@ func newFromPassword(password []byte, cost int) (*hashed, error) {
 	}
 	p.cost = cost
 
-	unencodedSalt := make([]byte, maxSaltSize)
+	unencodedSalt := make([]byte, MaxSaltSize)
 	_, err = io.ReadFull(rand.Reader, unencodedSalt)
 	if err != nil {
 		return nil, err
 	}
 
 	p.salt = base64Encode(unencodedSalt)
+	hash, err := bcrypt(password, p.cost, p.salt)
+	if err != nil {
+		return nil, err
+	}
+	p.hash = hash
+	return p, err
+}
+
+func newFromPasswordAndSalt(password []byte, cost int, salt []byte) (*hashed, error) {
+	if cost < MinCost {
+		cost = DefaultCost
+	}
+	p := new(hashed)
+	p.major = majorVersion
+	p.minor = minorVersion
+
+	err := checkCost(cost)
+	if err != nil {
+		return nil, err
+	}
+	p.cost = cost
+
+	p.salt = base64Encode(salt)
 	hash, err := bcrypt(password, p.cost, p.salt)
 	if err != nil {
 		return nil, err
