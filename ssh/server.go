@@ -265,25 +265,9 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 
 	if len(packet) > 0 && packet[0] == msgExtInfo {
 		// read SSH_MSG_EXT_INFO
-		var extInfo extInfoMsg
-		extensions := make(map[string][]byte)
-		if err := Unmarshal(packet, &extInfo); err != nil {
+		if _, err := parseExtInfoMsg(packet); err != nil {
 			return nil, err
 		}
-		payload := extInfo.Payload
-		for i := uint32(0); i < extInfo.NumExtensions; i++ {
-			name, rest, ok := parseString(payload)
-			if !ok {
-				return nil, parseError(msgExtInfo)
-			}
-			value, rest, ok := parseString(rest)
-			if !ok {
-				return nil, parseError(msgExtInfo)
-			}
-			extensions[string(name)] = value
-			payload = rest
-		}
-
 		// read the next packet
 		if packet, err = s.transport.readPacket(); err != nil {
 			return nil, err

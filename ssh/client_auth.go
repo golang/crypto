@@ -35,22 +35,9 @@ func (c *connection) clientAuthenticate(config *ClientConfig) error {
 	// RFC 8308, Section 2.4.
 	extensions := make(map[string][]byte)
 	if len(packet) > 0 && packet[0] == msgExtInfo {
-		var extInfo extInfoMsg
-		if err := Unmarshal(packet, &extInfo); err != nil {
+		extensions, err = parseExtInfoMsg(packet)
+		if err != nil {
 			return err
-		}
-		payload := extInfo.Payload
-		for i := uint32(0); i < extInfo.NumExtensions; i++ {
-			name, rest, ok := parseString(payload)
-			if !ok {
-				return parseError(msgExtInfo)
-			}
-			value, rest, ok := parseString(rest)
-			if !ok {
-				return parseError(msgExtInfo)
-			}
-			extensions[string(name)] = value
-			payload = rest
 		}
 		packet, err = c.transport.readPacket()
 		if err != nil {

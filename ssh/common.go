@@ -146,6 +146,31 @@ func parseError(tag uint8) error {
 	return fmt.Errorf("ssh: parse error in message type %d", tag)
 }
 
+// parseExtInfoMsg returns the extensions from an extInfoMsg packet.
+// packet must be an already validated extInfoMsg
+func parseExtInfoMsg(packet []byte) (map[string][]byte, error) {
+	extensions := make(map[string][]byte)
+	var extInfo extInfoMsg
+
+	if err := Unmarshal(packet, &extInfo); err != nil {
+		return nil, err
+	}
+	payload := extInfo.Payload
+	for i := uint32(0); i < extInfo.NumExtensions; i++ {
+		name, rest, ok := parseString(payload)
+		if !ok {
+			return nil, parseError(msgExtInfo)
+		}
+		value, rest, ok := parseString(rest)
+		if !ok {
+			return nil, parseError(msgExtInfo)
+		}
+		extensions[string(name)] = value
+		payload = rest
+	}
+	return extensions, nil
+}
+
 func findCommon(what string, client []string, server []string) (common string, err error) {
 	for _, c := range client {
 		for _, s := range server {
