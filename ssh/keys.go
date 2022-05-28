@@ -349,6 +349,15 @@ type AlgorithmSigner interface {
 	SignWithAlgorithm(rand io.Reader, data []byte, algorithm string) (*Signature, error)
 }
 
+// MultiAlgorithmSigner is an AlgorithmSigner that also reports the algorithms
+// supported by that signer
+type MultiAlgorithmSigner interface {
+	AlgorithmSigner
+
+	// Algorithms returns the available algorithms in preference order
+	Algorithms() []string
+}
+
 type rsaPublicKey rsa.PublicKey
 
 func (r *rsaPublicKey) Type() string {

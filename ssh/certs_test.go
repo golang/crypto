@@ -242,6 +242,14 @@ func (s *legacyRSASigner) Sign(rand io.Reader, data []byte) (*Signature, error) 
 }
 
 func TestCertTypes(t *testing.T) {
+	algorithSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	multiAlgoSigner, err := NewSignerWithAlgos(algorithSigner, []string{KeyAlgoRSASHA256})
+	if err != nil {
+		t.Fatalf("unable to create multi algorithm signer: %v", err)
+	}
 	var testVars = []struct {
 		name   string
 		signer Signer
@@ -252,6 +260,7 @@ func TestCertTypes(t *testing.T) {
 		{CertAlgoECDSA521v01, testSigners["ecdsap521"], ""},
 		{CertAlgoED25519v01, testSigners["ed25519"], ""},
 		{CertAlgoRSAv01, testSigners["rsa"], KeyAlgoRSASHA512},
+		{CertAlgoRSAv01, multiAlgoSigner, KeyAlgoRSASHA256},
 		{"legacyRSASigner", &legacyRSASigner{testSigners["rsa"]}, KeyAlgoRSA},
 		{CertAlgoDSAv01, testSigners["dsa"], ""},
 	}
@@ -316,5 +325,26 @@ func TestCertTypes(t *testing.T) {
 				t.Fatalf("error connecting: %v", err)
 			}
 		})
+	}
+}
+
+func TestNewSignerWithAlgos(t *testing.T) {
+	algorithSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	_, err := NewSignerWithAlgos(algorithSigner, nil)
+	if err == nil {
+		t.Error("signer with algos created with no algorithms")
+	}
+
+	_, err = NewSignerWithAlgos(algorithSigner, []string{KeyAlgoED25519})
+	if err == nil {
+		t.Error("signer with algos created with invalid algorithms")
+	}
+
+	_, err = NewSignerWithAlgos(algorithSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	if err != nil {
+		t.Errorf("unable to create signer with valid algorithms: %v", err)
 	}
 }
