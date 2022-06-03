@@ -246,7 +246,7 @@ func TestCertTypes(t *testing.T) {
 	if !ok {
 		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
 	}
-	multiAlgoSigner, err := NewSignerWithAlgos(algorithSigner, []string{KeyAlgoRSASHA256})
+	multiAlgoSigner, err := NewSignerWithAlgorithms(algorithSigner, []string{KeyAlgoRSASHA256})
 	if err != nil {
 		t.Fatalf("unable to create multi algorithm signer: %v", err)
 	}
@@ -333,17 +333,17 @@ func TestNewSignerWithAlgos(t *testing.T) {
 	if !ok {
 		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
 	}
-	_, err := NewSignerWithAlgos(algorithSigner, nil)
+	_, err := NewSignerWithAlgorithms(algorithSigner, nil)
 	if err == nil {
 		t.Error("signer with algos created with no algorithms")
 	}
 
-	_, err = NewSignerWithAlgos(algorithSigner, []string{KeyAlgoED25519})
+	_, err = NewSignerWithAlgorithms(algorithSigner, []string{KeyAlgoED25519})
 	if err == nil {
 		t.Error("signer with algos created with invalid algorithms")
 	}
 
-	_, err = NewSignerWithAlgos(algorithSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	_, err = NewSignerWithAlgorithms(algorithSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
 	if err != nil {
 		t.Errorf("unable to create signer with valid algorithms: %v", err)
 	}

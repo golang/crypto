@@ -284,11 +284,11 @@ func (s *multiAlgorithmSSHCertSigner) Algorithms() []string {
 	return s.supportedAlgorithms
 }
 
-// NewSignerWithAlgos returns a signer restricted to the specified algorithms.
+// NewSignerWithAlgorithms returns a signer restricted to the specified algorithms.
 // The algorithms must be set in preference order.
 // An error is returned if the specified algorithms are incompatible with the
 // public key type.
-func NewSignerWithAlgos(signer AlgorithmSigner, algorithms []string) (Signer, error) {
+func NewSignerWithAlgorithms(signer AlgorithmSigner, algorithms []string) (Signer, error) {
 	if len(algorithms) == 0 {
 		return nil, errors.New("ssh: please specify at least one valid signing algorithms")
 	}

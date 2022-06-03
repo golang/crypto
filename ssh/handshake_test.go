@@ -624,7 +624,7 @@ func TestMultiSignerHandshake(t *testing.T) {
 	if !ok {
 		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
 	}
-	multiAlgoSigner, err := NewSignerWithAlgos(algorithSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	multiAlgoSigner, err := NewSignerWithAlgorithms(algorithSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
 	if err != nil {
 		t.Fatalf("unable to create multi algorithm signer: %v", err)
 	}
@@ -660,7 +660,7 @@ func TestMultiSignerNoCommonHostKeyAlgo(t *testing.T) {
 	if !ok {
 		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
 	}
-	multiAlgoSigner, err := NewSignerWithAlgos(algorithSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	multiAlgoSigner, err := NewSignerWithAlgorithms(algorithSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
 	if err != nil {
 		t.Fatalf("unable to create multi algorithm signer: %v", err)
 	}
