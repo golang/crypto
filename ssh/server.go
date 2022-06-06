@@ -76,6 +76,13 @@ type ServerConfig struct {
 	// to 6.
 	MaxAuthTries int
 
+	// NonAuthCallback, if non-nil, is called if the client
+	// attempts to authenticate using "none" authentication
+	// this is typically when the client wants to query supported auth
+	// methods.
+	// NoClientAuth will be ignore if NonAuthCallback is set.
+	NonAuthCallback func(conn ConnMetadata) (*Permissions, error)
+
 	// PasswordCallback, if non-nil, is called when a user
 	// attempts to authenticate using a password.
 	PasswordCallback func(conn ConnMetadata, password []byte) (*Permissions, error)
@@ -454,7 +461,9 @@ userAuthLoop:
 
 		switch userAuthReq.Method {
 		case "none":
-			if config.NoClientAuth {
+			if config.NonAuthCallback != nil {
+				perms, authErr = config.NonAuthCallback(s)
+			} else if config.NoClientAuth {
 				authErr = nil
 			}
 
