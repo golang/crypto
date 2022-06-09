@@ -288,14 +288,14 @@ func (s *multiAlgorithmSSHCertSigner) Algorithms() []string {
 // The algorithms must be set in preference order.
 // An error is returned if the specified algorithms are incompatible with the
 // public key type.
-func NewSignerWithAlgorithms(signer AlgorithmSigner, algorithms []string) (Signer, error) {
+func NewSignerWithAlgorithms(signer AlgorithmSigner, algorithms []string) (MultiAlgorithmSigner, error) {
 	if len(algorithms) == 0 {
 		return nil, errors.New("ssh: please specify at least one valid signing algorithms")
 	}
 	supportedAlgos := algorithmsForKeyFormat(signer.PublicKey().Type())
 	for _, algo := range algorithms {
 		if !contains(supportedAlgos, algo) {
-			return signer, fmt.Errorf("ssh: algorithm %s is not supported for key type %s",
+			return nil, fmt.Errorf("ssh: algorithm %s is not supported for key type %s",
 				algo, signer.PublicKey().Type())
 		}
 	}
