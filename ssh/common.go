@@ -97,13 +97,13 @@ var supportedMACs = []string{
 
 var supportedCompressions = []string{compressionNone}
 
-// supportedServerSigAlgs defines the algorithms supported for pubkey authentication
-// in no particular order. See RFC 8308, Section 3.1.
-var supportedServerSigAlgs = []string{KeyAlgoRSASHA256,
-	KeyAlgoRSASHA512, KeyAlgoRSA,
-	KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521,
-	KeyAlgoSKECDSA256, KeyAlgoED25519, KeyAlgoSKED25519,
-	KeyAlgoDSA,
+// supportedServerSigAlgs defines the algorithms supported for pubkey authentication.
+// Order should not matter, but to avoid any issues we use the same order as OpenSSH.
+// See RFC 8308, Section 3.1.
+var supportedServerSigAlgs = []string{KeyAlgoED25519, KeyAlgoSKED25519,
+	KeyAlgoRSA, KeyAlgoRSASHA256, KeyAlgoRSASHA512,
+	KeyAlgoDSA, KeyAlgoECDSA256, KeyAlgoECDSA384, KeyAlgoECDSA521,
+	KeyAlgoSKECDSA256,
 }
 
 // hashFuncs keeps the mapping of supported signature algorithms to their
