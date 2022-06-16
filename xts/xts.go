@@ -29,7 +29,7 @@ import (
 	"errors"
 	"sync"
 
-	"golang.org/x/crypto/internal/subtle"
+	"github.com/gitpod-io/golang-crypto/internal/subtle"
 )
 
 // Cipher contains an expanded key structure. It is safe for concurrent use if

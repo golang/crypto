@@ -9,7 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 
-	"golang.org/x/crypto/openpgp/errors"
+	"github.com/gitpod-io/golang-crypto/openpgp/errors"
 )
 
 // OpaquePacket represents an OpenPGP packet as raw, unparsed data. This is

@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"time"
 
-	"golang.org/x/crypto/cryptobyte/asn1"
+	"github.com/gitpod-io/golang-crypto/cryptobyte/asn1"
 )
 
 // This file contains ASN.1-related methods for String and Builder.

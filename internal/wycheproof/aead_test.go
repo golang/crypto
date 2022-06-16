@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"testing"
 
-	"golang.org/x/crypto/chacha20poly1305"
+	"github.com/gitpod-io/golang-crypto/chacha20poly1305"
 )
 
 func TestAEAD(t *testing.T) {

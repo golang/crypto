@@ -23,7 +23,7 @@
 // purpose MAC such as HMAC implemented by crypto/hmac.
 package poly1305 // import "golang.org/x/crypto/poly1305"
 
-import "golang.org/x/crypto/internal/poly1305"
+import "github.com/gitpod-io/golang-crypto/internal/poly1305"
 
 // TagSize is the size, in bytes, of a poly1305 authenticator.
 //

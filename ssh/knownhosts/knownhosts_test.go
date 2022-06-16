@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	"golang.org/x/crypto/ssh"
+	"github.com/gitpod-io/golang-crypto/ssh"
 )
 
 const edKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGBAarftlLeoyf+v+nVchEZII/vna2PCV8FaX4vsF5BX"

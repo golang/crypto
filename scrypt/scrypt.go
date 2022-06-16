@@ -13,7 +13,7 @@ import (
 	"errors"
 	"math/bits"
 
-	"golang.org/x/crypto/pbkdf2"
+	"github.com/gitpod-io/golang-crypto/pbkdf2"
 )
 
 const maxInt = int(^uint(0) >> 1)

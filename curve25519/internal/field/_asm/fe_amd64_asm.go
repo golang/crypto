@@ -14,7 +14,7 @@ import (
 
 	// Ensure "go mod tidy" doesn't remove the golang.org/x/crypto module
 	// dependency, which is necessary to access the field.Element type.
-	_ "golang.org/x/crypto/curve25519"
+	_ "github.com/gitpod-io/golang-crypto/curve25519"
 )
 
 //go:generate go run . -out ../fe_amd64.s -stubs ../fe_amd64.go -pkg field

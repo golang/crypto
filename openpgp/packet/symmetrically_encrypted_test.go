@@ -8,10 +8,11 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/hex"
-	"golang.org/x/crypto/openpgp/errors"
 	"io"
 	"io/ioutil"
 	"testing"
+
+	"github.com/gitpod-io/golang-crypto/openpgp/errors"
 )
 
 // TestReader wraps a []byte and returns reads of a specific length.
