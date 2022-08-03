@@ -141,7 +141,7 @@ func TestUint24(t *testing.T) {
 	var s String = b.BytesOrPanic()
 	var v uint32
 	if !s.ReadUint24(&v) {
-		t.Error("ReadUint8() = false, want true")
+		t.Error("ReadUint24() = false, want true")
 	}
 	if v != 0xfffefd {
 		t.Errorf("v = %d, want fffefd", v)
@@ -169,10 +169,30 @@ func TestUint32(t *testing.T) {
 	var s String = b.BytesOrPanic()
 	var v uint32
 	if !s.ReadUint32(&v) {
-		t.Error("ReadUint8() = false, want true")
+		t.Error("ReadUint32() = false, want true")
 	}
 	if v != 0xfffefdfc {
 		t.Errorf("v = %x, want fffefdfc", v)
+	}
+	if len(s) != 0 {
+		t.Errorf("len(s) = %d, want 0", len(s))
+	}
+}
+
+func TestUint64(t *testing.T) {
+	var b Builder
+	b.AddUint64(0xf2fefefcff3cfdfc)
+	if err := builderBytesEq(&b, 242, 254, 254, 252, 255, 60, 253, 252); err != nil {
+		t.Error(err)
+	}
+
+	var s String = b.BytesOrPanic()
+	var v uint64
+	if !s.ReadUint64(&v) {
+		t.Error("ReadUint64() = false, want true")
+	}
+	if v != 0xf2fefefcff3cfdfc {
+		t.Errorf("v = %x, want f2fefefcff3cfdfc", v)
 	}
 	if len(s) != 0 {
 		t.Errorf("len(s) = %d, want 0", len(s))
