@@ -40,7 +40,6 @@ func BenchmarkLenghtPrefixed(b *testing.B) {
 				b.AddBytes([]byte("123456"))
 			})
 		})
-
 	}
 }
 
