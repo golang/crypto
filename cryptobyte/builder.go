@@ -21,14 +21,19 @@ import (
 // the value to a given Builder. See the documentation for BuilderContinuation
 // for details.
 type Builder struct {
-	err            error
-	result         []byte
+	err    error
+	result []byte
+
+	builderContinuationData
+
 	fixedSize      bool
-	child          *Builder
-	offset         int
-	pendingLenLen  int
-	pendingIsASN1  bool
-	inContinuation *bool
+	inContinuation bool
+}
+
+type builderContinuationData struct {
+	offset        int
+	pendingLenLen int
+	pendingIsASN1 bool
 }
 
 // NewBuilder creates a Builder that appends its output to the given buffer.
@@ -152,11 +157,11 @@ func (b *Builder) AddUint32LengthPrefixed(f BuilderContinuation) {
 }
 
 func (b *Builder) callContinuation(f BuilderContinuation, arg *Builder) {
-	if !*b.inContinuation {
-		*b.inContinuation = true
+	if !b.inContinuation {
+		b.inContinuation = true
 
 		defer func() {
-			*b.inContinuation = false
+			b.inContinuation = false
 
 			r := recover()
 			if r == nil {
@@ -181,112 +186,83 @@ func (b *Builder) addLengthPrefixed(lenLen int, isASN1 bool, f BuilderContinuati
 	}
 
 	offset := len(b.result)
-	b.add(make([]byte, lenLen)...)
+	b.alloc(lenLen)
 
-	if b.inContinuation == nil {
-		b.inContinuation = new(bool)
-	}
+	before := b.builderContinuationData
 
-	b.child = &Builder{
-		result:         b.result,
-		fixedSize:      b.fixedSize,
-		offset:         offset,
-		pendingLenLen:  lenLen,
-		pendingIsASN1:  isASN1,
-		inContinuation: b.inContinuation,
-	}
+	b.offset = offset
+	b.pendingLenLen = lenLen
+	b.pendingIsASN1 = isASN1
 
-	b.callContinuation(f, b.child)
-	b.flushChild()
-	if b.child != nil {
-		panic("cryptobyte: internal error")
-	}
-}
+	b.callContinuation(f, b)
 
-func (b *Builder) flushChild() {
-	if b.child == nil {
-		return
-	}
-	b.child.flushChild()
-	child := b.child
-	b.child = nil
+	b.builderContinuationData = before
 
-	if child.err != nil {
-		b.err = child.err
+	if b.err != nil {
 		return
 	}
 
-	length := len(child.result) - child.pendingLenLen - child.offset
-
+	length := len(b.result) - lenLen - offset
 	if length < 0 {
 		panic("cryptobyte: internal error") // result unexpectedly shrunk
 	}
 
-	if child.pendingIsASN1 {
+	if isASN1 {
 		// For ASN.1, we reserved a single byte for the length. If that turned out
 		// to be incorrect, we have to move the contents along in order to make
 		// space.
-		if child.pendingLenLen != 1 {
+		if lenLen != 1 {
 			panic("cryptobyte: internal error")
 		}
-		var lenLen, lenByte uint8
+
+		var extraBytes = 0
+		var lenByte uint8
 		if int64(length) > 0xfffffffe {
 			b.err = errors.New("pending ASN.1 child too long")
 			return
 		} else if length > 0xffffff {
-			lenLen = 5
+			extraBytes = 4
 			lenByte = 0x80 | 4
 		} else if length > 0xffff {
-			lenLen = 4
+			extraBytes = 3
 			lenByte = 0x80 | 3
 		} else if length > 0xff {
-			lenLen = 3
+			extraBytes = 2
 			lenByte = 0x80 | 2
 		} else if length > 0x7f {
-			lenLen = 2
+			extraBytes = 1
 			lenByte = 0x80 | 1
 		} else {
-			lenLen = 1
 			lenByte = uint8(length)
 			length = 0
 		}
 
 		// Insert the initial length byte, make space for successive length bytes,
 		// and adjust the offset.
-		child.result[child.offset] = lenByte
-		extraBytes := int(lenLen - 1)
+		b.result[offset] = lenByte
 		if extraBytes != 0 {
-			child.add(make([]byte, extraBytes)...)
-			childStart := child.offset + child.pendingLenLen
-			copy(child.result[childStart+extraBytes:], child.result[childStart:])
+			b.alloc(extraBytes)
+			childStart := offset + lenLen
+			copy(b.result[childStart+extraBytes:], b.result[childStart:])
 		}
-		child.offset++
-		child.pendingLenLen = extraBytes
+		offset++
+		lenLen = extraBytes
 	}
 
 	l := length
-	for i := child.pendingLenLen - 1; i >= 0; i-- {
-		child.result[child.offset+i] = uint8(l)
+	for i := lenLen - 1; i >= 0; i-- {
+		b.result[offset+i] = uint8(l)
 		l >>= 8
 	}
 	if l != 0 {
-		b.err = fmt.Errorf("cryptobyte: pending child length %d exceeds %d-byte length prefix", length, child.pendingLenLen)
+		b.err = fmt.Errorf("cryptobyte: pending child length %d exceeds %d-byte length prefix", length, lenLen)
 		return
 	}
-
-	if b.fixedSize && &b.result[0] != &child.result[0] {
-		panic("cryptobyte: BuilderContinuation reallocated a fixed-size buffer")
-	}
-
-	b.result = child.result
 }
 
 func (b *Builder) add(bytes ...byte) {
 	if b.err != nil {
 		return
-	}
-	if b.child != nil {
-		panic("cryptobyte: attempted write while child is pending")
 	}
 	if len(b.result)+len(bytes) < len(bytes) {
 		b.err = errors.New("cryptobyte: length overflow")
@@ -298,15 +274,18 @@ func (b *Builder) add(bytes ...byte) {
 	b.result = append(b.result, bytes...)
 }
 
+func (b *Builder) alloc(n int) {
+	for i := 0; i < n; i++ {
+		b.add(0)
+	}
+}
+
 // Unwrite rolls back n bytes written directly to the Builder. An attempt by a
 // child builder passed to a continuation to unwrite bytes from its parent will
 // panic.
 func (b *Builder) Unwrite(n int) {
 	if b.err != nil {
 		return
-	}
-	if b.child != nil {
-		panic("cryptobyte: attempted unwrite while child is pending")
 	}
 	length := len(b.result) - b.pendingLenLen - b.offset
 	if length < 0 {
