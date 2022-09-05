@@ -11,7 +11,7 @@ import (
 	"testing"
 )
 
-func BenchmarkLenghtPrefixed(b *testing.B) {
+func BenchmarkLengthPrefixed(b *testing.B) {
 	buf := make([]byte, 0, 512)
 
 	for i := 0; i < b.N; i++ {
