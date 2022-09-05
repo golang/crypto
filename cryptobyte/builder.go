@@ -24,16 +24,11 @@ type Builder struct {
 	err    error
 	result []byte
 
-	builderContinuationData
+	offset        int
+	pendingLenLen int
 
 	fixedSize      bool
 	inContinuation bool
-}
-
-type builderContinuationData struct {
-	offset        int
-	pendingLenLen int
-	pendingIsASN1 bool
 }
 
 // NewBuilder creates a Builder that appends its output to the given buffer.
@@ -188,15 +183,16 @@ func (b *Builder) addLengthPrefixed(lenLen int, isASN1 bool, f BuilderContinuati
 	offset := len(b.result)
 	b.alloc(lenLen)
 
-	before := b.builderContinuationData
+	beforeOffset := b.offset
+	beforelenLen := b.pendingLenLen
 
 	b.offset = offset
 	b.pendingLenLen = lenLen
-	b.pendingIsASN1 = isASN1
 
 	b.callContinuation(f, b)
 
-	b.builderContinuationData = before
+	b.offset = beforeOffset
+	b.pendingLenLen = beforelenLen
 
 	if b.err != nil {
 		return
