@@ -6,7 +6,6 @@ package ssh
 
 import (
 	"io"
-	"io/ioutil"
 	"sync"
 	"testing"
 	"time"
@@ -73,14 +72,14 @@ func TestMuxChannelExtendedThreadSafety(t *testing.T) {
 
 	rd.Add(2)
 	go func() {
-		c, err := ioutil.ReadAll(reader)
+		c, err := io.ReadAll(reader)
 		if string(c) != magic {
 			t.Fatalf("stdout read got %q, want %q (error %s)", c, magic, err)
 		}
 		rd.Done()
 	}()
 	go func() {
-		c, err := ioutil.ReadAll(reader.Stderr())
+		c, err := io.ReadAll(reader.Stderr())
 		if string(c) != magic {
 			t.Fatalf("stderr read got %q, want %q (error %s)", c, magic, err)
 		}
@@ -670,7 +669,7 @@ func TestZeroWindowAdjust(t *testing.T) {
 	}()
 
 	want := "helloworld"
-	c, _ := ioutil.ReadAll(b)
+	c, _ := io.ReadAll(b)
 	if string(c) != want {
 		t.Errorf("got %q want %q", c, want)
 	}

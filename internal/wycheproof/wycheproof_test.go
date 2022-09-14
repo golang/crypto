@@ -12,7 +12,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -62,7 +61,7 @@ func TestMain(m *testing.M) {
 }
 
 func readTestVector(t *testing.T, f string, dest interface{}) {
-	b, err := ioutil.ReadFile(filepath.Join(wycheproofTestVectorsDir, f))
+	b, err := os.ReadFile(filepath.Join(wycheproofTestVectorsDir, f))
 	if err != nil {
 		t.Fatalf("failed to read json file: %v", err)
 	}

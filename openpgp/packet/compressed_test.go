@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"io"
-	"io/ioutil"
 	"testing"
 )
 
@@ -25,7 +24,7 @@ func TestCompressed(t *testing.T) {
 		return
 	}
 
-	contents, err := ioutil.ReadAll(c.Body)
+	contents, err := io.ReadAll(c.Body)
 	if err != nil && err != io.EOF {
 		t.Error(err)
 		return

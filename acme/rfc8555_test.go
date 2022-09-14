@@ -17,7 +17,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -148,7 +148,7 @@ func TestRFC_postKID(t *testing.T) {
 			w.Header().Set("Location", "/account-1")
 			w.Write([]byte(`{"status":"valid"}`))
 		case "/post":
-			b, _ := ioutil.ReadAll(r.Body) // check err later in decodeJWSxxx
+			b, _ := io.ReadAll(r.Body) // check err later in decodeJWSxxx
 			head, err := decodeJWSHead(bytes.NewReader(b))
 			if err != nil {
 				t.Errorf("decodeJWSHead: %v", err)
@@ -194,7 +194,7 @@ func TestRFC_postKID(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer res.Body.Close()
-	b, _ := ioutil.ReadAll(res.Body) // don't care about err - just checking b
+	b, _ := io.ReadAll(res.Body) // don't care about err - just checking b
 	if string(b) != "pong" {
 		t.Errorf("res.Body = %q; want pong", b)
 	}
@@ -297,7 +297,7 @@ func TestRFC_Register(t *testing.T) {
 			"orders": %q
 		}`, email, s.url("/accounts/1/orders"))
 
-		b, _ := ioutil.ReadAll(r.Body) // check err later in decodeJWSxxx
+		b, _ := io.ReadAll(r.Body) // check err later in decodeJWSxxx
 		head, err := decodeJWSHead(bytes.NewReader(b))
 		if err != nil {
 			t.Errorf("decodeJWSHead: %v", err)
@@ -528,7 +528,7 @@ func TestRFC_UpdateReg(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte(`{"status": "valid"}`))
 
-		b, _ := ioutil.ReadAll(r.Body) // check err later in decodeJWSxxx
+		b, _ := io.ReadAll(r.Body) // check err later in decodeJWSxxx
 		head, err := decodeJWSHead(bytes.NewReader(b))
 		if err != nil {
 			t.Errorf("decodeJWSHead: %v", err)
@@ -668,7 +668,7 @@ func TestRFC_DeactivateReg(t *testing.T) {
 			Orders:    s.url("/accounts/1/orders"),
 		})
 
-		b, _ := ioutil.ReadAll(r.Body) // check err later in decodeJWSxxx
+		b, _ := io.ReadAll(r.Body) // check err later in decodeJWSxxx
 		head, err := decodeJWSHead(bytes.NewReader(b))
 		if err != nil {
 			t.Errorf("decodeJWSHead: %v", err)
@@ -700,7 +700,7 @@ func TestRFC_DeactivateReg(t *testing.T) {
 			})
 		}
 		var req account
-		b, _ := ioutil.ReadAll(r.Body) // check err later in decodeJWSxxx
+		b, _ := io.ReadAll(r.Body) // check err later in decodeJWSxxx
 		head, err := decodeJWSHead(bytes.NewReader(b))
 		if err != nil {
 			t.Errorf("decodeJWSHead: %v", err)
