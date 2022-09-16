@@ -7,7 +7,6 @@ package openpgp
 import (
 	"bytes"
 	"io"
-	"io/ioutil"
 	"testing"
 	"time"
 
@@ -245,7 +244,7 @@ func TestEncryption(t *testing.T) {
 			}
 		}
 
-		plaintext, err := ioutil.ReadAll(md.UnverifiedBody)
+		plaintext, err := io.ReadAll(md.UnverifiedBody)
 		if err != nil {
 			t.Errorf("#%d: error reading encrypted contents: %s", i, err)
 			continue
@@ -342,7 +341,7 @@ func TestSigning(t *testing.T) {
 			t.Errorf("#%d: failed to find the signing Entity", i)
 		}
 
-		plaintext, err := ioutil.ReadAll(md.UnverifiedBody)
+		plaintext, err := io.ReadAll(md.UnverifiedBody)
 		if err != nil {
 			t.Errorf("#%d: error reading contents: %v", i, err)
 			continue

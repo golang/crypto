@@ -9,7 +9,6 @@ import (
 	_ "crypto/sha512"
 	"encoding/hex"
 	"io"
-	"io/ioutil"
 	"strings"
 	"testing"
 
@@ -128,7 +127,7 @@ func checkSignedMessage(t *testing.T, signedHex, expected string) {
 		t.Errorf("bad MessageDetails: %#v", md)
 	}
 
-	contents, err := ioutil.ReadAll(md.UnverifiedBody)
+	contents, err := io.ReadAll(md.UnverifiedBody)
 	if err != nil {
 		t.Errorf("error reading UnverifiedBody: %s", err)
 	}
@@ -221,7 +220,7 @@ func TestSignedEncryptedMessage(t *testing.T) {
 			t.Errorf("#%d: bad MessageDetails: %#v", i, md)
 		}
 
-		contents, err := ioutil.ReadAll(md.UnverifiedBody)
+		contents, err := io.ReadAll(md.UnverifiedBody)
 		if err != nil {
 			t.Errorf("#%d: error reading UnverifiedBody: %s", i, err)
 		}
@@ -245,7 +244,7 @@ func TestUnspecifiedRecipient(t *testing.T) {
 		return
 	}
 
-	contents, err := ioutil.ReadAll(md.UnverifiedBody)
+	contents, err := io.ReadAll(md.UnverifiedBody)
 	if err != nil {
 		t.Errorf("error reading UnverifiedBody: %s", err)
 	}
@@ -280,7 +279,7 @@ func TestSymmetricallyEncrypted(t *testing.T) {
 		return
 	}
 
-	contents, err := ioutil.ReadAll(md.UnverifiedBody)
+	contents, err := io.ReadAll(md.UnverifiedBody)
 	if err != nil {
 		t.Errorf("ReadAll: %s", err)
 	}
@@ -454,7 +453,7 @@ func TestSignatureV3Message(t *testing.T) {
 		return
 	}
 
-	_, err = ioutil.ReadAll(md.UnverifiedBody)
+	_, err = io.ReadAll(md.UnverifiedBody)
 	if err != nil {
 		t.Error(err)
 		return

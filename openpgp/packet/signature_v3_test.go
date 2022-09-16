@@ -9,7 +9,6 @@ import (
 	"crypto"
 	"encoding/hex"
 	"io"
-	"io/ioutil"
 	"testing"
 
 	"golang.org/x/crypto/openpgp/armor"
@@ -45,7 +44,7 @@ func TestSignatureV3Reserialize(t *testing.T) {
 		t.Errorf("error reserializing: %s", err)
 		return
 	}
-	expected, err := ioutil.ReadAll(v3KeyReader(t))
+	expected, err := io.ReadAll(v3KeyReader(t))
 	if err != nil {
 		t.Error(err)
 		return

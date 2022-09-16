@@ -11,7 +11,6 @@ import (
 	crypto_rand "crypto/rand"
 	"errors"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"testing"
@@ -531,7 +530,7 @@ func sendSignal(signal string, ch Channel, t *testing.T) {
 
 func discardHandler(ch Channel, t *testing.T) {
 	defer ch.Close()
-	io.Copy(ioutil.Discard, ch)
+	io.Copy(io.Discard, ch)
 }
 
 func echoHandler(ch Channel, in <-chan *Request, t *testing.T) {
@@ -606,7 +605,7 @@ func TestClientWriteEOF(t *testing.T) {
 	}
 	stdin.Close()
 
-	res, err := ioutil.ReadAll(stdout)
+	res, err := io.ReadAll(stdout)
 	if err != nil {
 		t.Fatalf("Read failed: %v", err)
 	}
@@ -618,7 +617,7 @@ func TestClientWriteEOF(t *testing.T) {
 
 func simpleEchoHandler(ch Channel, in <-chan *Request, t *testing.T) {
 	defer ch.Close()
-	data, err := ioutil.ReadAll(ch)
+	data, err := io.ReadAll(ch)
 	if err != nil {
 		t.Errorf("handler read error: %v", err)
 	}

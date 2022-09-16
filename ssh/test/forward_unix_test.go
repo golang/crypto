@@ -11,7 +11,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"math/rand"
 	"net"
 	"testing"
@@ -58,7 +57,7 @@ func testPortForward(t *testing.T, n, listenAddr string) {
 
 	readChan := make(chan []byte)
 	go func() {
-		data, _ := ioutil.ReadAll(netConn)
+		data, _ := io.ReadAll(netConn)
 		readChan <- data
 	}()
 

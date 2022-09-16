@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"golang.org/x/crypto/openpgp/errors"
 	"io"
-	"io/ioutil"
 	"testing"
 )
 
@@ -100,7 +99,7 @@ var partialLengthReaderTests = []struct {
 func TestPartialLengthReader(t *testing.T) {
 	for i, test := range partialLengthReaderTests {
 		r := &partialLengthReader{readerFromHex(test.hexInput), 0, true}
-		out, err := ioutil.ReadAll(r)
+		out, err := io.ReadAll(r)
 		if test.err != nil {
 			if err != test.err {
 				t.Errorf("%d: expected different error got:%s want:%s", i, err, test.err)
@@ -172,7 +171,7 @@ func TestReadHeader(t *testing.T) {
 			continue
 		}
 
-		body, err := ioutil.ReadAll(contents)
+		body, err := io.ReadAll(contents)
 		if err != nil {
 			if !test.unexpectedEOF || err != io.ErrUnexpectedEOF {
 				t.Errorf("%d: unexpected error from contents: %s", i, err)

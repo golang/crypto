@@ -12,7 +12,6 @@ package test
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"strings"
 	"testing"
@@ -55,7 +54,7 @@ func testDial(t *testing.T, n, listenAddr string, x dialTester) {
 	}
 	x.TestClientConn(t, conn)
 	defer conn.Close()
-	b, err := ioutil.ReadAll(conn)
+	b, err := io.ReadAll(conn)
 	if err != nil {
 		t.Fatalf("ReadAll: %v", err)
 	}

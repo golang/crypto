@@ -8,7 +8,6 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
@@ -24,7 +23,7 @@ func ExampleNewServerConn() {
 	// Public key authentication is done by comparing
 	// the public key of a received connection
 	// with the entries in the authorized_keys file.
-	authorizedKeysBytes, err := ioutil.ReadFile("authorized_keys")
+	authorizedKeysBytes, err := os.ReadFile("authorized_keys")
 	if err != nil {
 		log.Fatalf("Failed to load authorized_keys, err: %v", err)
 	}
@@ -67,7 +66,7 @@ func ExampleNewServerConn() {
 		},
 	}
 
-	privateBytes, err := ioutil.ReadFile("id_rsa")
+	privateBytes, err := os.ReadFile("id_rsa")
 	if err != nil {
 		log.Fatal("Failed to load private key: ", err)
 	}
@@ -225,7 +224,7 @@ func ExamplePublicKeys() {
 	//
 	// If you have an encrypted private key, the crypto/x509 package
 	// can be used to decrypt it.
-	key, err := ioutil.ReadFile("/home/user/.ssh/id_rsa")
+	key, err := os.ReadFile("/home/user/.ssh/id_rsa")
 	if err != nil {
 		log.Fatalf("unable to read private key: %v", err)
 	}

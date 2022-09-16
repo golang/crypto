@@ -12,7 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -310,7 +310,7 @@ func isRetriable(code int) bool {
 func responseError(resp *http.Response) error {
 	// don't care if ReadAll returns an error:
 	// json.Unmarshal will fail in that case anyway
-	b, _ := ioutil.ReadAll(resp.Body)
+	b, _ := io.ReadAll(resp.Body)
 	e := &wireError{Status: resp.StatusCode}
 	if err := json.Unmarshal(b, e); err != nil {
 		// this is not a regular error response:

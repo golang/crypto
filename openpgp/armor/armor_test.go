@@ -7,7 +7,7 @@ package armor
 import (
 	"bytes"
 	"hash/adler32"
-	"io/ioutil"
+	"io"
 	"testing"
 )
 
@@ -29,7 +29,7 @@ func TestDecodeEncode(t *testing.T) {
 		t.Errorf("result.Header: got:%#v", result.Header)
 	}
 
-	contents, err := ioutil.ReadAll(result.Body)
+	contents, err := io.ReadAll(result.Body)
 	if err != nil {
 		t.Error(err)
 	}

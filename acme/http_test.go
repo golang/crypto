@@ -7,7 +7,7 @@ package acme
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -54,7 +54,7 @@ func TestErrorResponse(t *testing.T) {
 	res := &http.Response{
 		StatusCode: 400,
 		Status:     "400 Bad Request",
-		Body:       ioutil.NopCloser(strings.NewReader(s)),
+		Body:       io.NopCloser(strings.NewReader(s)),
 		Header:     http.Header{"X-Foo": {"bar"}},
 	}
 	err := responseError(res)
