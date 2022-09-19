@@ -271,8 +271,24 @@ func (b *Builder) add(bytes ...byte) {
 }
 
 func (b *Builder) alloc(n int) {
+	if b.err != nil {
+		return
+	}
+	if len(b.result)+n < n {
+		b.err = errors.New("cryptobyte: length overflow")
+	}
+	if b.fixedSize && len(b.result)+n > n {
+		b.err = errors.New("cryptobyte: Builder is exceeding its fixed-size buffer")
+		return
+	}
+
+	if cap(b.result) >= len(b.result)+n {
+		b.result = b.result[:len(b.result)+n]
+		return
+	}
+
 	for i := 0; i < n; i++ {
-		b.add(0)
+		b.result = append(b.result, 0)
 	}
 }
 
