@@ -382,7 +382,7 @@ func TestGetCertificate(t *testing.T) {
 			},
 		},
 		{
-			name:   "expiredCache",
+			name:   "almostExpiredCache",
 			hello:  clientHelloInfo("example.org", algECDSA),
 			domain: "example.org",
 			prepare: func(t *testing.T, man *Manager, s *acmetest.CAServer) {
