@@ -11,6 +11,38 @@ import (
 	"testing"
 )
 
+func BenchmarkLengthPrefixed(b *testing.B) {
+	buf := make([]byte, 0, 512)
+
+	for i := 0; i < b.N; i++ {
+		a := NewBuilder(buf)
+		a.AddUint8LengthPrefixed(func(b *Builder) {
+			b.AddBytes([]byte("123456"))
+			b.AddUint8LengthPrefixed(func(b *Builder) {
+				b.AddBytes([]byte("123456"))
+			})
+			b.AddUint8LengthPrefixed(func(b *Builder) {
+				b.AddBytes([]byte("123456"))
+			})
+			b.AddUint8LengthPrefixed(func(b *Builder) {
+				b.AddBytes([]byte("123456"))
+			})
+		})
+		a.AddUint8LengthPrefixed(func(b *Builder) {
+			b.AddBytes([]byte("123456"))
+			b.AddUint8LengthPrefixed(func(b *Builder) {
+				b.AddBytes([]byte("123456"))
+			})
+		})
+		a.AddUint8LengthPrefixed(func(b *Builder) {
+			b.AddBytes([]byte("123456"))
+			b.AddUint8LengthPrefixed(func(b *Builder) {
+				b.AddBytes([]byte("123456"))
+			})
+		})
+	}
+}
+
 func builderBytesEq(b *Builder, want ...byte) error {
 	got := b.BytesOrPanic()
 	if !bytes.Equal(got, want) {
