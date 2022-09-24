@@ -8,7 +8,6 @@ import (
 	"context"
 	"crypto"
 	"crypto/ecdsa"
-	"runtime"
 	"testing"
 	"time"
 
@@ -43,15 +42,6 @@ func TestRenewalNext(t *testing.T) {
 }
 
 func TestRenewFromCache(t *testing.T) {
-	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		// This test was observed to fail frequently in Dial with "connectex: No
-		// connection could be made because the target machine actively refused it."
-		//
-		// Failures started around CL 381715, so it looks to me (bcmills) like an
-		// undiagnosed bug in (or exposed by) acmetest.CAServer.
-		t.Skipf("skipping test on windows/arm64: see https://go.dev/issue/51080")
-	}
-
 	man := testManager(t)
 	man.RenewBefore = 24 * time.Hour
 
@@ -137,15 +127,6 @@ func TestRenewFromCache(t *testing.T) {
 }
 
 func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
-	if runtime.GOOS == "windows" && runtime.GOARCH == "arm64" {
-		// This test was observed to fail frequently in Dial with "connectex: No
-		// connection could be made because the target machine actively refused it."
-		//
-		// Failures started around CL 381715, so it looks to me (bcmills) like an
-		// undiagnosed bug in (or exposed by) acmetest.CAServer.
-		t.Skipf("skipping test on windows/arm64: see https://go.dev/issue/51080")
-	}
-
 	ca := acmetest.NewCAServer(t).Start()
 	man := testManager(t)
 	man.RenewBefore = 24 * time.Hour
