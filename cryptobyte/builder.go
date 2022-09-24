@@ -159,11 +159,7 @@ func (b *Builder) AddUint32LengthPrefixed(f BuilderContinuation) {
 
 func (b *Builder) callContinuation(f BuilderContinuation, arg *Builder) {
 	if !b.inContinuation {
-		b.inContinuation = true
-
 		defer func() {
-			b.inContinuation = false
-
 			r := recover()
 			if r == nil {
 				return
@@ -203,7 +199,7 @@ func (b *Builder) addLengthPrefixed(lenLen int, isASN1 bool, f BuilderContinuati
 	child.offset = offset
 	child.pendingLenLen = lenLen
 	child.pendingIsASN1 = isASN1
-	child.inContinuation = b.inContinuation
+	child.inContinuation = true
 
 	b.child = child
 
