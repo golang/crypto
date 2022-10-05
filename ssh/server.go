@@ -119,6 +119,49 @@ type ServerConfig struct {
 	GSSAPIWithMICConfig *GSSAPIWithMICConfig
 }
 
+// PartialSuccess might be returned from any of the authentication methods
+// to indicate that the authentication is in progress, but more steps must be
+// done. It should contain the authentication methods to offer in further
+// authentication.
+type PartialSuccess struct {
+	// PasswordCallback, if non-nil, is called when a user
+	// attempts to authenticate using a password.
+	PasswordCallback func(conn ConnMetadata, password []byte) (*Permissions, error)
+
+	// PublicKeyCallback, if non-nil, is called when a client
+	// offers a public key for authentication. It must return a nil error
+	// if the given public key can be used to authenticate the
+	// given user. For example, see CertChecker.Authenticate. A
+	// call to this function does not guarantee that the key
+	// offered is in fact used to authenticate. To record any data
+	// depending on the public key, store it inside a
+	// Permissions.Extensions entry.
+	PublicKeyCallback func(conn ConnMetadata, key PublicKey) (*Permissions, error)
+
+	// KeyboardInteractiveCallback, if non-nil, is called when
+	// keyboard-interactive authentication is selected (RFC
+	// 4256). The client object's Challenge function should be
+	// used to query the user. The callback may offer multiple
+	// Challenge rounds. To avoid information leaks, the client
+	// should be presented a challenge even if the user is
+	// unknown.
+	KeyboardInteractiveCallback func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error)
+
+	// GSSAPIWithMICConfig includes gssapi server and callback, which if both non-nil, is used
+	// when gssapi-with-mic authentication is selected (RFC 4462 section 3).
+	GSSAPIWithMICConfig *GSSAPIWithMICConfig
+}
+
+func (p *PartialSuccess) Error() string {
+	return "ssh: partial success"
+}
+
+func isPartialSuccess(err error) bool {
+	_, ok := err.(*PartialSuccess)
+
+	return ok
+}
+
 // AddHostKey adds a private key as a host key. If an existing host
 // key exists with the same public key format, it is replaced. Each server
 // config must have at least one host key.
@@ -405,6 +448,18 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 	var authErrs []error
 	var displayedBanner bool
 
+	noClientAuthAllowed := config.NoClientAuth
+
+	// Wrap authentication methods in a PartialSuccess struct to easely put
+	// a newer set of authentication methods later, when a PartialSuccess is
+	// returned.
+	authConfig := PartialSuccess{
+		PasswordCallback:            config.PasswordCallback,
+		PublicKeyCallback:           config.PublicKeyCallback,
+		KeyboardInteractiveCallback: config.KeyboardInteractiveCallback,
+		GSSAPIWithMICConfig:         config.GSSAPIWithMICConfig,
+	}
+
 userAuthLoop:
 	for {
 		if authFailures >= config.MaxAuthTries && config.MaxAuthTries > 0 {
@@ -454,7 +509,7 @@ userAuthLoop:
 
 		switch userAuthReq.Method {
 		case "none":
-			if config.NoClientAuth {
+			if noClientAuthAllowed {
 				authErr = nil
 			}
 
@@ -463,7 +518,7 @@ userAuthLoop:
 				authFailures--
 			}
 		case "password":
-			if config.PasswordCallback == nil {
+			if authConfig.PasswordCallback == nil {
 				authErr = errors.New("ssh: password auth not configured")
 				break
 			}
@@ -477,17 +532,17 @@ userAuthLoop:
 				return nil, parseError(msgUserAuthRequest)
 			}
 
-			perms, authErr = config.PasswordCallback(s, password)
+			perms, authErr = authConfig.PasswordCallback(s, password)
 		case "keyboard-interactive":
-			if config.KeyboardInteractiveCallback == nil {
+			if authConfig.KeyboardInteractiveCallback == nil {
 				authErr = errors.New("ssh: keyboard-interactive auth not configured")
 				break
 			}
 
 			prompter := &sshClientKeyboardInteractive{s}
-			perms, authErr = config.KeyboardInteractiveCallback(s, prompter.Challenge)
+			perms, authErr = authConfig.KeyboardInteractiveCallback(s, prompter.Challenge)
 		case "publickey":
-			if config.PublicKeyCallback == nil {
+			if authConfig.PublicKeyCallback == nil {
 				authErr = errors.New("ssh: publickey auth not configured")
 				break
 			}
@@ -521,11 +576,14 @@ userAuthLoop:
 			if !ok {
 				candidate.user = s.user
 				candidate.pubKeyData = pubKeyData
-				candidate.perms, candidate.result = config.PublicKeyCallback(s, pubKey)
-				if candidate.result == nil && candidate.perms != nil && candidate.perms.CriticalOptions != nil && candidate.perms.CriticalOptions[sourceAddressCriticalOption] != "" {
-					candidate.result = checkSourceAddress(
+				candidate.perms, candidate.result = authConfig.PublicKeyCallback(s, pubKey)
+				// If the public key is accepted or resulted in partial success, check the source permissions.
+				if (candidate.result == nil || isPartialSuccess(candidate.result)) && candidate.perms != nil && candidate.perms.CriticalOptions != nil && candidate.perms.CriticalOptions[sourceAddressCriticalOption] != "" {
+					if err := checkSourceAddress(
 						s.RemoteAddr(),
-						candidate.perms.CriticalOptions[sourceAddressCriticalOption])
+						candidate.perms.CriticalOptions[sourceAddressCriticalOption]); err != nil {
+						candidate.result = err
+					}
 				}
 				cache.add(candidate)
 			}
@@ -538,7 +596,7 @@ userAuthLoop:
 					return nil, parseError(msgUserAuthRequest)
 				}
 
-				if candidate.result == nil {
+				if candidate.result == nil || isPartialSuccess(candidate.result) {
 					okMsg := userAuthPubKeyOkMsg{
 						Algo:   algo,
 						PubKey: pubKeyData,
@@ -579,11 +637,11 @@ userAuthLoop:
 				perms = candidate.perms
 			}
 		case "gssapi-with-mic":
-			if config.GSSAPIWithMICConfig == nil {
+			if authConfig.GSSAPIWithMICConfig == nil {
 				authErr = errors.New("ssh: gssapi-with-mic auth not configured")
 				break
 			}
-			gssapiConfig := config.GSSAPIWithMICConfig
+			gssapiConfig := authConfig.GSSAPIWithMICConfig
 			userAuthRequestGSSAPI, err := parseGSSAPIPayload(userAuthReq.Payload)
 			if err != nil {
 				return nil, parseError(msgUserAuthRequest)
@@ -639,44 +697,66 @@ userAuthLoop:
 			break userAuthLoop
 		}
 
-		authFailures++
-		if config.MaxAuthTries > 0 && authFailures >= config.MaxAuthTries {
-			// If we have hit the max attempts, don't bother sending the
-			// final SSH_MSG_USERAUTH_FAILURE message, since there are
-			// no more authentication methods which can be attempted,
-			// and this message may cause the client to re-attempt
-			// authentication while we send the disconnect message.
-			// Continue, and trigger the disconnect at the start of
-			// the loop.
-			//
-			// The SSH specification is somewhat confusing about this,
-			// RFC 4252 Section 5.1 requires each authentication failure
-			// be responded to with a respective SSH_MSG_USERAUTH_FAILURE
-			// message, but Section 4 says the server should disconnect
-			// after some number of attempts, but it isn't explicit which
-			// message should take precedence (i.e. should there be a failure
-			// message than a disconnect message, or if we are going to
-			// disconnect, should we only send that message.)
-			//
-			// Either way, OpenSSH disconnects immediately after the last
-			// failed authnetication attempt, and given they are typically
-			// considered the golden implementation it seems reasonable
-			// to match that behavior.
-			continue
+		var failureMsg userAuthFailureMsg
+
+		if partialSuccess, ok := authErr.(*PartialSuccess); ok {
+			// In case a partial success is returned, the server may send
+			// a new set of authentication methods.
+			authConfig = *partialSuccess
+
+			// Do not allow none authentication in further rounds.
+			noClientAuthAllowed = false
+
+			// Reset number of failures
+			authFailures = 0
+
+			// Reset pubkey cache, as the new PublicKeyCallback might
+			// accept an other set of public keys.
+			cache = pubKeyCache{}
+
+			// Send back a partial success message to the user.
+			failureMsg.PartialSuccess = true
+		} else {
+			// Authentication failed.
+			authFailures++
+
+			if config.MaxAuthTries > 0 && authFailures >= config.MaxAuthTries {
+				// If we have hit the max attempts, don't bother sending the
+				// final SSH_MSG_USERAUTH_FAILURE message, since there are
+				// no more authentication methods which can be attempted,
+				// and this message may cause the client to re-attempt
+				// authentication while we send the disconnect message.
+				// Continue, and trigger the disconnect at the start of
+				// the loop.
+				//
+				// The SSH specification is somewhat confusing about this,
+				// RFC 4252 Section 5.1 requires each authentication failure
+				// be responded to with a respective SSH_MSG_USERAUTH_FAILURE
+				// message, but Section 4 says the server should disconnect
+				// after some number of attempts, but it isn't explicit which
+				// message should take precedence (i.e. should there be a failure
+				// message than a disconnect message, or if we are going to
+				// disconnect, should we only send that message.)
+				//
+				// Either way, OpenSSH disconnects immediately after the last
+				// failed authnetication attempt, and given they are typically
+				// considered the golden implementation it seems reasonable
+				// to match that behavior.
+				continue
+			}
 		}
 
-		var failureMsg userAuthFailureMsg
-		if config.PasswordCallback != nil {
+		if authConfig.PasswordCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "password")
 		}
-		if config.PublicKeyCallback != nil {
+		if authConfig.PublicKeyCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "publickey")
 		}
-		if config.KeyboardInteractiveCallback != nil {
+		if authConfig.KeyboardInteractiveCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "keyboard-interactive")
 		}
-		if config.GSSAPIWithMICConfig != nil && config.GSSAPIWithMICConfig.Server != nil &&
-			config.GSSAPIWithMICConfig.AllowLogin != nil {
+		if authConfig.GSSAPIWithMICConfig != nil && authConfig.GSSAPIWithMICConfig.Server != nil &&
+			authConfig.GSSAPIWithMICConfig.AllowLogin != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "gssapi-with-mic")
 		}
 
