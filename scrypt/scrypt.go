@@ -210,3 +210,16 @@ func Key(password, salt []byte, N, r, p, keyLen int) ([]byte, error) {
 
 	return pbkdf2.Key(password, b, 1, keyLen, sha256.New), nil
 }
+
+// CompareHashAndPassword compares a scrypt hashed password with its possible
+// plaintext equivalent. Returns nil on success, or an error on failure.
+func CompareHashAndPassword(hashedPassword, password, salt []byte, N, r, p, keyLen int) error{
+	pass, err := scrypt.Key(password, salt, N, r, p, keyLen)
+	if err != nil {
+		return err
+	}
+	if subtle.ConstantTimeCompare(hashedPassword, pass) == 1 {
+		return nil
+	}
+	return errors.New("crypto/scrypt: hashedPassword is not the hash of the given password")
+}
