@@ -200,7 +200,7 @@ func TestRFC_postKID(t *testing.T) {
 	}
 }
 
-// acmeServer simulates a subset of RFC8555 compliant CA.
+// acmeServer simulates a subset of RFC 8555 compliant CA.
 //
 // TODO: We also have x/crypto/acme/autocert/acmetest and startACMEServerStub in autocert_test.go.
 // It feels like this acmeServer is a sweet spot between usefulness and added complexity.

@@ -156,7 +156,7 @@ func (c *Client) get(ctx context.Context, url string, ok resOkay) (*http.Respons
 	}
 }
 
-// postAsGet is POST-as-GET, a replacement for GET in RFC8555
+// postAsGet is POST-as-GET, a replacement for GET in RFC 8555
 // as described in https://tools.ietf.org/html/rfc8555#section-6.3.
 // It makes a POST request in KID form with zero JWS payload.
 // See nopayload doc comments in jws.go.

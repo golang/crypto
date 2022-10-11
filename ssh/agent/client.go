@@ -93,7 +93,7 @@ type ExtendedAgent interface {
 type ConstraintExtension struct {
 	// ExtensionName consist of a UTF-8 string suffixed by the
 	// implementation domain following the naming scheme defined
-	// in Section 4.2 of [RFC4251], e.g.  "foo@example.com".
+	// in Section 4.2 of RFC 4251, e.g.  "foo@example.com".
 	ExtensionName string
 	// ExtensionDetails contains the actual content of the extended
 	// constraint.
