@@ -343,11 +343,11 @@ func (c *Client) Dial(n, addr string) (net.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
-		port, err := strconv.ParseUint(portString, 10, 16)
+		port, err := net.LookupPort(portString)
 		if err != nil {
 			return nil, err
 		}
-		ch, err = c.dial(net.IPv4zero.String(), 0, host, int(port))
+		ch, err = c.dial(net.IPv4zero.String(), 0, host, port)
 		if err != nil {
 			return nil, err
 		}
