@@ -8,11 +8,13 @@ package bcrypt // import "golang.org/x/crypto/bcrypt"
 
 // The code is a port of Provos and Mazières's C implementation.
 import (
+	"context"
 	"crypto/rand"
 	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io"
+	"runtime"
 	"strconv"
 
 	"golang.org/x/crypto/blowfish"
@@ -22,6 +24,10 @@ const (
 	MinCost     int = 4  // the minimum allowable cost as passed in to GenerateFromPassword
 	MaxCost     int = 31 // the maximum allowable cost as passed in to GenerateFromPassword
 	DefaultCost int = 10 // the cost that will actually be set if a cost below MinCost is passed into GenerateFromPassword
+)
+
+const (
+	cooperativeRounds uint64 = 1 << 6 // the number of rounds after which cooperative scheduling is invoked
 )
 
 // The error returned from CompareHashAndPassword when a password and hash do
@@ -85,9 +91,21 @@ type hashed struct {
 // GenerateFromPassword returns the bcrypt hash of the password at the given
 // cost. If the cost given is less than MinCost, the cost will be set to
 // DefaultCost, instead. Use CompareHashAndPassword, as defined in this package,
-// to compare the returned hashed password with its cleartext version.
+// to compare the returned hashed password with its cleartext version. This
+// function is not cooperative and can stall other goroutines while it is executing.
+// Use GenerateFromPasswordWithContext for the cooperative version.
 func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
-	p, err := newFromPassword(password, cost)
+	return GenerateFromPasswordWithContext(nil, password, cost)
+}
+
+// GenerateFromPassword returns the bcrypt hash of the password at the given
+// cost. If the cost given is less than MinCost, the cost will be set to
+// DefaultCost, instead. Use CompareHashAndPasswordWithContext, as defined in this package,
+// to compare the returned hashed password with its cleartext version.
+// Passing in a context lets the hashing algorithm cooperate with other goroutines,
+// and can be used to cancel a long-running operation.
+func GenerateFromPasswordWithContext(ctx context.Context, password []byte, cost int) ([]byte, error) {
+	p, err := newFromPassword(ctx, password, cost)
 	if err != nil {
 		return nil, err
 	}
@@ -95,14 +113,24 @@ func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
 }
 
 // CompareHashAndPassword compares a bcrypt hashed password with its possible
-// plaintext equivalent. Returns nil on success, or an error on failure.
+// plaintext equivalent. Returns nil on success, or an error on failure. This
+// function is not cooperative and can stall other goroutines while it is executing.
+// Use CompareHashAndPasswordWithContext for the cooperative version.
 func CompareHashAndPassword(hashedPassword, password []byte) error {
+	return CompareHashAndPasswordWithContext(nil, hashedPassword, password)
+}
+
+// CompareHashAndPasswordWithContext compares a bcrypt hashed password with its possible
+// plaintext equivalent. Returns nil on success, or an error on failure. Passing in a context
+// lets the hashing algorithm cooperate with other goroutines, and can be used to cancel a
+// long-running operation.
+func CompareHashAndPasswordWithContext(ctx context.Context, hashedPassword, password []byte) error {
 	p, err := newFromHash(hashedPassword)
 	if err != nil {
 		return err
 	}
 
-	otherHash, err := bcrypt(password, p.cost, p.salt)
+	otherHash, err := bcrypt(ctx, password, p.cost, p.salt)
 	if err != nil {
 		return err
 	}
@@ -127,7 +155,7 @@ func Cost(hashedPassword []byte) (int, error) {
 	return p.cost, nil
 }
 
-func newFromPassword(password []byte, cost int) (*hashed, error) {
+func newFromPassword(ctx context.Context, password []byte, cost int) (*hashed, error) {
 	if cost < MinCost {
 		cost = DefaultCost
 	}
@@ -148,7 +176,7 @@ func newFromPassword(password []byte, cost int) (*hashed, error) {
 	}
 
 	p.salt = base64Encode(unencodedSalt)
-	hash, err := bcrypt(password, p.cost, p.salt)
+	hash, err := bcrypt(ctx, password, p.cost, p.salt)
 	if err != nil {
 		return nil, err
 	}
@@ -184,11 +212,11 @@ func newFromHash(hashedSecret []byte) (*hashed, error) {
 	return p, nil
 }
 
-func bcrypt(password []byte, cost int, salt []byte) ([]byte, error) {
+func bcrypt(ctx context.Context, password []byte, cost int, salt []byte) ([]byte, error) {
 	cipherData := make([]byte, len(magicCipherData))
 	copy(cipherData, magicCipherData)
 
-	c, err := expensiveBlowfishSetup(password, uint32(cost), salt)
+	c, err := expensiveBlowfishSetup(ctx, password, uint32(cost), salt)
 	if err != nil {
 		return nil, err
 	}
@@ -205,7 +233,7 @@ func bcrypt(password []byte, cost int, salt []byte) ([]byte, error) {
 	return hsh, nil
 }
 
-func expensiveBlowfishSetup(key []byte, cost uint32, salt []byte) (*blowfish.Cipher, error) {
+func expensiveBlowfishSetup(ctx context.Context, key []byte, cost uint32, salt []byte) (*blowfish.Cipher, error) {
 	csalt, err := base64Decode(salt)
 	if err != nil {
 		return nil, err
@@ -226,6 +254,17 @@ func expensiveBlowfishSetup(key []byte, cost uint32, salt []byte) (*blowfish.Cip
 	for i = 0; i < rounds; i++ {
 		blowfish.ExpandKey(ckey, c)
 		blowfish.ExpandKey(csalt, c)
+
+		if ctx != nil && (i+1)%cooperativeRounds == 0 {
+			// i+1 because we want to invoke after cooperativeRounds have processed, not immediately
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+
+			default:
+				runtime.Gosched()
+			}
+		}
 	}
 
 	return c, nil
