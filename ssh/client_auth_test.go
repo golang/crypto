@@ -132,9 +132,7 @@ func TestClientAuthPublicKey(t *testing.T) {
 	if err := tryAuth(t, config); err != nil {
 		t.Fatalf("unable to dial remote side: %s", err)
 	}
-	// Once the server implements the server-sig-algs extension, this will turn
-	// into KeyAlgoRSASHA256.
-	if len(signer.used) != 1 || signer.used[0] != KeyAlgoRSA {
+	if len(signer.used) != 1 || signer.used[0] != KeyAlgoRSASHA256 {
 		t.Errorf("unexpected Sign/SignWithAlgorithm calls: %q", signer.used)
 	}
 }
