@@ -241,3 +241,10 @@ func TestNoSideEffectsFromCompare(t *testing.T) {
 		t.Errorf("got=%q want=%q", got, want)
 	}
 }
+
+func TestPasswordTooLong(t *testing.T) {
+	_, err := GenerateFromPassword(make([]byte, 73), 1)
+	if err != ErrPasswordTooLong {
+		t.Errorf("unexpected error: got %q, want %q", err, ErrPasswordTooLong)
+	}
+}
