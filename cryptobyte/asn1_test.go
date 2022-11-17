@@ -154,6 +154,32 @@ func TestReadASN1IntegerSigned(t *testing.T) {
 		}
 	})
 
+	// Repeat the same cases, reading into a []byte.
+	t.Run("bytes", func(t *testing.T) {
+		for i, test := range testData64 {
+			in := String(test.in)
+			var out []byte
+			ok := in.ReadASN1Integer(&out)
+			if test.out < 0 {
+				if ok {
+					t.Errorf("#%d: in.ReadASN1Integer(%d) = %v, want false", i, test.out, ok)
+				}
+				continue
+			}
+			if !ok {
+				t.Errorf("#%d: in.ReadASN1Integer() = %v, want true", i, ok)
+				continue
+			}
+			n := new(big.Int).SetBytes(out).Int64()
+			if n != test.out {
+				t.Errorf("#%d: in.ReadASN1Integer() = %v, want true; out = %x, want %d", i, ok, out, test.out)
+			}
+			if out[0] == 0 && len(out) > 1 {
+				t.Errorf("#%d: in.ReadASN1Integer() = %v; out = %x, has leading zeroes", i, ok, out)
+			}
+		}
+	})
+
 	// Repeat with the implicit-tagging functions
 	t.Run("WithTag", func(t *testing.T) {
 		for i, test := range testData64 {
