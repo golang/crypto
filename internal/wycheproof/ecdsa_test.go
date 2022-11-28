@@ -6,7 +6,11 @@ package wycheproof
 
 import (
 	"crypto/ecdsa"
+	"math/big"
 	"testing"
+
+	"golang.org/x/crypto/cryptobyte"
+	"golang.org/x/crypto/cryptobyte/asn1"
 )
 
 func TestECDSA(t *testing.T) {
@@ -76,9 +80,25 @@ func TestECDSA(t *testing.T) {
 			h.Reset()
 			h.Write(decodeHex(sig.Msg))
 			hashed := h.Sum(nil)
-			got := ecdsa.VerifyASN1(pub, hashed, decodeHex(sig.Sig))
+			sigBytes := decodeHex(sig.Sig)
+			got := ecdsa.VerifyASN1(pub, hashed, sigBytes)
 			if want := shouldPass(sig.Result, sig.Flags, flagsShouldPass); got != want {
-				t.Errorf("tcid: %d, type: %s, comment: %q, wanted success: %t", sig.TcID, sig.Result, sig.Comment, want)
+				t.Errorf("tcid: %d, type: %s, comment: %q, VerifyASN1 wanted success: %t", sig.TcID, sig.Result, sig.Comment, want)
+			}
+
+			var r, s big.Int
+			var inner cryptobyte.String
+			input := cryptobyte.String(sigBytes)
+			if !input.ReadASN1(&inner, asn1.SEQUENCE) ||
+				!input.Empty() ||
+				!inner.ReadASN1Integer(&r) ||
+				!inner.ReadASN1Integer(&s) ||
+				!inner.Empty() {
+				continue
+			}
+			got = ecdsa.Verify(pub, hashed, &r, &s)
+			if want := shouldPass(sig.Result, sig.Flags, flagsShouldPass); got != want {
+				t.Errorf("tcid: %d, type: %s, comment: %q, Verify wanted success: %t", sig.TcID, sig.Result, sig.Comment, want)
 			}
 		}
 	}
