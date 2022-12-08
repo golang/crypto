@@ -427,18 +427,7 @@ func TestGetCertificate(t *testing.T) {
 
 			man.Client = &acme.Client{DirectoryURL: s.URL()}
 
-			var tlscert *tls.Certificate
-			var err error
-			done := make(chan struct{})
-			go func() {
-				tlscert, err = man.GetCertificate(tt.hello)
-				close(done)
-			}()
-			select {
-			case <-time.After(time.Minute):
-				t.Fatal("man.GetCertificate took too long to return")
-			case <-done:
-			}
+			tlscert, err := man.GetCertificate(tt.hello)
 			if tt.expectError != "" {
 				if err == nil {
 					t.Fatal("expected error, got certificate")
@@ -515,15 +504,12 @@ func TestGetCertificate_failedAttempt(t *testing.T) {
 	if _, err := man.GetCertificate(hello); err == nil {
 		t.Error("GetCertificate: err is nil")
 	}
-	select {
-	case <-time.After(5 * time.Second):
-		t.Errorf("took too long to remove the %q state", exampleCertKey)
-	case <-done:
-		man.stateMu.Lock()
-		defer man.stateMu.Unlock()
-		if v, exist := man.state[exampleCertKey]; exist {
-			t.Errorf("state exists for %v: %+v", exampleCertKey, v)
-		}
+
+	<-done
+	man.stateMu.Lock()
+	defer man.stateMu.Unlock()
+	if v, exist := man.state[exampleCertKey]; exist {
+		t.Errorf("state exists for %v: %+v", exampleCertKey, v)
 	}
 }
 
@@ -542,8 +528,9 @@ func TestRevokeFailedAuthz(t *testing.T) {
 		t.Fatal("expected GetCertificate to fail")
 	}
 
-	start := time.Now()
-	for time.Since(start) < 3*time.Second {
+	logTicker := time.NewTicker(3 * time.Second)
+	defer logTicker.Stop()
+	for {
 		authz, err := m.Client.GetAuthorization(context.Background(), ca.URL()+"/authz/0")
 		if err != nil {
 			t.Fatal(err)
@@ -551,10 +538,14 @@ func TestRevokeFailedAuthz(t *testing.T) {
 		if authz.Status == acme.StatusDeactivated {
 			return
 		}
+
+		select {
+		case <-logTicker.C:
+			t.Logf("still waiting on revocations")
+		default:
+		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	t.Error("revocations took too long")
-
 }
 
 func TestHTTPHandlerDefaultFallback(t *testing.T) {
