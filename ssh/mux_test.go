@@ -182,6 +182,40 @@ func TestMuxChannelOverflow(t *testing.T) {
 	}
 }
 
+func TestMuxChannelReadUnblock(t *testing.T) {
+	reader, writer, mux := channelPair(t)
+	defer reader.Close()
+	defer writer.Close()
+	defer mux.Close()
+
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if _, err := writer.Write(make([]byte, channelWindowSize)); err != nil {
+			t.Errorf("could not fill window: %v", err)
+		}
+		if _, err := writer.Write(make([]byte, 1)); err != nil {
+			t.Errorf("Write: %v", err)
+		}
+		writer.Close()
+	}()
+
+	writer.remoteWin.waitWriterBlocked()
+
+	buf := make([]byte, 32768)
+	for {
+		_, err := reader.Read(buf)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Read: %v", err)
+		}
+	}
+}
+
 func TestMuxChannelCloseWriteUnblock(t *testing.T) {
 	reader, writer, mux := channelPair(t)
 	defer reader.Close()
@@ -751,6 +785,43 @@ func TestMuxMaxPacketSize(t *testing.T) {
 	_, ok := <-b.incomingRequests
 	if ok {
 		t.Errorf("connection still alive after receiving large packet.")
+	}
+}
+
+func TestMuxChannelWindowDeferredUpdates(t *testing.T) {
+	s, c, mux := channelPair(t)
+	cTransport := mux.conn.(*memTransport)
+	defer s.Close()
+	defer c.Close()
+	defer mux.Close()
+
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+
+	data := make([]byte, 1024)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := s.Write(data)
+		if err != nil {
+			t.Errorf("Write: %v", err)
+			return
+		}
+	}()
+	cWritesInit := cTransport.getWriteCount()
+	buf := make([]byte, 1)
+	for i := 0; i < len(data); i++ {
+		n, err := c.Read(buf)
+		if n != len(buf) || err != nil {
+			t.Fatalf("Read: %v, %v", n, err)
+		}
+	}
+	cWrites := cTransport.getWriteCount() - cWritesInit
+	// reading 1 KiB should not cause any window updates to be sent, but allow
+	// for some unexpected writes
+	if cWrites > 30 {
+		t.Fatalf("reading 1 KiB from channel caused %v writes", cWrites)
 	}
 }
 
