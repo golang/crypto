@@ -82,6 +82,18 @@ type hashed struct {
 	minor byte
 }
 
+// GenerateFromPasswordWithSalt returns the bcrypt hash of the password at the given
+// cost. If the cost given is less than MinCost, the cost will be set to
+// DefaultCost, instead. Use CompareHashAndPassword, as defined in this package,
+// to compare the returned hashed password with its cleartext version.
+func GenerateFromPasswordWithSalt(password []byte, cost int) ([]byte, []byte, error) {
+	p, err := newFromPassword(password, cost)
+	if err != nil {
+		return nil, err
+	}
+	return p.Hash(), p.salt, nil
+}
+
 // GenerateFromPassword returns the bcrypt hash of the password at the given
 // cost. If the cost given is less than MinCost, the cost will be set to
 // DefaultCost, instead. Use CompareHashAndPassword, as defined in this package,
