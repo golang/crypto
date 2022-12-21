@@ -6,6 +6,8 @@ package bcrypt
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"testing"
 )
@@ -33,7 +35,7 @@ func TestBcryptingIsCorrect(t *testing.T) {
 	salt := []byte("XajjQvNhvvRt5GSeFk1xFe")
 	expectedHash := []byte("$2a$10$XajjQvNhvvRt5GSeFk1xFeyqRrsxkhBkUiQeg0dt.wU1qD4aFDcga")
 
-	hash, err := bcrypt(pass, 10, salt)
+	hash, err := bcrypt(nil, pass, 10, salt)
 	if err != nil {
 		t.Fatalf("bcrypt blew up: %v", err)
 	}
@@ -56,7 +58,7 @@ func TestBcryptingIsCorrect(t *testing.T) {
 func TestVeryShortPasswords(t *testing.T) {
 	key := []byte("k")
 	salt := []byte("XajjQvNhvvRt5GSeFk1xFe")
-	_, err := bcrypt(key, 10, salt)
+	_, err := bcrypt(nil, key, 10, salt)
 	if err != nil {
 		t.Errorf("One byte key resulted in error: %s", err)
 	}
@@ -67,7 +69,7 @@ func TestTooLongPasswordsWork(t *testing.T) {
 	// One byte over the usual 56 byte limit that blowfish has
 	tooLongPass := []byte("012345678901234567890123456789012345678901234567890123456")
 	tooLongExpected := []byte("$2a$10$XajjQvNhvvRt5GSeFk1xFe5l47dONXg781AmZtd869sO8zfsHuw7C")
-	hash, err := bcrypt(tooLongPass, 10, salt)
+	hash, err := bcrypt(nil, tooLongPass, 10, salt)
 	if err != nil {
 		t.Fatalf("bcrypt blew up on long password: %v", err)
 	}
@@ -156,13 +158,13 @@ func TestCostValidationInHash(t *testing.T) {
 	pass := []byte("mypassword")
 
 	for c := 0; c < MinCost; c++ {
-		p, _ := newFromPassword(pass, c)
+		p, _ := newFromPassword(nil, pass, c)
 		if p.cost != DefaultCost {
 			t.Errorf("newFromPassword should default costs below %d to %d, but was %d", MinCost, DefaultCost, p.cost)
 		}
 	}
 
-	p, _ := newFromPassword(pass, 14)
+	p, _ := newFromPassword(nil, pass, 14)
 	if p.cost != 14 {
 		t.Errorf("newFromPassword should default cost to 14, but was %d", p.cost)
 	}
@@ -172,7 +174,7 @@ func TestCostValidationInHash(t *testing.T) {
 		t.Errorf("newFromHash should maintain the cost at %d, but was %d", p.cost, hp.cost)
 	}
 
-	_, err := newFromPassword(pass, 32)
+	_, err := newFromPassword(nil, pass, 32)
 	if err == nil {
 		t.Fatalf("newFromPassword: should return a cost error")
 	}
@@ -182,7 +184,7 @@ func TestCostValidationInHash(t *testing.T) {
 }
 
 func TestCostReturnsWithLeadingZeroes(t *testing.T) {
-	hp, _ := newFromPassword([]byte("abcdefgh"), 7)
+	hp, _ := newFromPassword(nil, []byte("abcdefgh"), 7)
 	cost := hp.Hash()[4:7]
 	expected := []byte("07$")
 
@@ -239,5 +241,31 @@ func TestNoSideEffectsFromCompare(t *testing.T) {
 	got := bytes.Join([][]byte{password, token}, []byte(""))
 	if !bytes.Equal(got, want) {
 		t.Errorf("got=%q want=%q", got, want)
+	}
+}
+
+func TestCancellationLongDuration(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// using DefaultCost means that cooperative scheduling will be used at least once
+	// as there are many rounds to go through
+	_, err := GenerateFromPasswordWithContext(ctx, []byte("mylongpassword1234"), DefaultCost)
+
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("got=%v want=%v", err, context.Canceled)
+	}
+}
+
+func TestCancellationShortDuration(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	// using MinCost means that cooperative scheduling won't be used
+	// as there are a few rounds to go through
+	_, err := GenerateFromPasswordWithContext(ctx, []byte("mylongpassword1234"), MinCost)
+
+	if err != nil {
+		t.Errorf("got=%v want=%v", err, nil)
 	}
 }
