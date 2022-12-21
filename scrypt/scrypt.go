@@ -193,6 +193,12 @@ func smix(b []byte, r, N int, v, xy []uint32) {
 // CPU parallelism increases; consider setting N to the highest power of 2 you
 // can derive within 100 milliseconds. Remember to get a good random salt.
 func Key(password, salt []byte, N, r, p, keyLen int) ([]byte, error) {
+	return NewKey(password, salt, N, r, p, keyLen, sha256.New) 
+}
+
+// NewKey derives a key from the password, salt, cost parameters and hash.Hash function,
+// returning a byte slice of length keyLen that can be used as cryptographic key.
+func NewKey(password, salt []byte, N, r, p, keyLen int, h func() hash.Hash) ([]byte, error) {
 	if N <= 1 || N&(N-1) != 0 {
 		return nil, errors.New("scrypt: N must be > 1 and a power of 2")
 	}
@@ -202,11 +208,11 @@ func Key(password, salt []byte, N, r, p, keyLen int) ([]byte, error) {
 
 	xy := make([]uint32, 64*r)
 	v := make([]uint32, 32*N*r)
-	b := pbkdf2.Key(password, salt, 1, p*128*r, sha256.New)
+	b := pbkdf2.Key(password, salt, 1, p*128*r, h)
 
 	for i := 0; i < p; i++ {
 		smix(b[i*128*r:], r, N, v, xy)
 	}
 
-	return pbkdf2.Key(password, b, 1, keyLen, sha256.New), nil
+	return pbkdf2.Key(password, b, 1, keyLen, h), nil
 }
