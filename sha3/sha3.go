@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package sha3
+package sha3 // import "golang.org/x/crypto/sha3"
 
 // spongeDirection indicates the direction bytes are flowing through the sponge.
 type spongeDirection int

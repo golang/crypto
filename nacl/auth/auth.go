@@ -21,7 +21,7 @@ unforgeability."
 
 This package is interoperable with NaCl: https://nacl.cr.yp.to/auth.html.
 */
-package auth
+package auth // import "golang.org/x/crypto/nacl/auth"
 
 import (
 	"crypto/hmac"

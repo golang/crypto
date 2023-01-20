@@ -14,7 +14,7 @@
 // Beginning with Go 1.13, the functionality of this package was moved to the
 // standard library as crypto/ed25519. This package only acts as a compatibility
 // wrapper.
-package ed25519
+package ed25519 // import "golang.org/x/crypto/ed25519"
 
 import (
 	"crypto/ed25519"

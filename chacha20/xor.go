@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found src the LICENSE file.
 
-package chacha20
+package chacha20 // import "golang.org/x/crypto/chacha20"
 
 import "runtime"
 

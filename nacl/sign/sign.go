@@ -18,7 +18,7 @@
 // (https://nacl.cr.yp.to/sign.html), which does not support Ed25519 yet. However,
 // it is compatible with the NaCl fork libsodium (https://www.libsodium.org), as well
 // as TweetNaCl (https://tweetnacl.cr.yp.to/).
-package sign
+package sign // import "golang.org/x/crypto/nacl/sign"
 
 import (
 	"io"

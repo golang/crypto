@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package bn256
+package bn256 // import "golang.org/x/crypto/bn256"
 
 func lineFunctionAdd(r, p *twistPoint, q *curvePoint, r2 *gfP2, pool *bnPool) (a, b, c *gfP2, rOut *twistPoint) {
 	// See the mixed addition algorithm from "Faster Computation of the

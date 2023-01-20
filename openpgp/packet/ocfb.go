@@ -4,7 +4,7 @@
 
 // OpenPGP CFB Mode. http://tools.ietf.org/html/rfc4880#section-13.9
 
-package packet
+package packet // import "golang.org/x/crypto/openpgp/packet"
 
 import (
 	"crypto/cipher"

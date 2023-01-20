@@ -5,7 +5,7 @@
 //go:build go1.13
 // +build go1.13
 
-package poly1305
+package poly1305 // import "golang.org/x/crypto/internal/poly1305"
 
 import "math/bits"
 

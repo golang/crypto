@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package chacha20poly1305
+package chacha20poly1305 // import "golang.org/x/crypto/chacha20poly1305"
 
 import (
 	"encoding/binary"

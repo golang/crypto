@@ -5,6 +5,6 @@
 //go:build (!amd64 && !ppc64le && !s390x) || !gc || purego
 // +build !amd64,!ppc64le,!s390x !gc purego
 
-package poly1305
+package poly1305 // import "golang.org/x/crypto/internal/poly1305"
 
 type mac struct{ macGeneric }

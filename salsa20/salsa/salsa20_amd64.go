@@ -5,7 +5,7 @@
 //go:build amd64 && !purego && gc
 // +build amd64,!purego,gc
 
-package salsa
+package salsa // import "golang.org/x/crypto/salsa20/salsa"
 
 //go:noescape
 

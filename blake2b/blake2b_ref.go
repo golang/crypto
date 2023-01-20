@@ -5,7 +5,7 @@
 //go:build !amd64 || purego || !gc
 // +build !amd64 purego !gc
 
-package blake2b
+package blake2b // import "golang.org/x/crypto/blake2b"
 
 func hashBlocks(h *[8]uint64, c *[2]uint64, flag uint64, blocks []byte) {
 	hashBlocksGeneric(h, c, flag, blocks)

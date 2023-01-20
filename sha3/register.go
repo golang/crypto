@@ -5,7 +5,7 @@
 //go:build go1.4
 // +build go1.4
 
-package sha3
+package sha3 // import "golang.org/x/crypto/sha3"
 
 import (
 	"crypto"

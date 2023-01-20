@@ -6,7 +6,7 @@
 // In its own file so that a faster assembly or C version
 // can be substituted easily.
 
-package ripemd160
+package ripemd160 // import "golang.org/x/crypto/ripemd160"
 
 import (
 	"math/bits"

@@ -6,7 +6,7 @@
 // +build !purego
 
 // Package alias implements memory aliasing tests.
-package alias
+package alias // import "golang.org/x/crypto/internal/alias"
 
 import "unsafe"
 

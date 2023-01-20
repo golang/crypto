@@ -6,7 +6,7 @@
 // They are the hexadecimal digits of PI; see:
 // https://www.schneier.com/code/constants.txt.
 
-package blowfish
+package blowfish // import "golang.org/x/crypto/blowfish"
 
 var s0 = [256]uint32{
 	0xd1310ba6, 0x98dfb5ac, 0x2ffd72db, 0xd01adfb7, 0xb8e1afed, 0x6a267e96,

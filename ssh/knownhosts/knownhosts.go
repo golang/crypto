@@ -5,7 +5,7 @@
 // Package knownhosts implements a parser for the OpenSSH known_hosts
 // host key database, and provides utility functions for writing
 // OpenSSH compliant known_hosts files.
-package knownhosts
+package knownhosts // import "golang.org/x/crypto/ssh/knownhosts"
 
 import (
 	"bufio"

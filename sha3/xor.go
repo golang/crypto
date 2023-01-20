@@ -5,7 +5,7 @@
 //go:build (!amd64 && !386 && !ppc64le) || purego
 // +build !amd64,!386,!ppc64le purego
 
-package sha3
+package sha3 // import "golang.org/x/crypto/sha3"
 
 // A storageBuf is an aligned array of maxRate bytes.
 type storageBuf [maxRate]byte

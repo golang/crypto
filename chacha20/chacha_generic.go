@@ -4,7 +4,7 @@
 
 // Package chacha20 implements the ChaCha20 and XChaCha20 encryption algorithms
 // as specified in RFC 8439 and draft-irtf-cfrg-xchacha-01.
-package chacha20
+package chacha20 // import "golang.org/x/crypto/chacha20"
 
 import (
 	"crypto/cipher"

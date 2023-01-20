@@ -7,7 +7,7 @@
 // specification is required in order to understand this code and, where
 // possible, the variable names in the code match up with the spec.
 
-package otr
+package otr // import "golang.org/x/crypto/otr"
 
 import (
 	"bytes"

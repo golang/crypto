@@ -6,7 +6,7 @@
 // commonly found on UNIX systems.
 //
 // Deprecated: this package moved to golang.org/x/term.
-package terminal
+package terminal // import "golang.org/x/crypto/ssh/terminal"
 
 import (
 	"io"

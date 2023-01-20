@@ -5,7 +5,7 @@
 // This file provides the generic implementation of Sum and MAC. Other files
 // might provide optimized assembly implementations of some of this code.
 
-package poly1305
+package poly1305 // import "golang.org/x/crypto/internal/poly1305"
 
 import "encoding/binary"
 

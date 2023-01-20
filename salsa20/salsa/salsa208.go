@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package salsa
+package salsa // import "golang.org/x/crypto/salsa20/salsa"
 
 import "math/bits"
 

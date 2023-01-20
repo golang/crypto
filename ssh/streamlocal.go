@@ -1,4 +1,4 @@
-package ssh
+package ssh // import "golang.org/x/crypto/ssh"
 
 import (
 	"errors"

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package bn256
+package bn256 // import "golang.org/x/crypto/bn256"
 
 // For details of the algorithms used, see "Multiplication and Squaring on
 // Pairing-Friendly Fields, Devegili et al.

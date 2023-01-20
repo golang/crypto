@@ -6,7 +6,7 @@
 // +build amd64 386 ppc64le
 // +build !purego
 
-package sha3
+package sha3 // import "golang.org/x/crypto/sha3"
 
 import "unsafe"
 

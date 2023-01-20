@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package blowfish
+package blowfish // import "golang.org/x/crypto/blowfish"
 
 // getNextWord returns the next big-endian uint32 value from the byte slice
 // at the given position in a circular manner, updating the position.

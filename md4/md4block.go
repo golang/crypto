@@ -6,7 +6,7 @@
 // In its own file so that a faster assembly or C version
 // can be substituted easily.
 
-package md4
+package md4 // import "golang.org/x/crypto/md4"
 
 import "math/bits"
 

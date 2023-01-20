@@ -4,6 +4,6 @@
 
 //go:build !boringcrypto
 
-package wycheproof
+package wycheproof // import "golang.org/x/crypto/internal/wycheproof"
 
 const boringcryptoEnabled = false

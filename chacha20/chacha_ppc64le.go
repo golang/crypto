@@ -5,7 +5,7 @@
 //go:build gc && !purego
 // +build gc,!purego
 
-package chacha20
+package chacha20 // import "golang.org/x/crypto/chacha20"
 
 const bufSize = 256
 

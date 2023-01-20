@@ -6,11 +6,12 @@
 //
 // See https://flak.tedunangst.com/post/bcrypt-pbkdf and
 // https://cvsweb.openbsd.org/cgi-bin/cvsweb/src/lib/libutil/bcrypt_pbkdf.c.
-package bcrypt_pbkdf
+package bcrypt_pbkdf // import "golang.org/x/crypto/ssh/bcrypt_pbkdf"
 
 import (
 	"crypto/sha512"
 	"errors"
+
 	"golang.org/x/crypto/blowfish"
 )
 

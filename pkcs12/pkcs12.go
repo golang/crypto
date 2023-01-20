@@ -10,7 +10,7 @@
 //
 // This package is frozen. If it's missing functionality you need, consider
 // an alternative like software.sslmate.com/src/go-pkcs12.
-package pkcs12
+package pkcs12 // import "golang.org/x/crypto/pkcs12"
 
 import (
 	"crypto/ecdsa"

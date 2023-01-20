@@ -5,7 +5,7 @@
 //go:build gc && !purego
 // +build gc,!purego
 
-package chacha20poly1305
+package chacha20poly1305 // import "golang.org/x/crypto/chacha20poly1305"
 
 import (
 	"encoding/binary"

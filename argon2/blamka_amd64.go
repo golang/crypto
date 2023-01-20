@@ -5,7 +5,7 @@
 //go:build amd64 && gc && !purego
 // +build amd64,gc,!purego
 
-package argon2
+package argon2 // import "golang.org/x/crypto/argon2"
 
 import "golang.org/x/sys/cpu"
 

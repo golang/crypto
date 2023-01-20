@@ -5,7 +5,7 @@
 //go:build gc && !purego
 // +build gc,!purego
 
-package sha3
+package sha3 // import "golang.org/x/crypto/sha3"
 
 // This file contains code for using the 'compute intermediate
 // message digest' (KIMD) and 'compute last message digest' (KLMD)

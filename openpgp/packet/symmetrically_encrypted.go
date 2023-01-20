@@ -2,16 +2,17 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package packet
+package packet // import "golang.org/x/crypto/openpgp/packet"
 
 import (
 	"crypto/cipher"
 	"crypto/sha1"
 	"crypto/subtle"
-	"golang.org/x/crypto/openpgp/errors"
 	"hash"
 	"io"
 	"strconv"
+
+	"golang.org/x/crypto/openpgp/errors"
 )
 
 // SymmetricallyEncrypted represents a symmetrically encrypted byte string. The

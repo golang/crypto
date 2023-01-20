@@ -5,7 +5,7 @@
 //go:build !gc || purego || !s390x
 // +build !gc purego !s390x
 
-package sha3
+package sha3 // import "golang.org/x/crypto/sha3"
 
 // newShake128Asm returns an assembly implementation of SHAKE-128 if available,
 // otherwise it returns nil.

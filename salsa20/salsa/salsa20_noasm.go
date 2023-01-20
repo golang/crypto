@@ -5,7 +5,7 @@
 //go:build !amd64 || purego || !gc
 // +build !amd64 purego !gc
 
-package salsa
+package salsa // import "golang.org/x/crypto/salsa20/salsa"
 
 // XORKeyStream crypts bytes from in to out using the given key and counters.
 // In and out must overlap entirely or not at all. Counter

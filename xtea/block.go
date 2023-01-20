@@ -9,7 +9,7 @@
 	A precalculated look up table is used during encryption/decryption for values that are based purely on the key.
 */
 
-package xtea
+package xtea // import "golang.org/x/crypto/xtea"
 
 // XTEA is based on 64 rounds.
 const numRounds = 64

@@ -5,7 +5,7 @@
 //go:build !go1.13
 // +build !go1.13
 
-package poly1305
+package poly1305 // import "golang.org/x/crypto/internal/poly1305"
 
 // Generic fallbacks for the math/bits intrinsics, copied from
 // src/math/bits/bits.go. They were added in Go 1.12, but Add64 and Sum64 had

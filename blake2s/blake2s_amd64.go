@@ -5,7 +5,7 @@
 //go:build amd64 && gc && !purego
 // +build amd64,gc,!purego
 
-package blake2s
+package blake2s // import "golang.org/x/crypto/blake2s"
 
 import "golang.org/x/sys/cpu"
 

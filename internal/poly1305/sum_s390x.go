@@ -5,7 +5,7 @@
 //go:build gc && !purego
 // +build gc,!purego
 
-package poly1305
+package poly1305 // import "golang.org/x/crypto/internal/poly1305"
 
 import (
 	"golang.org/x/sys/cpu"

@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package testdata
+package testdata // import "golang.org/x/crypto/ssh/testdata"
 
 var PEMBytes = map[string][]byte{
 	"dsa": []byte(`-----BEGIN DSA PRIVATE KEY-----

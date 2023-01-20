@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package packet
+package packet // import "golang.org/x/crypto/openpgp/packet"
 
 import (
-	"golang.org/x/crypto/openpgp/errors"
 	"io"
+
+	"golang.org/x/crypto/openpgp/errors"
 )
 
 // Reader reads packets from an io.Reader and allows packets to be 'unread' so

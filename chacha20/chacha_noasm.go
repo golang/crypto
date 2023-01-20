@@ -5,7 +5,7 @@
 //go:build (!arm64 && !s390x && !ppc64le) || (arm64 && !go1.11) || !gc || purego
 // +build !arm64,!s390x,!ppc64le arm64,!go1.11 !gc purego
 
-package chacha20
+package chacha20 // import "golang.org/x/crypto/chacha20"
 
 const bufSize = blockSize
 

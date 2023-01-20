@@ -6,7 +6,7 @@
 // and any other ACME-based CA.
 //
 // This package is a work in progress and makes no API stability promises.
-package autocert
+package autocert // import "golang.org/x/crypto/acme/autocert"
 
 import (
 	"bytes"

@@ -5,7 +5,7 @@
 //go:build !amd64 || purego || !gc
 // +build !amd64 purego !gc
 
-package sha3
+package sha3 // import "golang.org/x/crypto/sha3"
 
 import "math/bits"
 

@@ -32,7 +32,7 @@
 //
 // [1] https://github.com/P-H-C/phc-winner-argon2/blob/master/argon2-specs.pdf
 // [2] https://tools.ietf.org/html/draft-irtf-cfrg-argon2-03#section-9.3
-package argon2
+package argon2 // import "golang.org/x/crypto/argon2"
 
 import (
 	"encoding/binary"

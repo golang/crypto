@@ -17,7 +17,7 @@
 // Most common scenarios will want to use autocert subdirectory instead,
 // which provides automatic access to certificates from Let's Encrypt
 // and any other ACME-based CA.
-package acme
+package acme // import "golang.org/x/crypto/acme"
 
 import (
 	"context"

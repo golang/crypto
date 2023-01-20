@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package armor
+package armor // import "golang.org/x/crypto/openpgp/armor"
 
 import (
 	"encoding/base64"

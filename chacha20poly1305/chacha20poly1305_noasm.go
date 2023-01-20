@@ -5,7 +5,7 @@
 //go:build !amd64 || !gc || purego
 // +build !amd64 !gc purego
 
-package chacha20poly1305
+package chacha20poly1305 // import "golang.org/x/crypto/chacha20poly1305"
 
 func (c *chacha20poly1305) seal(dst, nonce, plaintext, additionalData []byte) []byte {
 	return c.sealGeneric(dst, nonce, plaintext, additionalData)

@@ -5,7 +5,7 @@
 //go:build go1.9
 // +build go1.9
 
-package blake2b
+package blake2b // import "golang.org/x/crypto/blake2b"
 
 import (
 	"crypto"

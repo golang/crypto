@@ -5,7 +5,7 @@
 //go:build !amd64 || purego || !gc
 // +build !amd64 purego !gc
 
-package argon2
+package argon2 // import "golang.org/x/crypto/argon2"
 
 func processBlock(out, in1, in2 *block) {
 	processBlockGeneric(out, in1, in2, false)
