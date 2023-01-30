@@ -7,6 +7,7 @@ package cryptobyte
 import (
 	"errors"
 	"fmt"
+	"sync"
 )
 
 // A Builder builds byte strings from fixed-length and length-prefixed values.
@@ -28,7 +29,7 @@ type Builder struct {
 	offset         int
 	pendingLenLen  int
 	pendingIsASN1  bool
-	inContinuation *bool
+	inContinuation bool
 }
 
 // NewBuilder creates a Builder that appends its output to the given buffer.
@@ -157,12 +158,8 @@ func (b *Builder) AddUint32LengthPrefixed(f BuilderContinuation) {
 }
 
 func (b *Builder) callContinuation(f BuilderContinuation, arg *Builder) {
-	if !*b.inContinuation {
-		*b.inContinuation = true
-
+	if !b.inContinuation {
 		defer func() {
-			*b.inContinuation = false
-
 			r := recover()
 			if r == nil {
 				return
@@ -179,6 +176,12 @@ func (b *Builder) callContinuation(f BuilderContinuation, arg *Builder) {
 	f(arg)
 }
 
+var pool = sync.Pool{
+	New: func() interface{} {
+		return new(Builder)
+	},
+}
+
 func (b *Builder) addLengthPrefixed(lenLen int, isASN1 bool, f BuilderContinuation) {
 	// Subsequent writes can be ignored if the builder has encountered an error.
 	if b.err != nil {
@@ -186,26 +189,26 @@ func (b *Builder) addLengthPrefixed(lenLen int, isASN1 bool, f BuilderContinuati
 	}
 
 	offset := len(b.result)
-	b.add(make([]byte, lenLen)...)
+	b.alloc(lenLen)
 
-	if b.inContinuation == nil {
-		b.inContinuation = new(bool)
-	}
+	child := pool.Get().(*Builder)
 
-	b.child = &Builder{
-		result:         b.result,
-		fixedSize:      b.fixedSize,
-		offset:         offset,
-		pendingLenLen:  lenLen,
-		pendingIsASN1:  isASN1,
-		inContinuation: b.inContinuation,
-	}
+	child.err = nil
+	child.result = b.result
+	child.fixedSize = b.fixedSize
+	child.offset = offset
+	child.pendingLenLen = lenLen
+	child.pendingIsASN1 = isASN1
+	child.inContinuation = true
+
+	b.child = child
 
 	b.callContinuation(f, b.child)
 	b.flushChild()
 	if b.child != nil {
 		panic("cryptobyte: internal error")
 	}
+	pool.Put(child)
 }
 
 func (b *Builder) flushChild() {
@@ -261,7 +264,7 @@ func (b *Builder) flushChild() {
 		child.result[child.offset] = lenByte
 		extraBytes := int(lenLen - 1)
 		if extraBytes != 0 {
-			child.add(make([]byte, extraBytes)...)
+			b.alloc(extraBytes)
 			childStart := child.offset + child.pendingLenLen
 			copy(child.result[childStart+extraBytes:], child.result[childStart:])
 		}
@@ -301,6 +304,26 @@ func (b *Builder) add(bytes ...byte) {
 		return
 	}
 	b.result = append(b.result, bytes...)
+}
+
+func (b *Builder) alloc(n int) {
+	if b.err != nil {
+		return
+	}
+	if len(b.result)+n < n {
+		b.err = errors.New("cryptobyte: length overflow")
+	}
+	if b.fixedSize && len(b.result)+n > n {
+		b.err = errors.New("cryptobyte: Builder is exceeding its fixed-size buffer")
+		return
+	}
+	if cap(b.result) >= len(b.result)+n {
+		b.result = b.result[:len(b.result)+n]
+		return
+	}
+	for i := 0; i < n; i++ {
+		b.result = append(b.result, 0)
+	}
 }
 
 // Unwrite rolls back n bytes written directly to the Builder. An attempt by a
