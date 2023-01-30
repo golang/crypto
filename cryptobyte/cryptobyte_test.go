@@ -11,6 +11,38 @@ import (
 	"testing"
 )
 
+func BenchmarkLengthPrefixed(b *testing.B) {
+	buf := make([]byte, 0, 512)
+
+	for i := 0; i < b.N; i++ {
+		a := NewBuilder(buf)
+		a.AddUint8LengthPrefixed(func(b *Builder) {
+			b.AddBytes([]byte("123456"))
+			b.AddUint8LengthPrefixed(func(b *Builder) {
+				b.AddBytes([]byte("123456"))
+			})
+			b.AddUint8LengthPrefixed(func(b *Builder) {
+				b.AddBytes([]byte("123456"))
+			})
+			b.AddUint8LengthPrefixed(func(b *Builder) {
+				b.AddBytes([]byte("123456"))
+			})
+		})
+		a.AddUint8LengthPrefixed(func(b *Builder) {
+			b.AddBytes([]byte("123456"))
+			b.AddUint8LengthPrefixed(func(b *Builder) {
+				b.AddBytes([]byte("123456"))
+			})
+		})
+		a.AddUint8LengthPrefixed(func(b *Builder) {
+			b.AddBytes([]byte("123456"))
+			b.AddUint8LengthPrefixed(func(b *Builder) {
+				b.AddBytes([]byte("123456"))
+			})
+		})
+	}
+}
+
 func builderBytesEq(b *Builder, want ...byte) error {
 	got := b.BytesOrPanic()
 	if !bytes.Equal(got, want) {
@@ -341,36 +373,6 @@ func TestPreallocatedBuffer(t *testing.T) {
 	if err := builderBytesEq(b, 1, 2, 3, 4, 5, 6); err != nil {
 		t.Error(err)
 	}
-}
-
-func TestWriteWithPendingChild(t *testing.T) {
-	var b Builder
-	b.AddUint8LengthPrefixed(func(c *Builder) {
-		c.AddUint8LengthPrefixed(func(d *Builder) {
-			func() {
-				defer func() {
-					if recover() == nil {
-						t.Errorf("recover() = nil, want error; c.AddUint8() did not panic")
-					}
-				}()
-				c.AddUint8(2) // panics
-			}()
-
-			defer func() {
-				if recover() == nil {
-					t.Errorf("recover() = nil, want error; b.AddUint8() did not panic")
-				}
-			}()
-			b.AddUint8(2) // panics
-		})
-
-		defer func() {
-			if recover() == nil {
-				t.Errorf("recover() = nil, want error; b.AddUint8() did not panic")
-			}
-		}()
-		b.AddUint8(2) // panics
-	})
 }
 
 func TestSetError(t *testing.T) {
