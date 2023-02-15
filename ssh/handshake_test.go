@@ -562,7 +562,7 @@ func TestHandshakeRekeyDefault(t *testing.T) {
 }
 
 func TestHandshakeAEADCipherNoMAC(t *testing.T) {
-	for _, cipher := range []string{chacha20Poly1305ID, gcmCipherID} {
+	for _, cipher := range []string{chacha20Poly1305ID, gcm128CipherID} {
 		checker := &syncChecker{
 			called: make(chan int, 1),
 		}
