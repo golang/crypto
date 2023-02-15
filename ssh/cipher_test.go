@@ -141,7 +141,7 @@ func TestCVE202143565(t *testing.T) {
 		constructPacket func(packetCipher) io.Reader
 	}{
 		{
-			cipher: gcmCipherID,
+			cipher: gcm128CipherID,
 			constructPacket: func(client packetCipher) io.Reader {
 				internalCipher := client.(*gcmCipher)
 				b := &bytes.Buffer{}
