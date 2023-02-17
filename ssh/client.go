@@ -16,6 +16,7 @@ import (
 
 // Client implements a traditional SSH client that supports shells,
 // subprocesses, TCP port/streamlocal forwarding and tunneled dialing.
+// test
 type Client struct {
 	Conn
 
