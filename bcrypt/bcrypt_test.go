@@ -248,3 +248,10 @@ func TestPasswordTooLong(t *testing.T) {
 		t.Errorf("unexpected error: got %q, want %q", err, ErrPasswordTooLong)
 	}
 }
+
+func TestPasswordTooShort(t *testing.T) {
+	_, err := GenerateFromPassword(make([]byte, 0), 1)
+	if err != ErrPasswordTooLong {
+		t.Errorf("unexpected error: got %q, want %q", err, ErrPasswordTooShort)
+	}
+}

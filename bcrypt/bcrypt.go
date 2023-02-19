@@ -86,13 +86,21 @@ type hashed struct {
 // GenerateFromPassword is too long (i.e. > 72 bytes).
 var ErrPasswordTooLong = errors.New("bcrypt: password length exceeds 72 bytes")
 
+// ErrPasswordTooShort is returned when the password passed to
+// GenerateFromPassword is too short (i.e. = 0 bytes).
+var ErrPasswordTooShort = errors.New("bcrypt: password length does not exceed 0 bytes")
+
 // GenerateFromPassword returns the bcrypt hash of the password at the given
 // cost. If the cost given is less than MinCost, the cost will be set to
 // DefaultCost, instead. Use CompareHashAndPassword, as defined in this package,
 // to compare the returned hashed password with its cleartext version.
 // GenerateFromPassword does not accept passwords longer than 72 bytes, which
 // is the longest password bcrypt will operate on.
+// Also, GenerateFromPassword does not accept passwords with a length of 0 bytes.
 func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
+	if len(password) == 0 {
+		return nil, ErrPasswordTooShort
+	}
 	if len(password) > 72 {
 		return nil, ErrPasswordTooLong
 	}
