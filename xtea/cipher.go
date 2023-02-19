@@ -11,8 +11,8 @@
 //
 // Deprecated: any new system should use AES (from crypto/aes, if necessary in
 // an AEAD mode like crypto/cipher.NewGCM) or XChaCha20-Poly1305 (from
-// golang.org/x/crypto/chacha20poly1305).
-package xtea // import "golang.org/x/crypto/xtea"
+// github.com/cxx59/crypto/chacha20poly1305).
+package xtea // import "github.com/cxx59/crypto/xtea"
 
 // For details, see http://www.cix.co.uk/~klockstone/xtea.pdf
 

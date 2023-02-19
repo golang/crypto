@@ -19,13 +19,13 @@ This package also implements XSalsa20: a version of Salsa20 with a 24-byte
 nonce as specified in https://cr.yp.to/snuffle/xsalsa-20081128.pdf. Simply
 passing a 24-byte slice as the nonce triggers XSalsa20.
 */
-package salsa20 // import "golang.org/x/crypto/salsa20"
+package salsa20 // import "github.com/cxx59/crypto/salsa20"
 
 // TODO(agl): implement XORKeyStream12 and XORKeyStream8 - the reduced round variants of Salsa20.
 
 import (
-	"golang.org/x/crypto/internal/alias"
-	"golang.org/x/crypto/salsa20/salsa"
+	"github.com/cxx59/crypto/internal/alias"
+	"github.com/cxx59/crypto/salsa20/salsa"
 )
 
 // XORKeyStream crypts bytes from in to out using the given key and nonce.

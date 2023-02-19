@@ -8,7 +8,7 @@ import (
 	"compress/bzip2"
 	"compress/flate"
 	"compress/zlib"
-	"golang.org/x/crypto/openpgp/errors"
+	"github.com/cxx59/crypto/openpgp/errors"
 	"io"
 	"strconv"
 )

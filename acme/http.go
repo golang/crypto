@@ -277,7 +277,7 @@ var packageVersion string
 // userAgent returns the User-Agent header value. It includes the package name,
 // the module version (if available), and the c.UserAgent value (if set).
 func (c *Client) userAgent() string {
-	ua := "golang.org/x/crypto/acme"
+	ua := "github.com/cxx59/crypto/acme"
 	if packageVersion != "" {
 		ua += "@" + packageVersion
 	}

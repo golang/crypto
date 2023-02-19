@@ -12,11 +12,11 @@
 // case.
 //
 // Deprecated: this package was only provided to support ElGamal encryption in
-// OpenPGP. The golang.org/x/crypto/openpgp package is now deprecated (see
+// OpenPGP. The github.com/cxx59/crypto/openpgp package is now deprecated (see
 // https://golang.org/issue/44226), and ElGamal in the OpenPGP ecosystem has
 // compatibility and security issues (see https://eprint.iacr.org/2021/923).
 // Moreover, this package doesn't protect against side-channel attacks.
-package elgamal // import "golang.org/x/crypto/openpgp/elgamal"
+package elgamal // import "github.com/cxx59/crypto/openpgp/elgamal"
 
 import (
 	"crypto/rand"
