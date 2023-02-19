@@ -1,13 +1,13 @@
 # Go Cryptography
 
-[![Go Reference](https://pkg.go.dev/badge/golang.org/x/crypto.svg)](https://pkg.go.dev/golang.org/x/crypto)
+[![Go Reference](https://pkg.go.dev/badge/github.com/cxx59/crypto.svg)](https://pkg.go.dev/github.com/cxx59/crypto)
 
 This repository holds supplementary Go cryptography libraries.
 
 ## Download/Install
 
-The easiest way to install is to run `go get -u golang.org/x/crypto/...`. You
-can also manually git clone the repository to `$GOPATH/src/golang.org/x/crypto`.
+The easiest way to install is to run `go get -u github.com/cxx59/crypto/...`. You
+can also manually git clone the repository to `$GOPATH/src/github.com/cxx59/crypto`.
 
 ## Report Issues / Send Patches
 

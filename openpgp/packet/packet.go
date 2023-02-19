@@ -10,7 +10,7 @@
 // for their specific task. If you are required to interoperate with OpenPGP
 // systems and need a maintained package, consider a community fork.
 // See https://golang.org/issue/44226.
-package packet // import "golang.org/x/crypto/openpgp/packet"
+package packet // import "github.com/cxx59/crypto/openpgp/packet"
 
 import (
 	"bufio"
@@ -22,8 +22,8 @@ import (
 	"math/big"
 	"math/bits"
 
-	"golang.org/x/crypto/cast5"
-	"golang.org/x/crypto/openpgp/errors"
+	"github.com/cxx59/crypto/cast5"
+	"github.com/cxx59/crypto/openpgp/errors"
 )
 
 // readFull is the same as io.ReadFull except that reading zero bytes returns

@@ -9,7 +9,7 @@ import (
 	"io"
 	"testing"
 
-	"golang.org/x/crypto/hkdf"
+	"github.com/cxx59/crypto/hkdf"
 )
 
 func TestHkdf(t *testing.T) {

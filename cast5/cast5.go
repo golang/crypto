@@ -10,8 +10,8 @@
 //
 // Deprecated: any new system should use AES (from crypto/aes, if necessary in
 // an AEAD mode like crypto/cipher.NewGCM) or XChaCha20-Poly1305 (from
-// golang.org/x/crypto/chacha20poly1305).
-package cast5 // import "golang.org/x/crypto/cast5"
+// github.com/cxx59/crypto/chacha20poly1305).
+package cast5 // import "github.com/cxx59/crypto/cast5"
 
 import (
 	"errors"
