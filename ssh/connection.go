@@ -20,6 +20,39 @@ func (e *OpenChannelError) Error() string {
 	return fmt.Sprintf("ssh: rejected: %s (%s)", e.Reason, e.Message)
 }
 
+// DisconnectReason is an enumeration used when closing connections to describe
+// why a disconnect was sent.  See RFC 4253, section 11.1.
+type DisconnectReason uint32
+
+const (
+	HostNotAllowedToConnect DisconnectReason = 1
+	ProtocolError                            = 2
+	KeyExchangeFailed                        = 3
+	// 4 is reserved for future use.
+	MacError                    = 5
+	CompressionError            = 6
+	ServiceNotAvailable         = 7
+	ProtocolVersionNotSupported = 8
+	HostKeyNotVerifiable        = 9
+	ConnectionLost              = 10
+	ByApplication               = 11
+	TooManyConnections          = 12
+	AuthCancelledByUser         = 13
+	NoMoreAuthMethodsAvailable  = 14
+	IllegalUserName             = 15
+)
+
+// DisconnectError is returned by Conn.Wait if the other end of the connection
+// explicitly closes the connection by sending a disconnect message.
+type DisconnectError struct {
+	Reason  DisconnectReason
+	Message string
+}
+
+func (d *DisconnectError) Error() string {
+	return fmt.Sprintf("ssh: disconnect, reason %d: %s", d.Reason, d.Message)
+}
+
 // ConnMetadata holds metadata for the connection.
 type ConnMetadata interface {
 	// User returns the user ID for this connection.
@@ -66,7 +99,9 @@ type Conn interface {
 	Close() error
 
 	// Wait blocks until the connection has shut down, and returns the
-	// error causing the shutdown.
+	// error causing the shutdown.  If the connection has been closed by an
+	// explicit disconnect message from the other end, then Wait will return a
+	// DisconnectError.
 	Wait() error
 
 	// TODO(hanwen): consider exposing:

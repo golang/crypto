@@ -505,11 +505,15 @@ func TestDisconnect(t *testing.T) {
 	defer trS.Close()
 
 	trC.writePacket([]byte{msgRequestSuccess, 0, 0})
-	errMsg := &disconnectMsg{
+	errPacket := &disconnectMsg{
 		Reason:  42,
 		Message: "such is life",
 	}
-	trC.writePacket(Marshal(errMsg))
+	errResponse := &DisconnectError{
+		Reason:  DisconnectReason(errPacket.Reason),
+		Message: errPacket.Message,
+	}
+	trC.writePacket(Marshal(errPacket))
 	trC.writePacket([]byte{msgRequestSuccess, 0, 0})
 
 	packet, err := trS.readPacket()
@@ -523,8 +527,8 @@ func TestDisconnect(t *testing.T) {
 	_, err = trS.readPacket()
 	if err == nil {
 		t.Errorf("readPacket 2 succeeded")
-	} else if !reflect.DeepEqual(err, errMsg) {
-		t.Errorf("got error %#v, want %#v", err, errMsg)
+	} else if !reflect.DeepEqual(err, errResponse) {
+		t.Errorf("got error %#v, want %#v", err, errResponse)
 	}
 
 	_, err = trS.readPacket()

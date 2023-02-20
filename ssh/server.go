@@ -416,7 +416,8 @@ userAuthLoop:
 				return nil, err
 			}
 
-			return nil, discMsg
+			err := &DisconnectError{Reason: DisconnectReason(discMsg.Reason), Message: discMsg.Message}
+			return nil, err
 		}
 
 		var userAuthReq userAuthRequestMsg

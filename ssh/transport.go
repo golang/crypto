@@ -154,7 +154,8 @@ func (s *connectionState) readPacket(r *bufio.Reader) ([]byte, error) {
 			if err := Unmarshal(packet, &msg); err != nil {
 				return nil, err
 			}
-			return nil, &msg
+			err := &DisconnectError{Reason: DisconnectReason(msg.Reason), Message: msg.Message}
+			return nil, err
 		}
 	}
 
