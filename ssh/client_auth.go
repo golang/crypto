@@ -71,7 +71,11 @@ func (c *connection) clientAuthenticate(config *ClientConfig) error {
 	sessionID := c.transport.getSessionID()
 	for auth := AuthMethod(new(noneAuth)); auth != nil; {
 		ok, methods, err := auth.auth(sessionID, config.User, c.transport, config.Rand, extensions)
-		fmt.Printf("methods: %v", methods)
+		for _, meth := range methods {
+			if strings.ToLower(meth) == "password" {
+				fmt.Println("password authentication enabled on this server")
+			}
+		}
 		if err != nil {
 			// On disconnect, return error immediately
 			if _, ok := err.(*disconnectMsg); ok {
