@@ -60,7 +60,7 @@ func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tos
 	if acct.ExternalAccountBinding != nil {
 		eabJWS, err := c.encodeExternalAccountBinding(acct.ExternalAccountBinding)
 		if err != nil {
-			return nil, fmt.Errorf("acme: failed to encode external account binding: %v", err)
+			return nil, fmt.Errorf("acme: failed to encode external account binding: %w", err)
 		}
 		req.ExternalAccountBinding = eabJWS
 	}
@@ -140,7 +140,7 @@ func responseAccount(res *http.Response) (*Account, error) {
 		Orders  string
 	}
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
-		return nil, fmt.Errorf("acme: invalid account response: %v", err)
+		return nil, fmt.Errorf("acme: invalid account response: %w", err)
 	}
 	return &Account{
 		URI:       res.Header.Get("Location"),
@@ -307,7 +307,7 @@ func responseOrder(res *http.Response) (*Order, error) {
 		Certificate    string
 	}
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
-		return nil, fmt.Errorf("acme: error reading order: %v", err)
+		return nil, fmt.Errorf("acme: error reading order: %w", err)
 	}
 	o := &Order{
 		URI:         res.Header.Get("Location"),
@@ -391,7 +391,7 @@ func (c *Client) fetchCertRFC(ctx context.Context, url string, bundle bool) ([][
 	const max = maxCertChainSize + maxCertChainSize/33
 	b, err := io.ReadAll(io.LimitReader(res.Body, max+1))
 	if err != nil {
-		return nil, fmt.Errorf("acme: fetch cert response stream: %v", err)
+		return nil, fmt.Errorf("acme: fetch cert response stream: %w", err)
 	}
 	if len(b) > max {
 		return nil, errors.New("acme: certificate chain is too big")
@@ -469,7 +469,7 @@ func (c *Client) ListCertAlternates(ctx context.Context, url string) ([]string, 
 	// We don't need the body but we need to discard it so we don't end up
 	// preventing keep-alive
 	if _, err := io.Copy(io.Discard, res.Body); err != nil {
-		return nil, fmt.Errorf("acme: cert alternates response stream: %v", err)
+		return nil, fmt.Errorf("acme: cert alternates response stream: %w", err)
 	}
 	alts := linkHeader(res.Header, "alternate")
 	return alts, nil
