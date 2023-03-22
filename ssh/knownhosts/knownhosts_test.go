@@ -201,17 +201,6 @@ func TestHostNamePrecedence(t *testing.T) {
 	}
 }
 
-func TestDBOrderingPrecedenceKeyType(t *testing.T) {
-	str := fmt.Sprintf("server.org,%s %s\nserver.org,%s %s", testAddr, edKeyStr, testAddr, alternateEdKeyStr)
-	db := testDB(t, str)
-
-	if err := db.check("server.org:22", testAddr, alternateEdKey); err == nil {
-		t.Errorf("check succeeded")
-	} else if _, ok := err.(*KeyError); !ok {
-		t.Errorf("got %T, want *KeyError", err)
-	}
-}
-
 func TestNegate(t *testing.T) {
 	str := fmt.Sprintf("%s,!server.org %s", testAddr, edKeyStr)
 	db := testDB(t, str)
@@ -352,5 +341,18 @@ func TestHashedHostkeyCheck(t *testing.T) {
 	}
 	if got := db.check(testHostname+":22", testAddr, alternateEdKey); !reflect.DeepEqual(got, want) {
 		t.Errorf("got error %v, want %v", got, want)
+	}
+}
+
+func TestIssue36126(t *testing.T) {
+	str := fmt.Sprintf("server.org,%s %s\nserver.org,%s %s", testAddr, edKeyStr, testAddr, alternateEdKeyStr)
+	db := testDB(t, str)
+
+	if err := db.check("server.org:22", testAddr, edKey); err != nil {
+		t.Errorf("should have passed the check, got %v", err)
+	}
+
+	if err := db.check("server.org:22", testAddr, alternateEdKey); err != nil {
+		t.Errorf("should have passed the check, got %v", err)
 	}
 }
