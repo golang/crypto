@@ -276,6 +276,7 @@ func TestASN1ObjectIdentifier(t *testing.T) {
 		{[]byte{6, 7, 85, 0x02, 0x85, 0xc7, 0xcc, 0xfb, 0x01}, true, []int{2, 5, 2, 1492336001}},
 		{[]byte{6, 7, 0x55, 0x02, 0x87, 0xff, 0xff, 0xff, 0x7f}, true, []int{2, 5, 2, 2147483647}}, // 2**31-1
 		{[]byte{6, 7, 0x55, 0x02, 0x88, 0x80, 0x80, 0x80, 0x00}, false, []int{}},                   // 2**31
+		{[]byte{6, 3, 85, 0x80, 0x02}, false, []int{}},                                             // leading 0x80 octet
 	}
 
 	for i, test := range testData {
