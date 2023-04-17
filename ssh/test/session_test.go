@@ -14,6 +14,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -255,15 +257,31 @@ func TestValidTerminalMode(t *testing.T) {
 		t.Fatalf("session failed: %s", err)
 	}
 
-	stdin.Write([]byte("stty -a && exit\n"))
+	if _, err := io.WriteString(stdin, "echo SHELL $SHELL && stty -a && exit\n"); err != nil {
+		t.Fatal(err)
+	}
 
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, stdout); err != nil {
+	buf := new(strings.Builder)
+	if _, err := io.Copy(buf, stdout); err != nil {
 		t.Fatalf("reading failed: %s", err)
 	}
 
+	if testing.Verbose() {
+		t.Logf("echo SHELL $SHELL && stty -a && exit:\n%s", buf)
+	}
+
+	shellLine := regexp.MustCompile("(?m)^SHELL (.*)$").FindStringSubmatch(buf.String())
+	if len(shellLine) != 2 {
+		t.Fatalf("missing output from echo SHELL $SHELL")
+	}
+	switch shell := filepath.Base(strings.TrimSpace(shellLine[1])); shell {
+	case "sh", "bash":
+	default:
+		t.Skipf("skipping test on non-Bourne shell %q", shell)
+	}
+
 	if sttyOutput := buf.String(); !strings.Contains(sttyOutput, "-echo ") {
-		t.Fatalf("terminal mode failure: expected -echo in stty output, got %s", sttyOutput)
+		t.Fatal("terminal mode failure: expected -echo in stty output")
 	}
 }
 
