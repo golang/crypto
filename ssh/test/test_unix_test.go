@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || plan9
-// +build aix darwin dragonfly freebsd linux netbsd openbsd plan9
+//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || plan9 || solaris
+// +build aix darwin dragonfly freebsd linux netbsd openbsd plan9 solaris
 
 package test
 
