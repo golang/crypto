@@ -10,6 +10,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"hash"
 )
 
@@ -51,6 +52,9 @@ var macModes = map[string]*macMode{
 	}},
 	"hmac-sha2-256": {32, false, func(key []byte) hash.Hash {
 		return hmac.New(sha256.New, key)
+	}},
+	"hmac-sha2-512": {64, false, func(key []byte) hash.Hash {
+		return hmac.New(sha512.New, key)
 	}},
 	"hmac-sha1": {20, false, func(key []byte) hash.Hash {
 		return hmac.New(sha1.New, key)
