@@ -13,7 +13,6 @@ import (
 
 func TestBannerCallbackAgainstOpenSSH(t *testing.T) {
 	server := newServer(t)
-	defer server.Shutdown()
 
 	clientConf := clientConfig()
 

@@ -24,7 +24,6 @@ type dialTester interface {
 
 func testDial(t *testing.T, n, listenAddr string, x dialTester) {
 	server := newServer(t)
-	defer server.Shutdown()
 	sshConn := server.Dial(clientConfig())
 	defer sshConn.Close()
 

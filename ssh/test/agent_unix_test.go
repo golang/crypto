@@ -17,7 +17,6 @@ import (
 
 func TestAgentForward(t *testing.T) {
 	server := newServer(t)
-	defer server.Shutdown()
 	conn := server.Dial(clientConfig())
 	defer conn.Close()
 

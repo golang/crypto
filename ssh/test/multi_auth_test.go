@@ -108,7 +108,6 @@ func TestMultiAuth(t *testing.T) {
 			ctx := newMultiAuthTestCtx(t)
 
 			server := newServerForConfig(t, "MultiAuth", map[string]string{"AuthMethods": strings.Join(testCase.authMethods, ",")})
-			defer server.Shutdown()
 
 			clientConfig := clientConfig()
 			server.setTestPassword(clientConfig.User, ctx.password)
