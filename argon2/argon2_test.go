@@ -6,7 +6,9 @@ package argon2
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/hex"
+	"reflect"
 	"testing"
 )
 
@@ -77,6 +79,69 @@ func testArgon2id(t *testing.T) {
 	}
 }
 
+func TestArgon2IsEasy(t *testing.T) {
+	pass := []byte("mypassword")
+	hp, err := GenerateFromPassword(pass, nil, 0, 0, 0, 0)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword error: %s", err)
+	}
+
+	if CompareHashAndPassword(hp, pass, nil) != nil {
+		t.Errorf("%s should hash %s correctly", hp, pass)
+	}
+
+	notPass := "notthepass"
+	err = CompareHashAndPassword(hp, []byte(notPass), nil)
+	if err != ErrMismatchedHashAndPassword {
+		t.Errorf("%v and %s should be mismatched", hp, notPass)
+	}
+}
+
+func TestArgon2WithSecretIsEasy(t *testing.T) {
+	pass := []byte("mypassword")
+	sec := []byte("shhhh!")
+	hp, err := GenerateFromPassword(pass, sec, 0, 1, 0, 0)
+	if err != nil {
+		t.Fatalf("GenerateFromPassword error: %s", err)
+	}
+
+	if CompareHashAndPassword(hp, pass, sec) != nil {
+		t.Errorf("%v should hash %s correctly", hp, pass)
+	}
+
+	notPass := "notthepass"
+	err = CompareHashAndPassword(hp, []byte(notPass), sec)
+	if err != ErrMismatchedHashAndPassword {
+		t.Errorf("%v and %s should be mismatched", hp, notPass)
+	}
+}
+
+func TestArgon2IsCorrect(t *testing.T) {
+	pass := []byte("foobar")
+	salt := []byte("abcdefghijklmnop")
+	expectedHash := []byte("$argon2id$v=19$m=65536,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$BztdyfEefG5V18ZNlztPrfZaU5duVFKZiI6dJeWht0o")
+
+	h, err := newFromPassword(pass, salt, nil, 2, 64*1024, 1, 32)
+	if err != nil {
+		t.Errorf("Unable to create hash %s: %v", string(expectedHash), err)
+	}
+
+	eh, err := newFromHash(expectedHash)
+	if err != nil {
+		t.Errorf("Unable to parse %s: %v", string(expectedHash), err)
+	}
+
+	// This is not the safe way to compare these hashes. We do this only for
+	// testing clarity. Use argon2.CompareHashAndPassword()
+	if err == nil && !bytes.Equal(expectedHash, eh.encode()) {
+		t.Errorf("Parsed hash %v should equal %v", eh.encode(), expectedHash)
+	}
+	if err == nil && !bytes.Equal(h.encode(), eh.encode()) {
+		t.Errorf("Incorrect hash: got: %s want %s", h.encode(), eh.encode())
+	}
+
+}
+
 func TestVectors(t *testing.T) {
 	password, salt := []byte("password"), []byte("somesalt")
 	for i, v := range testVectors {
@@ -88,6 +153,107 @@ func TestVectors(t *testing.T) {
 		if !bytes.Equal(hash, want) {
 			t.Errorf("Test %d - got: %s want: %s", i, hex.EncodeToString(hash), hex.EncodeToString(want))
 		}
+	}
+}
+
+type CompareHashAndPasswordTest struct {
+	hashedPassword []byte
+	password       []byte
+	secret         []byte
+	expectedErr    error
+}
+
+var compareHashAndPasswordTests = []CompareHashAndPasswordTest{
+	{[]byte("$argon2id$v=19$m=65536,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$BztdyfEefG5V18ZNlztPrfZaU5duVFKZiI6dJeWht0o"), []byte("foobar"), nil, nil},
+	{[]byte("$argon2id$v=19$m=65536,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$BztdyfEefG5V18ZNlztPrfZaU5duVFKZiI6dJeWht0o"), []byte("notfoobar"), nil, ErrMismatchedHashAndPassword},
+	{[]byte("$argon2id$v=19$m=65536,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$BztdyfEefG5V18ZNlztPrfZaU5duVFKZiI6dJeWht0o"), nil, nil, ErrMismatchedHashAndPassword},
+	{[]byte("$argon2id$v=19$m=65536,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$BztdyfEefG5V18ZNlztPrfZaU5duVFKZiI6dJeWht0o"), []byte("foobar"), []byte("verysecurepepper"), ErrMismatchedHashAndPassword},
+	{[]byte("$argon2id$v=19$m=65536,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$62SNes97JZvKGqH1gm+0EWabDcX9i3FJFpZJ0PGRaTI"), []byte("foobar"), []byte("verysecurepepper"), nil},
+	{[]byte("$argon2id$v=19$m=256,t=1,p=1$c2FsdHlzYWx0$6UMlxN3kDbxCSZVA+XS/pIUl5eS7hFoUIKDAndacf58"), []byte("helloworld"), nil, nil},
+}
+
+func TestCompareHashAndPassword(t *testing.T) {
+	for _, chpt := range compareHashAndPasswordTests {
+		err := CompareHashAndPassword(chpt.hashedPassword, chpt.password, chpt.secret)
+		if err != nil && chpt.expectedErr == nil {
+			t.Errorf("%s should hash %s correctly", chpt.hashedPassword, chpt.password)
+		}
+		if err == nil && chpt.expectedErr == ErrMismatchedHashAndPassword {
+			t.Errorf("%s and %s should be mismatched", chpt.hashedPassword, chpt.password)
+		}
+	}
+}
+
+func errCheck(t *testing.T, name string, expected, err error) {
+	if err == nil {
+		t.Errorf("%s: Should have returned an error", name)
+	}
+	if err != nil && err != expected {
+		t.Errorf("%s gave err %v but should have given %v", name, err, expected)
+	}
+}
+
+type InvalidPasswordTest struct {
+	err      error
+	password []byte
+	secret   []byte
+}
+
+var invalidPasswordTests = []InvalidPasswordTest{
+	{ErrPasswordTooLong(maxPasswordLength + 1), make([]byte, maxPasswordLength+1), nil},
+	{ErrSecretTooLong(maxSecretLength + 1), nil, make([]byte, maxSecretLength+1)},
+}
+
+func TestInvalidPasswordErrors(t *testing.T) {
+	for _, ipt := range invalidPasswordTests {
+		_, err := GenerateFromPassword(ipt.password, ipt.secret, 4, 8*256, 4, 0)
+		errCheck(t, "GenerateFromPassword", ipt.err, err)
+	}
+}
+
+type InvalidHashTest struct {
+	err  error
+	hash []byte
+}
+
+var invalidTests = []InvalidHashTest{
+	{InvalidHashVersionError, []byte("$argon2id$v=20$m=65536,t=3,p=2$AgICAgICAgICAgICAgICAg$DWQN9Y14dmwIwDejSotTydAe8EUtdbZetSUg6WsB5lk")},
+	{InvalidHashPrefixError('%'), []byte("%argon2id$v=19$m=65536,t=3,p=2$AgICAgICAgICAgICAgICAg$DWQN9Y14dmwIwDejSotTydAe8EUtdbZetSUg6WsB5lk")},
+}
+
+func TestInvalidHashErrors(t *testing.T) {
+	for _, iht := range invalidTests {
+		p := new(hashed)
+		_, err := p.decode(iht.hash)
+		errCheck(t, "decode", iht.err, err)
+
+		_, err = newFromHash(iht.hash)
+		errCheck(t, "newFromHash", iht.err, err)
+
+		err = CompareHashAndPassword(iht.hash, []byte("anything"), nil)
+		errCheck(t, "CompareHashAndPassword", iht.err, err)
+
+		err = CompareHashAndPassword(iht.hash, []byte("anything"), []byte("shhhh"))
+		errCheck(t, "CompareHashAndPassword", iht.err, err)
+	}
+}
+
+func TestEncodedParams(t *testing.T) {
+	hash := []byte("$argon2id$v=19$m=65536,t=2,p=1$YWJjZGVmZ2hpamtsbW5vcA$BztdyfEefG5V18ZNlztPrfZaU5duVFKZiI6dJeWht0o")
+	decodedHash, _ := base64.RawStdEncoding.DecodeString("BztdyfEefG5V18ZNlztPrfZaU5duVFKZiI6dJeWht0o")
+	wantP := &hashed{
+		hash:    decodedHash,
+		salt:    []byte("abcdefghijklmnop"),
+		memory:  65536,
+		time:    2,
+		threads: 1,
+	}
+	gotP, err := newFromHash(hash)
+	if err != nil {
+		t.Errorf("Unable to parse %s: %v", string(hash), err)
+	}
+	if !reflect.DeepEqual(gotP, wantP) {
+		t.Errorf("Error decoding hash. got: %v want: %v", gotP, wantP)
 	}
 }
 
