@@ -977,12 +977,11 @@ func (m *Manager) accountKey(ctx context.Context) (crypto.Signer, error) {
 }
 
 func (m *Manager) acmeClient(ctx context.Context) (*acme.Client, error) {
-	m.clientMu.Lock()
-	defer m.clientMu.Unlock()
 	if m.client != nil {
 		return m.client, nil
 	}
-
+	m.clientMu.Lock()
+	defer m.clientMu.Unlock()
 	client := m.Client
 	if client == nil {
 		client = &acme.Client{DirectoryURL: DefaultACMEDirectory}
