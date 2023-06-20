@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build gen
-// +build gen
+//go:build generate
+// +build generate
 
 //go:generate go run gen_fallback_bundle.go
 
