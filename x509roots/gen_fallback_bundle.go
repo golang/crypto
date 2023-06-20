@@ -64,17 +64,13 @@ var bundle = mustParse([]byte(pemRoots))
 `
 
 var (
-	certDataURL  = flag.String("certdata-url", "https://hg.mozilla.org/mozilla-central/raw-file/tip/security/nss/lib/ckfw/builtins/certdata.txt", "URL to the raw certdata.txt file to parse (only one of certdata-url and certdata-path may be specified)")
-	certDataPath = flag.String("certdata-path", "", "Path to the NSS certdata.txt file to parse (only one of certdata-url and certdata-path may be specified)")
+	certDataURL  = flag.String("certdata-url", "https://hg.mozilla.org/mozilla-central/raw-file/tip/security/nss/lib/ckfw/builtins/certdata.txt", "URL to the raw certdata.txt file to parse (certdata-path overrides this, if provided)")
+	certDataPath = flag.String("certdata-path", "", "Path to the NSS certdata.txt file to parse (this overrides certdata-url, if provided)")
 	output       = flag.String("output", "fallback/bundle.go", "Path to file to write output to")
 )
 
 func main() {
 	flag.Parse()
-
-	if *certDataPath != "" && *certDataURL != "" {
-		log.Fatal("Only one of --certdata-url and --certdata-path may be supplied")
-	}
 
 	var certdata io.Reader
 
