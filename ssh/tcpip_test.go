@@ -26,6 +26,9 @@ func TestClientImplementsDialContext(t *testing.T) {
 	type ContextDialer interface {
 		DialContext(context.Context, string, string) (net.Conn, error)
 	}
+	// Belt and suspenders assertion, since package net does not
+	// declare a ContextDialer type.
+	var _ ContextDialer = &net.Dialer{}
 	var _ ContextDialer = &Client{}
 }
 
