@@ -10,6 +10,7 @@ package test
 // direct-tcpip and direct-streamlocal functional tests
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -47,19 +48,38 @@ func testDial(t *testing.T, n, listenAddr string, x dialTester) {
 		}
 	}()
 
-	conn, err := sshConn.Dial(n, l.Addr().String())
-	if err != nil {
-		t.Fatalf("Dial: %v", err)
+	{
+		conn, err := sshConn.Dial(n, l.Addr().String())
+		if err != nil {
+			t.Fatalf("Dial: %v", err)
+		}
+		x.TestClientConn(t, conn)
+		defer conn.Close()
+		b, err := io.ReadAll(conn)
+		if err != nil {
+			t.Fatalf("ReadAll: %v", err)
+		}
+		t.Logf("got %q", string(b))
+		if string(b) != testData {
+			t.Fatalf("expected %q, got %q", testData, string(b))
+		}
 	}
-	x.TestClientConn(t, conn)
-	defer conn.Close()
-	b, err := io.ReadAll(conn)
-	if err != nil {
-		t.Fatalf("ReadAll: %v", err)
-	}
-	t.Logf("got %q", string(b))
-	if string(b) != testData {
-		t.Fatalf("expected %q, got %q", testData, string(b))
+
+	{
+		conn, err := sshConn.DialContext(context.Background(), n, l.Addr().String())
+		if err != nil {
+			t.Fatalf("Dial: %v", err)
+		}
+		x.TestClientConn(t, conn)
+		defer conn.Close()
+		b, err := io.ReadAll(conn)
+		if err != nil {
+			t.Fatalf("ReadAll: %v", err)
+		}
+		t.Logf("got %q", string(b))
+		if string(b) != testData {
+			t.Fatalf("expected %q, got %q", testData, string(b))
+		}
 	}
 }
 
