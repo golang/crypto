@@ -51,13 +51,3 @@ func TestClientDialContextWithDeadline(t *testing.T) {
 		t.Errorf("DialContext: got nil error, expected %v", context.DeadlineExceeded)
 	}
 }
-
-func TestClientDialContextWithTimeout(t *testing.T) {
-	c := &Client{}
-	ctx, cancel := context.WithTimeout(context.Background(), 0)
-	defer cancel()
-	_, err := c.DialContext(ctx, "tcp", "localhost:1000")
-	if err != context.DeadlineExceeded {
-		t.Errorf("DialContext: got nil error, expected %v", context.DeadlineExceeded)
-	}
-}
