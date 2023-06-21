@@ -334,9 +334,12 @@ func (l *tcpListener) Addr() net.Addr {
 }
 
 // DialContext initiates a connection to the addr from the remote host.
-// If the supplied context is cancelled before the connection can be opened,
-// ctx.Err() will be returned.
-// The resulting connection has a zero LocalAddr() and RemoteAddr().
+//
+// The provided Context must be non-nil. If the context expires before the
+// connection is complete, an error is returned. Once successfully connected,
+// any expiration of the context will not affect the connection.
+//
+// See func Dial for additional information.
 func (c *Client) DialContext(ctx context.Context, n, addr string) (net.Conn, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
