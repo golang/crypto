@@ -48,38 +48,23 @@ func testDial(t *testing.T, n, listenAddr string, x dialTester) {
 		}
 	}()
 
-	{
-		conn, err := sshConn.Dial(n, l.Addr().String())
-		if err != nil {
-			t.Fatalf("Dial: %v", err)
-		}
-		x.TestClientConn(t, conn)
-		defer conn.Close()
-		b, err := io.ReadAll(conn)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
-		t.Logf("got %q", string(b))
-		if string(b) != testData {
-			t.Fatalf("expected %q, got %q", testData, string(b))
-		}
+	ctx, cancel := context.WithCancel(context.Background())
+	conn, err := sshConn.DialContext(ctx, n, l.Addr().String())
+	// Canceling the context after dial should have no effect
+	// on the opened connection.
+	cancel()
+	if err != nil {
+		t.Fatalf("Dial: %v", err)
 	}
-
-	{
-		conn, err := sshConn.DialContext(context.Background(), n, l.Addr().String())
-		if err != nil {
-			t.Fatalf("Dial: %v", err)
-		}
-		x.TestClientConn(t, conn)
-		defer conn.Close()
-		b, err := io.ReadAll(conn)
-		if err != nil {
-			t.Fatalf("ReadAll: %v", err)
-		}
-		t.Logf("got %q", string(b))
-		if string(b) != testData {
-			t.Fatalf("expected %q, got %q", testData, string(b))
-		}
+	x.TestClientConn(t, conn)
+	defer conn.Close()
+	b, err := io.ReadAll(conn)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	t.Logf("got %q", string(b))
+	if string(b) != testData {
+		t.Fatalf("expected %q, got %q", testData, string(b))
 	}
 }
 
