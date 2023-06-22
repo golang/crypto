@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build go1.20
-// +build go1.20
 
 // Package fallback embeds a set of fallback X.509 trusted roots in the
 // application by automatically invoking [x509.SetFallbackRoots]. This allows
