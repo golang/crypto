@@ -96,7 +96,16 @@ func main() {
 	}
 
 	sort.Slice(certs, func(i, j int) bool {
-		return string(certs[i].X509.RawSubjectPublicKeyInfo) < string(certs[j].X509.RawSubjectPublicKeyInfo)
+		// Sort based on the stringified subject (which may not be unique), and
+		// break any ties by just sorting on the raw DER (which will be unique,
+		// but is expensive). This should produce a stable sorting, which should
+		// be mostly readable by a human looking for a specific root or set of
+		// roots.
+		subjI, subjJ := certs[i].X509.Subject.String(), certs[j].X509.Subject.String()
+		if subjI == subjJ {
+			return string(certs[i].X509.Raw) < string(certs[j].X509.Raw)
+		}
+		return subjI < subjJ
 	})
 
 	b := new(bytes.Buffer)
