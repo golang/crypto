@@ -955,3 +955,91 @@ func TestAuthMethodGSSAPIWithMIC(t *testing.T) {
 		}
 	}
 }
+
+func TestCompatibleAlgoAndSignatures(t *testing.T) {
+	type testcase struct {
+		algo       string
+		sigFormat  string
+		compatible bool
+	}
+	testcases := []*testcase{
+		{
+			KeyAlgoRSA,
+			KeyAlgoRSA,
+			true,
+		},
+		{
+			KeyAlgoRSA,
+			KeyAlgoRSASHA256,
+			false,
+		},
+		{
+			KeyAlgoRSA,
+			KeyAlgoRSASHA512,
+			false,
+		},
+		{
+			KeyAlgoRSASHA256,
+			KeyAlgoRSA,
+			true,
+		},
+		{
+			KeyAlgoRSASHA512,
+			KeyAlgoRSA,
+			true,
+		},
+		{
+			KeyAlgoRSASHA512,
+			KeyAlgoRSASHA256,
+			false,
+		},
+		{
+			KeyAlgoRSASHA256,
+			KeyAlgoRSASHA512,
+			false,
+		},
+		{
+			KeyAlgoRSASHA512,
+			KeyAlgoRSASHA512,
+			true,
+		},
+		{
+			CertAlgoRSAv01,
+			KeyAlgoRSA,
+			true,
+		},
+		{
+			CertAlgoRSAv01,
+			KeyAlgoRSASHA256,
+			true,
+		},
+		{
+			CertAlgoRSAv01,
+			KeyAlgoRSASHA512,
+			true,
+		},
+		{
+			CertAlgoRSASHA256v01,
+			KeyAlgoRSASHA512,
+			false,
+		},
+		{
+			CertAlgoRSASHA512v01,
+			KeyAlgoRSASHA512,
+			true,
+		},
+		{
+			CertAlgoRSASHA512v01,
+			KeyAlgoRSASHA256,
+			false,
+		},
+	}
+
+	for _, c := range testcases {
+		if isAlgoCompatible(c.algo, c.sigFormat) != c.compatible {
+			t.Errorf("algorithm %q, signature format %q, expected compatible to be %t", c.algo, c.sigFormat, c.compatible)
+		}
+
+	}
+
+}

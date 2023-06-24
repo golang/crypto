@@ -370,6 +370,28 @@ func gssExchangeToken(gssapiConfig *GSSAPIWithMICConfig, firstToken []byte, s *c
 	return authErr, perms, nil
 }
 
+// isAlgoCompatible check if the signature format is
+// compatible with the selected algorithm taking into account
+// edge cases that occur with old clients
+func isAlgoCompatible(algo, sigFormat string) bool {
+	if underlyingAlgo(algo) == sigFormat {
+		return true
+	}
+	rsaCompatibleAlgos := []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512}
+	// For certificate authentication with OpenSSH 7.2-7.7
+	// signature format can be rsa-sha2-256 or rsa-sha2-512
+	// for the algorithm ssh-rsa-cert-v01@openssh.com
+	if algo == CertAlgoRSAv01 {
+		return contains(rsaCompatibleAlgos, sigFormat)
+	}
+	// With gpg-agent < 2.2.6 the algorithm can be rsa-sha2-256
+	// or rsa-sha2-512 for signature format ssh-rsa
+	if sigFormat == KeyAlgoRSA {
+		return contains(rsaCompatibleAlgos, algo)
+	}
+	return false
+}
+
 // ServerAuthError represents server authentication errors and is
 // sometimes returned by NewServerConn. It appends any authentication
 // errors that may occur, and is returned if all of the authentication
@@ -567,7 +589,18 @@ userAuthLoop:
 					authErr = fmt.Errorf("ssh: algorithm %q not accepted", sig.Format)
 					break
 				}
-				if underlyingAlgo(algo) != sig.Format {
+				// Ensure the declared public key algo is compatible
+				// with the decoded one.
+				// This check will ensure we don't accept e.g.
+				// ssh-rsa-cert-v01@openssh.com algorithm with ssh-rsa
+				// public key type.
+				// The algorithm and public key type must be consistent:
+				// both must point to a certificate or none
+				if !contains(algorithmsForKeyFormat(pubKey.Type()), algo) {
+					authErr = fmt.Errorf("ssh: type mismatch for decoded key, received %q, expected %q", pubKey.Type(), algo)
+					break
+				}
+				if !isAlgoCompatible(algo, sig.Format) {
 					authErr = fmt.Errorf("ssh: signature %q not compatible with selected algorithm %q", sig.Format, algo)
 					break
 				}
