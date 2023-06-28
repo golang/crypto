@@ -410,6 +410,9 @@ func TestKeyExchanges(t *testing.T) {
 	// are not included in the default list of supported kex so we have to add them
 	// here manually.
 	kexOrder = append(kexOrder, "diffie-hellman-group-exchange-sha1", "diffie-hellman-group-exchange-sha256")
+	// The key exchange algorithms diffie-hellman-group16-sha512 is disabled by
+	// default so we add it here manually.
+	kexOrder = append(kexOrder, "diffie-hellman-group16-sha512")
 	for _, kex := range kexOrder {
 		t.Run(kex, func(t *testing.T) {
 			server := newServer(t)
