@@ -955,3 +955,124 @@ func TestAuthMethodGSSAPIWithMIC(t *testing.T) {
 		}
 	}
 }
+
+func TestCompatibleAlgoAndSignatures(t *testing.T) {
+	type testcase struct {
+		algo       string
+		sigFormat  string
+		compatible bool
+	}
+	testcases := []*testcase{
+		{
+			KeyAlgoRSA,
+			KeyAlgoRSA,
+			true,
+		},
+		{
+			KeyAlgoRSA,
+			KeyAlgoRSASHA256,
+			true,
+		},
+		{
+			KeyAlgoRSA,
+			KeyAlgoRSASHA512,
+			true,
+		},
+		{
+			KeyAlgoRSASHA256,
+			KeyAlgoRSA,
+			true,
+		},
+		{
+			KeyAlgoRSASHA512,
+			KeyAlgoRSA,
+			true,
+		},
+		{
+			KeyAlgoRSASHA512,
+			KeyAlgoRSASHA256,
+			true,
+		},
+		{
+			KeyAlgoRSASHA256,
+			KeyAlgoRSASHA512,
+			true,
+		},
+		{
+			KeyAlgoRSASHA512,
+			KeyAlgoRSASHA512,
+			true,
+		},
+		{
+			CertAlgoRSAv01,
+			KeyAlgoRSA,
+			true,
+		},
+		{
+			CertAlgoRSAv01,
+			KeyAlgoRSASHA256,
+			true,
+		},
+		{
+			CertAlgoRSAv01,
+			KeyAlgoRSASHA512,
+			true,
+		},
+		{
+			CertAlgoRSASHA256v01,
+			KeyAlgoRSASHA512,
+			true,
+		},
+		{
+			CertAlgoRSASHA512v01,
+			KeyAlgoRSASHA512,
+			true,
+		},
+		{
+			CertAlgoRSASHA512v01,
+			KeyAlgoRSASHA256,
+			true,
+		},
+		{
+			CertAlgoRSASHA256v01,
+			CertAlgoRSAv01,
+			true,
+		},
+		{
+			CertAlgoRSAv01,
+			CertAlgoRSASHA512v01,
+			true,
+		},
+		{
+			KeyAlgoECDSA256,
+			KeyAlgoRSA,
+			false,
+		},
+		{
+			KeyAlgoECDSA256,
+			KeyAlgoECDSA521,
+			false,
+		},
+		{
+			KeyAlgoECDSA256,
+			KeyAlgoECDSA256,
+			true,
+		},
+		{
+			KeyAlgoECDSA256,
+			KeyAlgoED25519,
+			false,
+		},
+		{
+			KeyAlgoED25519,
+			KeyAlgoED25519,
+			true,
+		},
+	}
+
+	for _, c := range testcases {
+		if isAlgoCompatible(c.algo, c.sigFormat) != c.compatible {
+			t.Errorf("algorithm %q, signature format %q, expected compatible to be %t", c.algo, c.sigFormat, c.compatible)
+		}
+	}
+}
