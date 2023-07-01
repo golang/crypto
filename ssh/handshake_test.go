@@ -148,6 +148,7 @@ func TestHandshakeBasic(t *testing.T) {
 	clientDone := make(chan int, 0)
 	gotHalf := make(chan int, 0)
 	const N = 20
+	errorCh := make(chan error, 1)
 
 	go func() {
 		defer close(clientDone)
@@ -158,7 +159,9 @@ func TestHandshakeBasic(t *testing.T) {
 		for i := 0; i < N; i++ {
 			p := []byte{msgRequestSuccess, byte(i)}
 			if err := trC.writePacket(p); err != nil {
-				t.Fatalf("sendPacket: %v", err)
+				errorCh <- err
+				trC.Close()
+				return
 			}
 			if (i % 10) == 5 {
 				<-gotHalf
@@ -177,16 +180,15 @@ func TestHandshakeBasic(t *testing.T) {
 				checker.waitCall <- 1
 			}
 		}
+		errorCh <- nil
 	}()
 
 	// Server checks that client messages come in cleanly
 	i := 0
-	err = nil
 	for ; i < N; i++ {
-		var p []byte
-		p, err = trS.readPacket()
-		if err != nil {
-			break
+		p, err := trS.readPacket()
+		if err != nil && err != io.EOF {
+			t.Fatalf("server error: %v", err)
 		}
 		if (i % 10) == 5 {
 			gotHalf <- 1
@@ -198,8 +200,8 @@ func TestHandshakeBasic(t *testing.T) {
 		}
 	}
 	<-clientDone
-	if err != nil && err != io.EOF {
-		t.Fatalf("server error: %v", err)
+	if err := <-errorCh; err != nil {
+		t.Fatalf("sendPacket: %v", err)
 	}
 	if i != N {
 		t.Errorf("received %d messages, want 10.", i)
@@ -345,16 +347,16 @@ func TestHandshakeAutoRekeyRead(t *testing.T) {
 
 	// While we read out the packet, a key change will be
 	// initiated.
-	done := make(chan int, 1)
+	errorCh := make(chan error, 1)
 	go func() {
-		defer close(done)
-		if _, err := trC.readPacket(); err != nil {
-			t.Fatalf("readPacket(client): %v", err)
-		}
-
+		_, err := trC.readPacket()
+		errorCh <- err
 	}()
 
-	<-done
+	if err := <-errorCh; err != nil {
+		t.Fatalf("readPacket(client): %v", err)
+	}
+
 	<-sync.called
 }
 

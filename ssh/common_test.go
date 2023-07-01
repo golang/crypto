@@ -82,11 +82,11 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 	}
 
 	cases := []testcase{
-		testcase{
+		{
 			name: "standard",
 		},
 
-		testcase{
+		{
 			name: "no common hostkey",
 			serverIn: kexInitMsg{
 				ServerHostKeyAlgos: []string{"hostkey2"},
@@ -94,7 +94,7 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 			wantErr: true,
 		},
 
-		testcase{
+		{
 			name: "no common kex",
 			serverIn: kexInitMsg{
 				KexAlgos: []string{"kex2"},
@@ -102,7 +102,7 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 			wantErr: true,
 		},
 
-		testcase{
+		{
 			name: "no common cipher",
 			serverIn: kexInitMsg{
 				CiphersClientServer: []string{"cipher2"},
@@ -110,7 +110,7 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 			wantErr: true,
 		},
 
-		testcase{
+		{
 			name: "client decides cipher",
 			serverIn: kexInitMsg{
 				CiphersClientServer: []string{"cipher1", "cipher2"},
