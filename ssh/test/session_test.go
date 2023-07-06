@@ -248,7 +248,7 @@ func TestValidTerminalMode(t *testing.T) {
 		t.Fatalf("session failed: %s", err)
 	}
 
-	if _, err := io.WriteString(stdin, "echo SHELL $SHELL && stty -a && exit\n"); err != nil {
+	if _, err := io.WriteString(stdin, "echo && echo SHELL $SHELL && stty -a && exit\n"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -258,7 +258,7 @@ func TestValidTerminalMode(t *testing.T) {
 	}
 
 	if testing.Verbose() {
-		t.Logf("echo SHELL $SHELL && stty -a && exit:\n%s", buf)
+		t.Logf("echo && echo SHELL $SHELL && stty -a && exit:\n%s", buf)
 	}
 
 	shellLine := regexp.MustCompile("(?m)^SHELL (.*)$").FindStringSubmatch(buf.String())
