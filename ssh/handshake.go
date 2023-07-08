@@ -461,19 +461,24 @@ func (t *handshakeTransport) sendKexInit() error {
 	isServer := len(t.hostKeys) > 0
 	if isServer {
 		for _, k := range t.hostKeys {
-			// If k is an AlgorithmSigner, presume it supports all signature algorithms
-			// associated with the key format. (Ideally AlgorithmSigner would have a
-			// method to advertise supported algorithms, but it doesn't. This means that
-			// adding support for a new algorithm is a breaking change, as we will
-			// immediately negotiate it even if existing implementations don't support
-			// it. If that ever happens, we'll have to figure something out.)
-			// If k is not an AlgorithmSigner, we can only assume it only supports the
-			// algorithms that matches the key format. (This means that Sign can't pick
-			// a different default.)
+			// If k is a MultiAlgorithmSigner, we restrict the signature
+			// algorithms. If k is a AlgorithmSigner, presume it supports all
+			// signature algorithms associated with the key format. If k is not
+			// an AlgorithmSigner, we can only assume it only supports the
+			// algorithms that matches the key format. (This means that Sign
+			// can't pick a different default).
 			keyFormat := k.PublicKey().Type()
-			if _, ok := k.(AlgorithmSigner); ok {
+
+			switch s := k.(type) {
+			case MultiAlgorithmSigner:
+				for _, algo := range algorithmsForKeyFormat(keyFormat) {
+					if contains(s.Algorithms(), underlyingAlgo(algo)) {
+						msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, algo)
+					}
+				}
+			case AlgorithmSigner:
 				msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, algorithmsForKeyFormat(keyFormat)...)
-			} else {
+			default:
 				msg.ServerHostKeyAlgos = append(msg.ServerHostKeyAlgos, keyFormat)
 			}
 		}
@@ -685,9 +690,16 @@ func (a algorithmSignerWrapper) SignWithAlgorithm(rand io.Reader, data []byte, a
 
 func pickHostKey(hostKeys []Signer, algo string) AlgorithmSigner {
 	for _, k := range hostKeys {
+		if s, ok := k.(MultiAlgorithmSigner); ok {
+			if !contains(s.Algorithms(), underlyingAlgo(algo)) {
+				continue
+			}
+		}
+
 		if algo == k.PublicKey().Type() {
 			return algorithmSignerWrapper{k}
 		}
+
 		k, ok := k.(AlgorithmSigner)
 		if !ok {
 			continue

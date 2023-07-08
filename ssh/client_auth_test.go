@@ -1077,6 +1077,73 @@ func TestCompatibleAlgoAndSignatures(t *testing.T) {
 	}
 }
 
+func TestPickSignatureAlgorithm(t *testing.T) {
+	type testcase struct {
+		name       string
+		extensions map[string][]byte
+	}
+	cases := []testcase{
+		{
+			name: "server with empty server-sig-algs",
+			extensions: map[string][]byte{
+				"server-sig-algs": []byte(``),
+			},
+		},
+		{
+			name:       "server with no server-sig-algs",
+			extensions: nil,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			signer, ok := testSigners["rsa"].(MultiAlgorithmSigner)
+			if !ok {
+				t.Fatalf("rsa test signer does not implement the MultiAlgorithmSigner interface")
+			}
+			// The signer supports the public key algorithm which is then returned.
+			_, algo, err := pickSignatureAlgorithm(signer, c.extensions)
+			if err != nil {
+				t.Fatalf("got %v, want no error", err)
+			}
+			if algo != signer.PublicKey().Type() {
+				t.Fatalf("got algo %q, want %q", algo, signer.PublicKey().Type())
+			}
+			// Test a signer that uses a certificate algorithm as the public key
+			// type.
+			cert := &Certificate{
+				CertType: UserCert,
+				Key:      signer.PublicKey(),
+			}
+			cert.SignCert(rand.Reader, signer)
+
+			certSigner, err := NewCertSigner(cert, signer)
+			if err != nil {
+				t.Fatalf("error generating cert signer: %v", err)
+			}
+			// The signer supports the public key algorithm and the
+			// public key format is a certificate type so the cerificate
+			// algorithm matching the key format must be returned
+			_, algo, err = pickSignatureAlgorithm(certSigner, c.extensions)
+			if err != nil {
+				t.Fatalf("got %v, want no error", err)
+			}
+			if algo != certSigner.PublicKey().Type() {
+				t.Fatalf("got algo %q, want %q", algo, certSigner.PublicKey().Type())
+			}
+			signer, err = NewSignerWithAlgorithms(signer.(AlgorithmSigner), []string{KeyAlgoRSASHA512, KeyAlgoRSASHA256})
+			if err != nil {
+				t.Fatalf("unable to create signer with algorithms: %v", err)
+			}
+			// The signer does not support the public key algorithm so an error
+			// is returned.
+			_, _, err = pickSignatureAlgorithm(signer, c.extensions)
+			if err == nil {
+				t.Fatal("got no error, no common public key signature algorithm error expected")
+			}
+		})
+	}
+}
+
 // configurablePublicKeyCallback is a public key callback that allows to
 // configure the signature algorithm and format. This way we can emulate the
 // behavior of buggy clients.
@@ -1133,7 +1200,7 @@ func (cb configurablePublicKeyCallback) auth(session []byte, user string, c pack
 	if err != nil {
 		return authFailure, nil, err
 	}
-	if success == authSuccess || !containsMethod(methods, cb.method()) {
+	if success == authSuccess || !contains(methods, cb.method()) {
 		return success, methods, err
 	}
 
