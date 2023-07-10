@@ -179,6 +179,27 @@ func TestUint32(t *testing.T) {
 	}
 }
 
+func TestUint48(t *testing.T) {
+	var b Builder
+	var u uint64 = 0xfefcff3cfdfc
+	b.AddUint48(u)
+	if err := builderBytesEq(&b, 254, 252, 255, 60, 253, 252); err != nil {
+		t.Error(err)
+	}
+
+	var s String = b.BytesOrPanic()
+	var v uint64
+	if !s.ReadUint48(&v) {
+		t.Error("ReadUint48() = false, want true")
+	}
+	if v != u {
+		t.Errorf("v = %x, want %x", v, u)
+	}
+	if len(s) != 0 {
+		t.Errorf("len(s) = %d, want 0", len(s))
+	}
+}
+
 func TestUint64(t *testing.T) {
 	var b Builder
 	b.AddUint64(0xf2fefefcff3cfdfc)
