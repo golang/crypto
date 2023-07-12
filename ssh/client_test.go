@@ -7,6 +7,9 @@ package ssh
 import (
 	"bytes"
 	"crypto/rand"
+	"errors"
+	"fmt"
+	"net"
 	"strings"
 	"testing"
 )
@@ -207,9 +210,12 @@ func TestBannerCallback(t *testing.T) {
 }
 
 func TestNewClientConn(t *testing.T) {
+	errHostKeyMismatch := errors.New("host key mismatch")
+
 	for _, tt := range []struct {
-		name string
-		user string
+		name                    string
+		user                    string
+		simulateHostKeyMismatch HostKeyCallback
 	}{
 		{
 			name: "good user field for ConnMetadata",
@@ -218,6 +224,13 @@ func TestNewClientConn(t *testing.T) {
 		{
 			name: "empty user field for ConnMetadata",
 			user: "",
+		},
+		{
+			name: "host key mismatch",
+			user: "testuser",
+			simulateHostKeyMismatch: func(hostname string, remote net.Addr, key PublicKey) error {
+				return fmt.Errorf("%w: %s", errHostKeyMismatch, bytes.TrimSpace(MarshalAuthorizedKey(key)))
+			},
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -243,8 +256,16 @@ func TestNewClientConn(t *testing.T) {
 				},
 				HostKeyCallback: InsecureIgnoreHostKey(),
 			}
+
+			if tt.simulateHostKeyMismatch != nil {
+				clientConf.HostKeyCallback = tt.simulateHostKeyMismatch
+			}
+
 			clientConn, _, _, err := NewClientConn(c2, "", clientConf)
 			if err != nil {
+				if tt.simulateHostKeyMismatch != nil && errors.Is(err, errHostKeyMismatch) {
+					return
+				}
 				t.Fatal(err)
 			}
 
