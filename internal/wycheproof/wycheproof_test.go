@@ -11,6 +11,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -28,6 +29,11 @@ const wycheproofModVer = "v0.0.0-20191219022705-2196000605e4"
 var wycheproofTestVectorsDir string
 
 func TestMain(m *testing.M) {
+	flag.Parse()
+	if flag.Lookup("test.short").Value.(flag.Getter).Get().(bool) {
+		log.Println("skipping test that downloads testdata via 'go mod download' in short mode")
+		os.Exit(0)
+	}
 	if _, err := exec.LookPath("go"); err != nil {
 		log.Printf("skipping test because 'go' command is unavailable: %v", err)
 		os.Exit(0)
@@ -42,8 +48,6 @@ func TestMain(m *testing.M) {
 	// can be used in the following tests.
 	path := "github.com/google/wycheproof@" + wycheproofModVer
 	cmd := exec.Command("go", "mod", "download", "-json", path)
-	// TODO: enable the sumdb once the Trybots proxy supports it.
-	cmd.Env = append(os.Environ(), "GONOSUMDB=*")
 	output, err := cmd.Output()
 	if err != nil {
 		log.Fatalf("failed to run `go mod download -json %s`, output: %s", path, output)
