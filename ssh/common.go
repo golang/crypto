@@ -269,16 +269,16 @@ type Config struct {
 	// unspecified, a size suitable for the chosen cipher is used.
 	RekeyThreshold uint64
 
-	// The allowed key exchanges algorithms. If unspecified then a
-	// default set of algorithms is used.
+	// The allowed key exchanges algorithms. If unspecified then a default set
+	// of algorithms is used. Unsupported values are silently ignored.
 	KeyExchanges []string
 
-	// The allowed cipher algorithms. If unspecified then a sensible
-	// default is used.
+	// The allowed cipher algorithms. If unspecified then a sensible default is
+	// used. Unsupported values are silently ignored.
 	Ciphers []string
 
-	// The allowed MAC algorithms. If unspecified then a sensible default
-	// is used.
+	// The allowed MAC algorithms. If unspecified then a sensible default is
+	// used. Unsupported values are silently ignored.
 	MACs []string
 }
 
@@ -295,7 +295,7 @@ func (c *Config) SetDefaults() {
 	var ciphers []string
 	for _, c := range c.Ciphers {
 		if cipherModes[c] != nil {
-			// reject the cipher if we have no cipherModes definition
+			// Ignore the cipher if we have no cipherModes definition.
 			ciphers = append(ciphers, c)
 		}
 	}
@@ -304,10 +304,26 @@ func (c *Config) SetDefaults() {
 	if c.KeyExchanges == nil {
 		c.KeyExchanges = preferredKexAlgos
 	}
+	var kexs []string
+	for _, k := range c.KeyExchanges {
+		if kexAlgoMap[k] != nil {
+			// Ignore the KEX if we have no kexAlgoMap definition.
+			kexs = append(kexs, k)
+		}
+	}
+	c.KeyExchanges = kexs
 
 	if c.MACs == nil {
 		c.MACs = supportedMACs
 	}
+	var macs []string
+	for _, m := range c.MACs {
+		if macModes[m] != nil {
+			// Ignore the MAC if we have no macModes definition.
+			macs = append(macs, m)
+		}
+	}
+	c.MACs = macs
 
 	if c.RekeyThreshold == 0 {
 		// cipher specific default
