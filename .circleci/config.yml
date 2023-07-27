@@ -1,0 +1,46 @@
+version: 2
+
+orbs:
+  snyk: snyk/snyk@1.7.0
+
+jobs:
+  vulnerability-scan:
+    executor: go
+    steps:
+      - checkout
+      - run:
+          name: Setup Scanning
+          command: |
+              git config --global url."https://$GITHUB_USER:$GITHUB_TOKEN@github.com/circleci/".insteadOf "https://github.com/circleci/"
+      - when:
+          condition:
+              or:
+                - equal: [ master, << pipeline.git.branch >> ]
+          steps:
+              - run:
+                  name: Launching Snyk Orb Scanning
+                  command: echo "Running snyk/scan on master; uploading the results"
+              - snyk/scan:
+                  fail-on-issues: false
+                  severity-threshold: high
+                  monitor-on-build: true
+                  project: '${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}'
+      - unless:
+          condition:
+              or:
+                - equal: [ master, << pipeline.git.branch >> ]
+          steps:
+              - run:
+                  name: Launching Snyk Orb Scanning
+                  command: echo "Running snyk/scan on branch; not uploading the results"
+              - snyk/scan:
+                  fail-on-issues: false
+                  severity-threshold: high
+                  monitor-on-build: false
+                  project: '${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}/${CIRCLE_BRANCH}'
+
+workflows:
+  main:
+    jobs:
+      - vulnerability-scan:
+          context: org-global-employees
