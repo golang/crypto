@@ -1,4 +1,4 @@
-version: 2
+version: 2.1
 
 orbs:
   snyk: snyk/snyk@1.7.0
