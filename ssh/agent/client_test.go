@@ -369,7 +369,8 @@ func TestAuth(t *testing.T) {
 	go func() {
 		conn, _, _, err := ssh.NewServerConn(a, &serverConf)
 		if err != nil {
-			t.Fatalf("Server: %v", err)
+			t.Errorf("NewServerConn error: %v", err)
+			return
 		}
 		conn.Close()
 	}()
