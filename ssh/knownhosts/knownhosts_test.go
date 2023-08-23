@@ -247,7 +247,7 @@ func TestLine(t *testing.T) {
 		"server.org":                             "server.org " + edKeyStr,
 		"server.org:22":                          "server.org " + edKeyStr,
 		"server.org:23":                          "[server.org]:23 " + edKeyStr,
-		"[c629:1ec4:102:304:102:304:102:304]:22": "[c629:1ec4:102:304:102:304:102:304] " + edKeyStr,
+		"[c629:1ec4:102:304:102:304:102:304]:22": "c629:1ec4:102:304:102:304:102:304 " + edKeyStr,
 		"[c629:1ec4:102:304:102:304:102:304]:23": "[c629:1ec4:102:304:102:304:102:304]:23 " + edKeyStr,
 	} {
 		if got := Line([]string{in}, edKey); got != want {
@@ -326,8 +326,8 @@ func TestNormalize(t *testing.T) {
 		"[127.0.0.1]:23":           "[127.0.0.1]:23",
 		"127.0.0.1:23":             "[127.0.0.1]:23",
 		"[a.b.c]:22":               "a.b.c",
-		"[abcd:abcd:abcd:abcd]":    "[abcd:abcd:abcd:abcd]",
-		"[abcd:abcd:abcd:abcd]:22": "[abcd:abcd:abcd:abcd]",
+		"[abcd:abcd:abcd:abcd]":    "abcd:abcd:abcd:abcd",
+		"[abcd:abcd:abcd:abcd]:22": "abcd:abcd:abcd:abcd",
 		"[abcd:abcd:abcd:abcd]:23": "[abcd:abcd:abcd:abcd]:23",
 	} {
 		got := Normalize(in)

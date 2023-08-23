@@ -439,14 +439,12 @@ func New(files ...string) (ssh.HostKeyCallback, error) {
 func Normalize(address string) string {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
-		host = address
+		host = strings.Trim(address, "[]")
 		port = "22"
 	}
 	entry := host
 	if port != "22" {
 		entry = "[" + entry + "]:" + port
-	} else if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
-		entry = "[" + entry + "]"
 	}
 	return entry
 }
