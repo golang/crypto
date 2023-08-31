@@ -647,16 +647,20 @@ func (t *handshakeTransport) enterKeyExchange(otherInitPacket []byte) error {
 
 	// On the server side, after the first SSH_MSG_NEWKEYS, send a SSH_MSG_EXT_INFO
 	// message with the server-sig-algs extension if the client supports it. See
-	// RFC 8308, Sections 2.4 and 3.1.
+	// RFC 8308, Sections 2.4 and 3.1, and [PROTOCOL], Section 1.9.
 	if !isClient && firstKeyExchange && contains(clientInit.KexAlgos, "ext-info-c") {
 		extInfo := &extInfoMsg{
-			NumExtensions: 1,
-			Payload:       make([]byte, 0, 4+15+4+len(supportedPubKeyAuthAlgosList)),
+			NumExtensions: 2,
+			Payload:       make([]byte, 0, 4+15+4+len(supportedPubKeyAuthAlgosList)+4+16+4+1),
 		}
 		extInfo.Payload = appendInt(extInfo.Payload, len("server-sig-algs"))
 		extInfo.Payload = append(extInfo.Payload, "server-sig-algs"...)
 		extInfo.Payload = appendInt(extInfo.Payload, len(supportedPubKeyAuthAlgosList))
 		extInfo.Payload = append(extInfo.Payload, supportedPubKeyAuthAlgosList...)
+		extInfo.Payload = appendInt(extInfo.Payload, len("ping@openssh.com"))
+		extInfo.Payload = append(extInfo.Payload, "ping@openssh.com"...)
+		extInfo.Payload = appendInt(extInfo.Payload, 1)
+		extInfo.Payload = append(extInfo.Payload, "0"...)
 		if err := t.conn.writePacket(Marshal(extInfo)); err != nil {
 			return err
 		}
