@@ -1234,3 +1234,51 @@ func TestPublicKeyAndAlgoCompatibility(t *testing.T) {
 		t.Error("cert login passed with incompatible public key type and algorithm")
 	}
 }
+
+func TestClientAuthGPGAgentCompat(t *testing.T) {
+	clientConfig := &ClientConfig{
+		User:            "testuser",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		Auth: []AuthMethod{
+			// algorithm rsa-sha2-512 and signature format ssh-rsa.
+			configurablePublicKeyCallback{
+				signer:          testSigners["rsa"].(AlgorithmSigner),
+				signatureAlgo:   KeyAlgoRSASHA512,
+				signatureFormat: KeyAlgoRSA,
+			},
+		},
+	}
+	if err := tryAuth(t, clientConfig); err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+}
+
+func TestCertAuthOpenSSHCompat(t *testing.T) {
+	cert := &Certificate{
+		Key:         testPublicKeys["rsa"],
+		ValidBefore: CertTimeInfinity,
+		CertType:    UserCert,
+	}
+	cert.SignCert(rand.Reader, testSigners["ecdsa"])
+	certSigner, err := NewCertSigner(cert, testSigners["rsa"])
+	if err != nil {
+		t.Fatalf("NewCertSigner: %v", err)
+	}
+
+	clientConfig := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		Auth: []AuthMethod{
+			// algorithm ssh-rsa-cert-v01@openssh.com and signature format
+			// rsa-sha2-256.
+			configurablePublicKeyCallback{
+				signer:          certSigner.(AlgorithmSigner),
+				signatureAlgo:   CertAlgoRSAv01,
+				signatureFormat: KeyAlgoRSASHA256,
+			},
+		},
+	}
+	if err := tryAuth(t, clientConfig); err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+}
