@@ -726,3 +726,49 @@ func TestNewSignerWithAlgos(t *testing.T) {
 		t.Error("signer with algos created with restricted algorithms")
 	}
 }
+
+func TestCryptoPublicKey(t *testing.T) {
+	for _, priv := range testSigners {
+		p1 := priv.PublicKey()
+		key, ok := p1.(CryptoPublicKey)
+		if !ok {
+			continue
+		}
+		p2, err := NewPublicKey(key.CryptoPublicKey())
+		if err != nil {
+			t.Fatalf("NewPublicKey(CryptoPublicKey) failed for %s, got: %v", p1.Type(), err)
+		}
+		if !reflect.DeepEqual(p1, p2) {
+			t.Errorf("got %#v in NewPublicKey, want %#v", p2, p1)
+		}
+	}
+	for _, d := range testdata.SKData {
+		p1, _, _, _, err := ParseAuthorizedKey(d.PubKey)
+		if err != nil {
+			t.Fatalf("parseAuthorizedKey returned error: %v", err)
+		}
+		k1, ok := p1.(CryptoPublicKey)
+		if !ok {
+			t.Fatalf("%T does not implement CryptoPublicKey", p1)
+		}
+
+		var p2 PublicKey
+		switch pub := k1.CryptoPublicKey().(type) {
+		case *ecdsa.PublicKey:
+			p2 = &skECDSAPublicKey{
+				application: "ssh:",
+				PublicKey:   *pub,
+			}
+		case ed25519.PublicKey:
+			p2 = &skEd25519PublicKey{
+				application: "ssh:",
+				PublicKey:   pub,
+			}
+		default:
+			t.Fatalf("unexpected type %T from CryptoPublicKey()", pub)
+		}
+		if !reflect.DeepEqual(p1, p2) {
+			t.Errorf("got %#v, want %#v", p2, p1)
+		}
+	}
+}
