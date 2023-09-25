@@ -11,6 +11,7 @@ import (
 	"crypto/cipher"
 	"crypto/dsa"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/md5"
 	"crypto/rand"
@@ -28,7 +29,6 @@ import (
 	"math/big"
 	"strings"
 
-	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh/internal/bcrypt_pbkdf"
 )
 
