@@ -343,7 +343,7 @@ func (c *Client) Dial(n, addr string) (net.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
-		port, err := net.LookupPort(portString)
+		port, err := net.LookupPort(n, portString)
 		if err != nil {
 			return nil, err
 		}
