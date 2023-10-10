@@ -20,7 +20,7 @@
 // Run sshd:
 // LD_PRELOAD="sshd_test_pw.so" TEST_USER="..." TEST_PASSWD="..." sshd ...
 
-// +build ignore
+//go:build ignore
 
 #define _GNU_SOURCE
 #include <string.h>

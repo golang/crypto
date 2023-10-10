@@ -5,7 +5,7 @@
 // This code can be compiled and used to test the otr package against libotr.
 // See otr_test.go.
 
-// +build ignore
+//go:build ignore
 
 #include <stdio.h>
 #include <stdlib.h>

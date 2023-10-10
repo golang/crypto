@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build generate
-// +build generate
 
 //go:generate go run gen_fallback_bundle.go
 
