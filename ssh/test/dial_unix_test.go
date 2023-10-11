@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build !windows && !solaris && !js
-// +build !windows,!solaris,!js
+//go:build !windows && !js && !wasip1
+// +build !windows,!js,!wasip1
 
 package test
 
@@ -24,7 +24,6 @@ type dialTester interface {
 
 func testDial(t *testing.T, n, listenAddr string, x dialTester) {
 	server := newServer(t)
-	defer server.Shutdown()
 	sshConn := server.Dial(clientConfig())
 	defer sshConn.Close()
 

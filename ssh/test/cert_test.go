@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd
-// +build aix darwin dragonfly freebsd linux netbsd openbsd
+//go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris
+// +build aix darwin dragonfly freebsd linux netbsd openbsd solaris
 
 package test
 
@@ -18,7 +18,6 @@ import (
 // Test both logging in with a cert, and also that the certificate presented by an OpenSSH host can be validated correctly
 func TestCertLogin(t *testing.T) {
 	s := newServer(t)
-	defer s.Shutdown()
 
 	// Use a key different from the default.
 	clientKey := testSigners["dsa"]

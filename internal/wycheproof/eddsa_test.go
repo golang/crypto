@@ -8,9 +8,8 @@
 package wycheproof
 
 import (
+	"crypto/ed25519"
 	"testing"
-
-	"golang.org/x/crypto/ed25519"
 )
 
 func TestEddsa(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/dsa"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -21,7 +22,6 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/crypto/ed25519"
 	"golang.org/x/crypto/ssh/testdata"
 )
 
@@ -111,9 +111,9 @@ func TestKeySignVerify(t *testing.T) {
 }
 
 func TestKeySignWithAlgorithmVerify(t *testing.T) {
-	for _, priv := range testSigners {
-		if algorithmSigner, ok := priv.(AlgorithmSigner); !ok {
-			t.Errorf("Signers constructed by ssh package should always implement the AlgorithmSigner interface: %T", priv)
+	for k, priv := range testSigners {
+		if algorithmSigner, ok := priv.(MultiAlgorithmSigner); !ok {
+			t.Errorf("Signers %q constructed by ssh package should always implement the MultiAlgorithmSigner interface: %T", k, priv)
 		} else {
 			pub := priv.PublicKey()
 			data := []byte("sign me")
@@ -278,6 +278,74 @@ func TestMarshalParsePublicKey(t *testing.T) {
 	}
 	if !reflect.DeepEqual(actPub, pub) {
 		t.Errorf("got %v, expected %v", actPub, pub)
+	}
+}
+
+func TestMarshalPrivateKey(t *testing.T) {
+	tests := []struct {
+		name string
+	}{
+		{"rsa-openssh-format"},
+		{"ed25519"},
+		{"p256-openssh-format"},
+		{"p384-openssh-format"},
+		{"p521-openssh-format"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			expected, ok := testPrivateKeys[tt.name]
+			if !ok {
+				t.Fatalf("cannot find key %s", tt.name)
+			}
+
+			block, err := MarshalPrivateKey(expected, "test@golang.org")
+			if err != nil {
+				t.Fatalf("cannot marshal %s: %v", tt.name, err)
+			}
+
+			key, err := ParseRawPrivateKey(pem.EncodeToMemory(block))
+			if err != nil {
+				t.Fatalf("cannot parse %s: %v", tt.name, err)
+			}
+
+			if !reflect.DeepEqual(expected, key) {
+				t.Errorf("unexpected marshaled key %s", tt.name)
+			}
+		})
+	}
+}
+
+func TestMarshalPrivateKeyWithPassphrase(t *testing.T) {
+	tests := []struct {
+		name string
+	}{
+		{"rsa-openssh-format"},
+		{"ed25519"},
+		{"p256-openssh-format"},
+		{"p384-openssh-format"},
+		{"p521-openssh-format"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			expected, ok := testPrivateKeys[tt.name]
+			if !ok {
+				t.Fatalf("cannot find key %s", tt.name)
+			}
+
+			block, err := MarshalPrivateKeyWithPassphrase(expected, "test@golang.org", []byte("test-passphrase"))
+			if err != nil {
+				t.Fatalf("cannot marshal %s: %v", tt.name, err)
+			}
+
+			key, err := ParseRawPrivateKeyWithPassphrase(pem.EncodeToMemory(block), []byte("test-passphrase"))
+			if err != nil {
+				t.Fatalf("cannot parse %s: %v", tt.name, err)
+			}
+
+			if !reflect.DeepEqual(expected, key) {
+				t.Errorf("unexpected marshaled key %s", tt.name)
+			}
+		})
 	}
 }
 
@@ -614,5 +682,36 @@ func TestSKKeys(t *testing.T) {
 		if err := pk.Verify(dataBuf, sig); err == nil {
 			t.Errorf("%s with corrupted signature: PublicKey.Verify(%v, %v) passed unexpectedly", d.Name, dataBuf, sig)
 		}
+	}
+}
+
+func TestNewSignerWithAlgos(t *testing.T) {
+	algorithSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	_, err := NewSignerWithAlgorithms(algorithSigner, nil)
+	if err == nil {
+		t.Error("signer with algos created with no algorithms")
+	}
+
+	_, err = NewSignerWithAlgorithms(algorithSigner, []string{KeyAlgoED25519})
+	if err == nil {
+		t.Error("signer with algos created with invalid algorithms")
+	}
+
+	_, err = NewSignerWithAlgorithms(algorithSigner, []string{CertAlgoRSASHA256v01})
+	if err == nil {
+		t.Error("signer with algos created with certificate algorithms")
+	}
+
+	mas, err := NewSignerWithAlgorithms(algorithSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	if err != nil {
+		t.Errorf("unable to create signer with valid algorithms: %v", err)
+	}
+
+	_, err = NewSignerWithAlgorithms(mas, []string{KeyAlgoRSA})
+	if err == nil {
+		t.Error("signer with algos created with restricted algorithms")
 	}
 }

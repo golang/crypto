@@ -53,10 +53,11 @@ func TestSetupForwardAgent(t *testing.T) {
 	incoming := make(chan *ssh.ServerConn, 1)
 	go func() {
 		conn, _, _, err := ssh.NewServerConn(a, &serverConf)
-		if err != nil {
-			t.Fatalf("Server: %v", err)
-		}
 		incoming <- conn
+		if err != nil {
+			t.Errorf("NewServerConn error: %v", err)
+			return
+		}
 	}()
 
 	conf := ssh.ClientConfig{
@@ -71,8 +72,10 @@ func TestSetupForwardAgent(t *testing.T) {
 	if err := ForwardToRemote(client, socket); err != nil {
 		t.Fatalf("SetupForwardAgent: %v", err)
 	}
-
 	server := <-incoming
+	if server == nil {
+		t.Fatal("Unable to get server")
+	}
 	ch, reqs, err := server.OpenChannel(channelType, nil)
 	if err != nil {
 		t.Fatalf("OpenChannel(%q): %v", channelType, err)
@@ -240,7 +243,11 @@ func TestParseConstraints(t *testing.T) {
 			ExtensionDetails: []byte(fmt.Sprintf("details: %d", i)),
 		}
 		expect = append(expect, ext)
-		data = append(data, agentConstrainExtension)
+		if i%2 == 0 {
+			data = append(data, agentConstrainExtension)
+		} else {
+			data = append(data, agentConstrainExtensionV00)
+		}
 		data = append(data, ssh.Marshal(ext)...)
 	}
 	_, _, extensions, err := parseConstraints(data)

@@ -29,6 +29,9 @@ func startOpenSSHAgent(t *testing.T) (client ExtendedAgent, socket string, clean
 		// types supported vary by platform.
 		t.Skip("skipping test due to -short")
 	}
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping on windows, we don't support connecting to the ssh-agent via a named pipe")
+	}
 
 	bin, err := exec.LookPath("ssh-agent")
 	if err != nil {
@@ -366,7 +369,8 @@ func TestAuth(t *testing.T) {
 	go func() {
 		conn, _, _, err := ssh.NewServerConn(a, &serverConf)
 		if err != nil {
-			t.Fatalf("Server: %v", err)
+			t.Errorf("NewServerConn error: %v", err)
+			return
 		}
 		conn.Close()
 	}()

@@ -118,7 +118,7 @@ func TestECDHStdLib(t *testing.T) {
 					}
 
 					shared := decodeHex(tt.Shared)
-					x, err := curve.ECDH(priv, pub)
+					x, err := priv.ECDH(pub)
 					if err != nil {
 						if tg.Curve == "curve25519" && !shouldPass {
 							// ECDH is expected to only return an error when using X25519,

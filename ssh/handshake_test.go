@@ -148,6 +148,7 @@ func TestHandshakeBasic(t *testing.T) {
 	clientDone := make(chan int, 0)
 	gotHalf := make(chan int, 0)
 	const N = 20
+	errorCh := make(chan error, 1)
 
 	go func() {
 		defer close(clientDone)
@@ -158,7 +159,9 @@ func TestHandshakeBasic(t *testing.T) {
 		for i := 0; i < N; i++ {
 			p := []byte{msgRequestSuccess, byte(i)}
 			if err := trC.writePacket(p); err != nil {
-				t.Fatalf("sendPacket: %v", err)
+				errorCh <- err
+				trC.Close()
+				return
 			}
 			if (i % 10) == 5 {
 				<-gotHalf
@@ -177,16 +180,15 @@ func TestHandshakeBasic(t *testing.T) {
 				checker.waitCall <- 1
 			}
 		}
+		errorCh <- nil
 	}()
 
 	// Server checks that client messages come in cleanly
 	i := 0
-	err = nil
 	for ; i < N; i++ {
-		var p []byte
-		p, err = trS.readPacket()
-		if err != nil {
-			break
+		p, err := trS.readPacket()
+		if err != nil && err != io.EOF {
+			t.Fatalf("server error: %v", err)
 		}
 		if (i % 10) == 5 {
 			gotHalf <- 1
@@ -198,8 +200,8 @@ func TestHandshakeBasic(t *testing.T) {
 		}
 	}
 	<-clientDone
-	if err != nil && err != io.EOF {
-		t.Fatalf("server error: %v", err)
+	if err := <-errorCh; err != nil {
+		t.Fatalf("sendPacket: %v", err)
 	}
 	if i != N {
 		t.Errorf("received %d messages, want 10.", i)
@@ -345,16 +347,16 @@ func TestHandshakeAutoRekeyRead(t *testing.T) {
 
 	// While we read out the packet, a key change will be
 	// initiated.
-	done := make(chan int, 1)
+	errorCh := make(chan error, 1)
 	go func() {
-		defer close(done)
-		if _, err := trC.readPacket(); err != nil {
-			t.Fatalf("readPacket(client): %v", err)
-		}
-
+		_, err := trC.readPacket()
+		errorCh <- err
 	}()
 
-	<-done
+	if err := <-errorCh; err != nil {
+		t.Fatalf("readPacket(client): %v", err)
+	}
+
 	<-sync.called
 }
 
@@ -421,8 +423,8 @@ func TestHandshakeErrorHandlingWriteCoupled(t *testing.T) {
 // handshakeTransport deadlocks, the go runtime will detect it and
 // panic.
 func testHandshakeErrorHandlingN(t *testing.T, readLimit, writeLimit int, coupled bool) {
-	if runtime.GOOS == "js" && runtime.GOARCH == "wasm" {
-		t.Skip("skipping on js/wasm; see golang.org/issue/32840")
+	if (runtime.GOOS == "js" || runtime.GOOS == "wasip1") && runtime.GOARCH == "wasm" {
+		t.Skipf("skipping on %s/wasm; see golang.org/issue/32840", runtime.GOOS)
 	}
 	msg := Marshal(&serviceRequestMsg{strings.Repeat("x", int(minRekeyThreshold)/4)})
 
@@ -562,7 +564,7 @@ func TestHandshakeRekeyDefault(t *testing.T) {
 }
 
 func TestHandshakeAEADCipherNoMAC(t *testing.T) {
-	for _, cipher := range []string{chacha20Poly1305ID, gcmCipherID} {
+	for _, cipher := range []string{chacha20Poly1305ID, gcm128CipherID} {
 		checker := &syncChecker{
 			called: make(chan int, 1),
 		}
@@ -616,5 +618,95 @@ func TestNoSHA2Support(t *testing.T) {
 
 	if _, _, _, err := NewClientConn(c2, "", clientConf); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMultiAlgoSignerHandshake(t *testing.T) {
+	algorithmSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	multiAlgoSigner, err := NewSignerWithAlgorithms(algorithmSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	if err != nil {
+		t.Fatalf("unable to create multi algorithm signer: %v", err)
+	}
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			return &Permissions{}, nil
+		},
+	}
+	serverConf.AddHostKey(multiAlgoSigner)
+	go NewServerConn(c1, serverConf)
+
+	clientConf := &ClientConfig{
+		User:              "test",
+		Auth:              []AuthMethod{Password("testpw")},
+		HostKeyCallback:   FixedHostKey(testSigners["rsa"].PublicKey()),
+		HostKeyAlgorithms: []string{KeyAlgoRSASHA512},
+	}
+
+	if _, _, _, err := NewClientConn(c2, "", clientConf); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMultiAlgoSignerNoCommonHostKeyAlgo(t *testing.T) {
+	algorithmSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	multiAlgoSigner, err := NewSignerWithAlgorithms(algorithmSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	if err != nil {
+		t.Fatalf("unable to create multi algorithm signer: %v", err)
+	}
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	// ssh-rsa is disabled server side
+	serverConf := &ServerConfig{
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			return &Permissions{}, nil
+		},
+	}
+	serverConf.AddHostKey(multiAlgoSigner)
+	go NewServerConn(c1, serverConf)
+
+	// the client only supports ssh-rsa
+	clientConf := &ClientConfig{
+		User:              "test",
+		Auth:              []AuthMethod{Password("testpw")},
+		HostKeyCallback:   FixedHostKey(testSigners["rsa"].PublicKey()),
+		HostKeyAlgorithms: []string{KeyAlgoRSA},
+	}
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err == nil {
+		t.Fatal("succeeded connecting with no common hostkey algorithm")
+	}
+}
+
+func TestPickIncompatibleHostKeyAlgo(t *testing.T) {
+	algorithmSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	multiAlgoSigner, err := NewSignerWithAlgorithms(algorithmSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	if err != nil {
+		t.Fatalf("unable to create multi algorithm signer: %v", err)
+	}
+	signer := pickHostKey([]Signer{multiAlgoSigner}, KeyAlgoRSA)
+	if signer != nil {
+		t.Fatal("incompatible signer returned")
 	}
 }

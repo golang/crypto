@@ -7,6 +7,8 @@ package ssh_test
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
 	"fmt"
 	"log"
 	"net"
@@ -75,7 +77,6 @@ func ExampleNewServerConn() {
 	if err != nil {
 		log.Fatal("Failed to parse private key: ", err)
 	}
-
 	config.AddHostKey(private)
 
 	// Once a ServerConfig has been configured, connections can be
@@ -137,6 +138,36 @@ func ExampleNewServerConn() {
 			}
 		}()
 	}
+}
+
+func ExampleServerConfig_AddHostKey() {
+	// Minimal ServerConfig supporting only password authentication.
+	config := &ssh.ServerConfig{
+		PasswordCallback: func(c ssh.ConnMetadata, pass []byte) (*ssh.Permissions, error) {
+			// Should use constant-time compare (or better, salt+hash) in
+			// a production setting.
+			if c.User() == "testuser" && string(pass) == "tiger" {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("password rejected for %q", c.User())
+		},
+	}
+
+	privateBytes, err := os.ReadFile("id_rsa")
+	if err != nil {
+		log.Fatal("Failed to load private key: ", err)
+	}
+
+	private, err := ssh.ParsePrivateKey(privateBytes)
+	if err != nil {
+		log.Fatal("Failed to parse private key: ", err)
+	}
+	// Restrict host key algorithms to disable ssh-rsa.
+	signer, err := ssh.NewSignerWithAlgorithms(private.(ssh.AlgorithmSigner), []string{ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512})
+	if err != nil {
+		log.Fatal("Failed to create private key with restricted algorithms: ", err)
+	}
+	config.AddHostKey(signer)
 }
 
 func ExampleClientConfig_HostKeyCallback() {
@@ -317,4 +348,39 @@ func ExampleSession_RequestPty() {
 	if err := session.Shell(); err != nil {
 		log.Fatal("failed to start shell: ", err)
 	}
+}
+
+func ExampleCertificate_SignCert() {
+	// Sign a certificate with a specific algorithm.
+	privateKey, err := rsa.GenerateKey(rand.Reader, 3072)
+	if err != nil {
+		log.Fatal("unable to generate RSA key: ", err)
+	}
+	publicKey, err := ssh.NewPublicKey(&privateKey.PublicKey)
+	if err != nil {
+		log.Fatal("unable to get RSA public key: ", err)
+	}
+	caKey, err := rsa.GenerateKey(rand.Reader, 3072)
+	if err != nil {
+		log.Fatal("unable to generate CA key: ", err)
+	}
+	signer, err := ssh.NewSignerFromKey(caKey)
+	if err != nil {
+		log.Fatal("unable to generate signer from key: ", err)
+	}
+	mas, err := ssh.NewSignerWithAlgorithms(signer.(ssh.AlgorithmSigner), []string{ssh.KeyAlgoRSASHA256})
+	if err != nil {
+		log.Fatal("unable to create signer with algoritms: ", err)
+	}
+	certificate := ssh.Certificate{
+		Key:      publicKey,
+		CertType: ssh.UserCert,
+	}
+	if err := certificate.SignCert(rand.Reader, mas); err != nil {
+		log.Fatal("unable to sign certificate: ", err)
+	}
+	// Save the public key to a file and check that rsa-sha-256 is used for
+	// signing:
+	// ssh-keygen -L -f <path to the file>
+	fmt.Println(string(ssh.MarshalAuthorizedKey(&certificate)))
 }

@@ -354,11 +354,12 @@ func TestWaitAuthorization(t *testing.T) {
 		})
 	}
 	t.Run("context cancel", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		_, err := runWaitAuthorization(ctx, t, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Retry-After", "60")
 			fmt.Fprintf(w, `{"status":"pending"}`)
+			time.AfterFunc(1*time.Millisecond, cancel)
 		})
 		if err == nil {
 			t.Error("err is nil")
@@ -373,28 +374,14 @@ func runWaitAuthorization(ctx context.Context, t *testing.T, h http.HandlerFunc)
 		h(w, r)
 	}))
 	defer ts.Close()
-	type res struct {
-		authz *Authorization
-		err   error
+
+	client := &Client{
+		Key:          testKey,
+		DirectoryURL: ts.URL,
+		dir:          &Directory{},
+		KID:          "some-key-id", // set to avoid lookup attempt
 	}
-	ch := make(chan res, 1)
-	go func() {
-		client := &Client{
-			Key:          testKey,
-			DirectoryURL: ts.URL,
-			dir:          &Directory{},
-			KID:          "some-key-id", // set to avoid lookup attempt
-		}
-		a, err := client.WaitAuthorization(ctx, ts.URL)
-		ch <- res{a, err}
-	}()
-	select {
-	case <-time.After(3 * time.Second):
-		t.Fatal("WaitAuthorization took too long to return")
-	case v := <-ch:
-		return v.authz, v.err
-	}
-	panic("runWaitAuthorization: out of select")
+	return client.WaitAuthorization(ctx, ts.URL)
 }
 
 func TestRevokeAuthorization(t *testing.T) {

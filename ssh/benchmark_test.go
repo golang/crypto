@@ -6,6 +6,7 @@ package ssh
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"testing"
@@ -90,16 +91,16 @@ func BenchmarkEndToEnd(b *testing.B) {
 	go func() {
 		newCh, err := server.Accept()
 		if err != nil {
-			b.Fatalf("Client: %v", err)
+			panic(fmt.Sprintf("Client: %v", err))
 		}
 		ch, incoming, err := newCh.Accept()
 		if err != nil {
-			b.Fatalf("Accept: %v", err)
+			panic(fmt.Sprintf("Accept: %v", err))
 		}
 		go DiscardRequests(incoming)
 		for i := 0; i < b.N; i++ {
 			if _, err := io.ReadFull(ch, output); err != nil {
-				b.Fatalf("ReadFull: %v", err)
+				panic(fmt.Sprintf("ReadFull: %v", err))
 			}
 		}
 		ch.Close()
