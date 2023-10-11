@@ -20,6 +20,13 @@ func TestAutoPortListenBroken(t *testing.T) {
 	}
 }
 
+type directTCPIPPayload struct {
+	Addr       string
+	Port       uint32
+	OriginAddr string
+	OriginPort uint32
+}
+
 func TestDialNamedPort(t *testing.T) {
 	// Test that sshClient.Dial supports named ports.
 
@@ -32,7 +39,7 @@ func TestDialNamedPort(t *testing.T) {
 		NoClientAuth: true,
 	}
 	serverConf.AddHostKey(testSigners["rsa"])
-	srvErr := make(chan error, 1)
+	srvErr := make(chan error, 10)
 	go func() {
 		defer close(srvErr)
 		_, chans, req, err := NewServerConn(srvConn, serverConf)
@@ -42,6 +49,17 @@ func TestDialNamedPort(t *testing.T) {
 		}
 		go DiscardRequests(req)
 		for newChan := range chans {
+			if newChan.ChannelType() != "direct-tcpip" {
+				srvErr <- fmt.Errorf("expected direct-tcpip channel, got=%s", newChan.ChannelType())
+			}
+			data := directTCPIPPayload{}
+			if err := Unmarshal(newChan.ExtraData(), &data); err != nil {
+				srvErr <- err
+			}
+			// Below we dial for service `ssh` which should be translated to 22.
+			if data.Port != 22 {
+				srvErr <- fmt.Errorf("expected port 22 got=%d", data.Port)
+			}
 			ch, reqs, err := newChan.Accept()
 			if err != nil {
 				srvErr <- fmt.Errorf("Accept: %w", err)
