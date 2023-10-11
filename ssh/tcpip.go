@@ -5,6 +5,7 @@
 package ssh
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -335,6 +336,9 @@ func (l *tcpListener) Addr() net.Addr {
 // Dial initiates a connection to the addr from the remote host.
 // The resulting connection has a zero LocalAddr() and RemoteAddr().
 func (c *Client) Dial(n, addr string) (net.Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	var ch Channel
 	switch n {
 	case "tcp", "tcp4", "tcp6":
@@ -343,7 +347,7 @@ func (c *Client) Dial(n, addr string) (net.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
-		port, err := net.LookupPort(n, portString)
+		port, err := net.DefaultResolver.LookupPort(ctx, n, portString)
 		if err != nil {
 			return nil, err
 		}
