@@ -406,18 +406,18 @@ func (c *Client) DialTCP(n string, laddr, raddr *net.TCPAddr) (net.Conn, error) 
 
 // RFC 4254 7.2
 type channelOpenDirectMsg struct {
-	raddr string
-	rport uint32
-	laddr string
-	lport uint32
+	Addr       string
+	Port       uint32
+	OriginAddr string
+	OriginPort uint32
 }
 
 func (c *Client) dial(laddr string, lport int, raddr string, rport int) (Channel, error) {
 	msg := channelOpenDirectMsg{
-		raddr: raddr,
-		rport: uint32(rport),
-		laddr: laddr,
-		lport: uint32(lport),
+		Addr:       raddr,
+		Port:       uint32(rport),
+		OriginAddr: laddr,
+		OriginPort: uint32(lport),
 	}
 	ch, in, err := c.OpenChannel("direct-tcpip", Marshal(&msg))
 	if err != nil {
