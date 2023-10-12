@@ -34,6 +34,8 @@ func TestDialNamedPort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("netPipe: %v", err)
 	}
+	defer srvConn.Close()
+	defer clientConn.Close()
 
 	serverConf := &ServerConfig{
 		NoClientAuth: true,
@@ -87,7 +89,6 @@ func TestDialNamedPort(t *testing.T) {
 	}
 	tcpipconn.Close()
 
-	srvConn.Close()
 	clientConn.Close()
 
 	for err := range srvErr {
