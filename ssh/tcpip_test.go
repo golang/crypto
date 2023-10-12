@@ -20,13 +20,6 @@ func TestAutoPortListenBroken(t *testing.T) {
 	}
 }
 
-type directTCPIPPayload struct {
-	Addr       string
-	Port       uint32
-	OriginAddr string
-	OriginPort uint32
-}
-
 func TestDialNamedPort(t *testing.T) {
 	// Test that sshClient.Dial supports named ports.
 
@@ -54,7 +47,7 @@ func TestDialNamedPort(t *testing.T) {
 			if newChan.ChannelType() != "direct-tcpip" {
 				srvErr <- fmt.Errorf("expected direct-tcpip channel, got=%s", newChan.ChannelType())
 			}
-			data := directTCPIPPayload{}
+			data := channelOpenDirectMsg{}
 			if err := Unmarshal(newChan.ExtraData(), &data); err != nil {
 				srvErr <- err
 			}
