@@ -105,6 +105,10 @@ func main() {
 		log.Fatalf("failed to parse %q: %s", *certDataPath, err)
 	}
 
+	if len(certs) == 0 {
+		log.Fatal("certdata.txt appears to contain zero roots")
+	}
+
 	sort.Slice(certs, func(i, j int) bool {
 		// Sort based on the stringified subject (which may not be unique), and
 		// break any ties by just sorting on the raw DER (which will be unique,
