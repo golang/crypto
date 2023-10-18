@@ -21,8 +21,6 @@ func TestAutoPortListenBroken(t *testing.T) {
 }
 
 func TestDialNamedPort(t *testing.T) {
-	// Test that sshClient.Dial supports named ports.
-
 	srvConn, clientConn, err := netPipe()
 	if err != nil {
 		t.Fatalf("netPipe: %v", err)
@@ -46,21 +44,34 @@ func TestDialNamedPort(t *testing.T) {
 		for newChan := range chans {
 			if newChan.ChannelType() != "direct-tcpip" {
 				srvErr <- fmt.Errorf("expected direct-tcpip channel, got=%s", newChan.ChannelType())
+				if err := newChan.Reject(UnknownChannelType, "This test server only supports direct-tcpip"); err != nil {
+					srvErr <- err
+				}
+				continue
 			}
 			data := channelOpenDirectMsg{}
 			if err := Unmarshal(newChan.ExtraData(), &data); err != nil {
-				srvErr <- err
+				if err := newChan.Reject(ConnectionFailed, err.Error()); err != nil {
+					srvErr <- err
+				}
+				continue
 			}
 			// Below we dial for service `ssh` which should be translated to 22.
 			if data.Port != 22 {
-				srvErr <- fmt.Errorf("expected port 22 got=%d", data.Port)
+				if err := newChan.Reject(ConnectionFailed, fmt.Sprintf("expected port 22 got=%d", data.Port)); err != nil {
+					srvErr <- err
+				}
+				continue
 			}
 			ch, reqs, err := newChan.Accept()
 			if err != nil {
 				srvErr <- fmt.Errorf("Accept: %w", err)
+				continue
 			}
 			go DiscardRequests(reqs)
-			ch.Close()
+			if err := ch.Close(); err != nil {
+				srvErr <- err
+			}
 		}
 	}()
 
@@ -68,22 +79,20 @@ func TestDialNamedPort(t *testing.T) {
 		User:            "testuser",
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	}
-
 	sshClientConn, newChans, reqs, err := NewClientConn(clientConn, "", clientConf)
 	if err != nil {
 		t.Fatal(err)
 	}
 	sshClient := NewClient(sshClientConn, newChans, reqs)
 
-	// port being a named port `ssh` is the main point of the test.
-	tcpipconn, err := sshClient.Dial("tcp", "localhost:ssh")
+	// The port section in the host:port string being a named service `ssh` is the main point of the test.
+	_, err = sshClient.Dial("tcp", "localhost:ssh")
 	if err != nil {
-		t.Fatal(err)
+		t.Error(err)
 	}
-	tcpipconn.Close()
 
+	// Stop the ssh server.
 	clientConn.Close()
-
 	for err := range srvErr {
 		t.Errorf("ssh server: %s", err)
 	}
