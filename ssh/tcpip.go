@@ -334,6 +334,9 @@ func (l *tcpListener) Addr() net.Addr {
 
 // Dial initiates a connection to the addr from the remote host.
 // The resulting connection has a zero LocalAddr() and RemoteAddr().
+// Like net.Dial
+// For TCP addresses the port section of the address can be a service name.
+// Service names are resolved at the client side, domain names are resolved on the server.
 func (c *Client) Dial(n, addr string) (net.Conn, error) {
 	var ch Channel
 	switch n {
