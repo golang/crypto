@@ -16,6 +16,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"io"
 	"reflect"
@@ -218,6 +219,16 @@ func TestParseEncryptedPrivateKeysWithPassphrase(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestParseEncryptedPrivateKeysWithIncorrectPassphrase(t *testing.T) {
+	pem := testdata.PEMEncryptedKeys[0].PEMBytes
+	for i := 0; i < 4096; i++ {
+		_, err := ParseRawPrivateKeyWithPassphrase(pem, []byte(fmt.Sprintf("%d", i)))
+		if !errors.Is(err, x509.IncorrectPasswordError) {
+			t.Fatalf("expected error: %v, got: %v", x509.IncorrectPasswordError, err)
+		}
 	}
 }
 
