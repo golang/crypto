@@ -40,7 +40,7 @@ type state struct {
 	//      Extendable-Output Functions (May 2014)"
 	dsbyte byte
 
-	storage storageBuf
+	storage [maxRate]byte
 
 	// Specific to SHA-3 and SHAKE.
 	outputLen int             // the default output size in bytes
@@ -61,15 +61,15 @@ func (d *state) Reset() {
 		d.a[i] = 0
 	}
 	d.state = spongeAbsorbing
-	d.buf = d.storage.asBytes()[:0]
+	d.buf = d.storage[:0]
 }
 
 func (d *state) clone() *state {
 	ret := *d
 	if ret.state == spongeAbsorbing {
-		ret.buf = ret.storage.asBytes()[:len(ret.buf)]
+		ret.buf = ret.storage[:len(ret.buf)]
 	} else {
-		ret.buf = ret.storage.asBytes()[d.rate-cap(d.buf) : d.rate]
+		ret.buf = ret.storage[d.rate-cap(d.buf) : d.rate]
 	}
 
 	return &ret
@@ -83,13 +83,13 @@ func (d *state) permute() {
 		// If we're absorbing, we need to xor the input into the state
 		// before applying the permutation.
 		xorIn(d, d.buf)
-		d.buf = d.storage.asBytes()[:0]
+		d.buf = d.storage[:0]
 		keccakF1600(&d.a)
 	case spongeSqueezing:
 		// If we're squeezing, we need to apply the permutation before
 		// copying more output.
 		keccakF1600(&d.a)
-		d.buf = d.storage.asBytes()[:d.rate]
+		d.buf = d.storage[:d.rate]
 		copyOut(d, d.buf)
 	}
 }
@@ -98,7 +98,7 @@ func (d *state) permute() {
 // the multi-bitrate 10..1 padding rule, and permutes the state.
 func (d *state) padAndPermute(dsbyte byte) {
 	if d.buf == nil {
-		d.buf = d.storage.asBytes()[:0]
+		d.buf = d.storage[:0]
 	}
 	// Pad with this instance's domain-separator bits. We know that there's
 	// at least one byte of space in d.buf because, if it were full,
@@ -106,7 +106,7 @@ func (d *state) padAndPermute(dsbyte byte) {
 	// first one bit for the padding. See the comment in the state struct.
 	d.buf = append(d.buf, dsbyte)
 	zerosStart := len(d.buf)
-	d.buf = d.storage.asBytes()[:d.rate]
+	d.buf = d.storage[:d.rate]
 	for i := zerosStart; i < d.rate; i++ {
 		d.buf[i] = 0
 	}
@@ -117,7 +117,7 @@ func (d *state) padAndPermute(dsbyte byte) {
 	// Apply the permutation
 	d.permute()
 	d.state = spongeSqueezing
-	d.buf = d.storage.asBytes()[:d.rate]
+	d.buf = d.storage[:d.rate]
 	copyOut(d, d.buf)
 }
 
@@ -128,7 +128,7 @@ func (d *state) Write(p []byte) (written int, err error) {
 		panic("sha3: Write after Read")
 	}
 	if d.buf == nil {
-		d.buf = d.storage.asBytes()[:0]
+		d.buf = d.storage[:0]
 	}
 	written = len(p)
 
