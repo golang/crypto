@@ -16,9 +16,6 @@ import (
 // Its generic security strength is 224 bits against preimage attacks,
 // and 112 bits against collision attacks.
 func New224() hash.Hash {
-	if h := new224Asm(); h != nil {
-		return h
-	}
 	return &state{rate: 144, outputLen: 28, dsbyte: 0x06}
 }
 
@@ -26,9 +23,6 @@ func New224() hash.Hash {
 // Its generic security strength is 256 bits against preimage attacks,
 // and 128 bits against collision attacks.
 func New256() hash.Hash {
-	if h := new256Asm(); h != nil {
-		return h
-	}
 	return &state{rate: 136, outputLen: 32, dsbyte: 0x06}
 }
 
@@ -36,9 +30,6 @@ func New256() hash.Hash {
 // Its generic security strength is 384 bits against preimage attacks,
 // and 192 bits against collision attacks.
 func New384() hash.Hash {
-	if h := new384Asm(); h != nil {
-		return h
-	}
 	return &state{rate: 104, outputLen: 48, dsbyte: 0x06}
 }
 
@@ -46,9 +37,6 @@ func New384() hash.Hash {
 // Its generic security strength is 512 bits against preimage attacks,
 // and 256 bits against collision attacks.
 func New512() hash.Hash {
-	if h := new512Asm(); h != nil {
-		return h
-	}
 	return &state{rate: 72, outputLen: 64, dsbyte: 0x06}
 }
 
