@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	"golang.org/x/crypto/internal/testenv"
@@ -34,6 +35,9 @@ func sshClient(t *testing.T) string {
 }
 
 func TestSSHCLIAuth(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skipf("always fails on Windows, see #64403")
+	}
 	sshCLI := sshClient(t)
 	dir := t.TempDir()
 	keyPrivPath := filepath.Join(dir, "rsa")
