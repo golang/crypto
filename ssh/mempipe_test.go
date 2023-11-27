@@ -20,6 +20,10 @@ type memTransport struct {
 	*sync.Cond
 }
 
+func (t *memTransport) ReadPacket() ([]byte, error) {
+	return t.readPacket()
+}
+
 func (t *memTransport) readPacket() ([]byte, error) {
 	t.Lock()
 	defer t.Unlock()
@@ -53,6 +57,10 @@ func (t *memTransport) Close() error {
 	return err
 }
 
+func (t *memTransport) WritePacket(p []byte) error {
+	return t.writePacket(p)
+}
+
 func (t *memTransport) writePacket(p []byte) error {
 	t.write.Lock()
 	defer t.write.Unlock()
@@ -66,7 +74,7 @@ func (t *memTransport) writePacket(p []byte) error {
 	return nil
 }
 
-func memPipe() (a, b packetConn) {
+func memPipe() (a, b *memTransport) {
 	t1 := memTransport{}
 	t2 := memTransport{}
 	t1.write = &t2
