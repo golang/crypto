@@ -5,6 +5,7 @@
 package ssh
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -332,11 +333,49 @@ func (l *tcpListener) Addr() net.Addr {
 	return l.laddr
 }
 
+// DialContext initiates a connection to the addr from the remote host.
+//
+// The provided Context must be non-nil. If the context expires before the
+// connection is complete, an error is returned. Once successfully connected,
+// any expiration of the context will not affect the connection.
+//
+// See func Dial for additional information.
+func (c *Client) DialContext(ctx context.Context, n, addr string) (net.Conn, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	type connErr struct {
+		conn net.Conn
+		err  error
+	}
+	ch := make(chan connErr)
+	go func() {
+		conn, err := c.dialContext(ctx, n, addr)
+		select {
+		case ch <- connErr{conn, err}:
+		case <-ctx.Done():
+			if conn != nil {
+				conn.Close()
+			}
+		}
+	}()
+	select {
+	case res := <-ch:
+		return res.conn, res.err
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
 // Dial initiates a connection to the addr from the remote host.
 // The resulting connection has a zero LocalAddr() and RemoteAddr().
 // For TCP addresses the port section of the address can be a port number or a service name.
 // Service names are resolved at the client side, domain names are resolved on the server.
 func (c *Client) Dial(n, addr string) (net.Conn, error) {
+	return c.dialContext(context.Background(), n, addr)
+}
+
+func (c *Client) dialContext(ctx context.Context, n, addr string) (net.Conn, error) {
 	var ch Channel
 	switch n {
 	case "tcp", "tcp4", "tcp6":

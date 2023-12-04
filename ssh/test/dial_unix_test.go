@@ -9,6 +9,7 @@ package test
 // direct-tcpip and direct-streamlocal functional tests
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -46,7 +47,11 @@ func testDial(t *testing.T, n, listenAddr string, x dialTester) {
 		}
 	}()
 
-	conn, err := sshConn.Dial(n, l.Addr().String())
+	ctx, cancel := context.WithCancel(context.Background())
+	conn, err := sshConn.DialContext(ctx, n, l.Addr().String())
+	// Canceling the context after dial should have no effect
+	// on the opened connection.
+	cancel()
 	if err != nil {
 		t.Fatalf("Dial: %v", err)
 	}

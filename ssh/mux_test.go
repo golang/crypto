@@ -10,7 +10,6 @@ import (
 	"io"
 	"sync"
 	"testing"
-	"time"
 )
 
 func muxPair() (*mux, *mux) {
@@ -112,7 +111,11 @@ func TestMuxReadWrite(t *testing.T) {
 
 	magic := "hello world"
 	magicExt := "hello stderr"
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		_, err := s.Write([]byte(magic))
 		if err != nil {
 			t.Errorf("Write: %v", err)
@@ -152,13 +155,15 @@ func TestMuxChannelOverflow(t *testing.T) {
 	defer writer.Close()
 	defer mux.Close()
 
-	wDone := make(chan int, 1)
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if _, err := writer.Write(make([]byte, channelWindowSize)); err != nil {
 			t.Errorf("could not fill window: %v", err)
 		}
 		writer.Write(make([]byte, 1))
-		wDone <- 1
 	}()
 	writer.remoteWin.waitWriterBlocked()
 
@@ -175,7 +180,40 @@ func TestMuxChannelOverflow(t *testing.T) {
 	if _, err := reader.SendRequest("hello", true, nil); err == nil {
 		t.Errorf("SendRequest succeeded.")
 	}
-	<-wDone
+}
+
+func TestMuxChannelReadUnblock(t *testing.T) {
+	reader, writer, mux := channelPair(t)
+	defer reader.Close()
+	defer writer.Close()
+	defer mux.Close()
+
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		if _, err := writer.Write(make([]byte, channelWindowSize)); err != nil {
+			t.Errorf("could not fill window: %v", err)
+		}
+		if _, err := writer.Write(make([]byte, 1)); err != nil {
+			t.Errorf("Write: %v", err)
+		}
+		writer.Close()
+	}()
+
+	writer.remoteWin.waitWriterBlocked()
+
+	buf := make([]byte, 32768)
+	for {
+		_, err := reader.Read(buf)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Read: %v", err)
+		}
+	}
 }
 
 func TestMuxChannelCloseWriteUnblock(t *testing.T) {
@@ -184,20 +222,21 @@ func TestMuxChannelCloseWriteUnblock(t *testing.T) {
 	defer writer.Close()
 	defer mux.Close()
 
-	wDone := make(chan int, 1)
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if _, err := writer.Write(make([]byte, channelWindowSize)); err != nil {
 			t.Errorf("could not fill window: %v", err)
 		}
 		if _, err := writer.Write(make([]byte, 1)); err != io.EOF {
 			t.Errorf("got %v, want EOF for unblock write", err)
 		}
-		wDone <- 1
 	}()
 
 	writer.remoteWin.waitWriterBlocked()
 	reader.Close()
-	<-wDone
 }
 
 func TestMuxConnectionCloseWriteUnblock(t *testing.T) {
@@ -206,20 +245,21 @@ func TestMuxConnectionCloseWriteUnblock(t *testing.T) {
 	defer writer.Close()
 	defer mux.Close()
 
-	wDone := make(chan int, 1)
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		if _, err := writer.Write(make([]byte, channelWindowSize)); err != nil {
 			t.Errorf("could not fill window: %v", err)
 		}
 		if _, err := writer.Write(make([]byte, 1)); err != io.EOF {
 			t.Errorf("got %v, want EOF for unblock write", err)
 		}
-		wDone <- 1
 	}()
 
 	writer.remoteWin.waitWriterBlocked()
 	mux.Close()
-	<-wDone
 }
 
 func TestMuxReject(t *testing.T) {
@@ -227,7 +267,12 @@ func TestMuxReject(t *testing.T) {
 	defer server.Close()
 	defer client.Close()
 
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+
 		ch, ok := <-server.incomingChannels
 		if !ok {
 			t.Error("cannot accept channel")
@@ -267,6 +312,7 @@ func TestMuxChannelRequest(t *testing.T) {
 
 	var received int
 	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
 	wg.Add(1)
 	go func() {
 		for r := range server.incomingRequests {
@@ -295,7 +341,6 @@ func TestMuxChannelRequest(t *testing.T) {
 	}
 	if ok {
 		t.Errorf("SendRequest(no): %v", ok)
-
 	}
 
 	client.Close()
@@ -389,13 +434,8 @@ func TestMuxUnknownChannelRequests(t *testing.T) {
 
 	// Wait for the server to send the keepalive message and receive back a
 	// response.
-	select {
-	case err := <-kDone:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatalf("server never received ack")
+	if err := <-kDone; err != nil {
+		t.Fatal(err)
 	}
 
 	// Confirm client hasn't closed.
@@ -403,13 +443,9 @@ func TestMuxUnknownChannelRequests(t *testing.T) {
 		t.Fatalf("failed to send keepalive: %v", err)
 	}
 
-	select {
-	case err := <-kDone:
-		if err != nil {
-			t.Fatal(err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatalf("server never shut down")
+	// Wait for the server to shut down.
+	if err := <-kDone; err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -525,11 +561,7 @@ func TestMuxClosedChannel(t *testing.T) {
 	defer ch.Close()
 
 	// Wait for the server to close the channel and send the keepalive.
-	select {
-	case <-kDone:
-	case <-time.After(10 * time.Second):
-		t.Fatalf("server never received ack")
-	}
+	<-kDone
 
 	// Make sure the channel closed.
 	if _, ok := <-ch.incomingRequests; ok {
@@ -541,22 +573,29 @@ func TestMuxClosedChannel(t *testing.T) {
 		t.Fatalf("failed to send keepalive: %v", err)
 	}
 
-	select {
-	case <-kDone:
-	case <-time.After(10 * time.Second):
-		t.Fatalf("server never shut down")
-	}
+	// Wait for the server to shut down.
+	<-kDone
 }
 
 func TestMuxGlobalRequest(t *testing.T) {
+	var sawPeek bool
+	var wg sync.WaitGroup
+	defer func() {
+		wg.Wait()
+		if !sawPeek {
+			t.Errorf("never saw 'peek' request")
+		}
+	}()
+
 	clientMux, serverMux := muxPair()
 	defer serverMux.Close()
 	defer clientMux.Close()
 
-	var seen bool
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
 		for r := range serverMux.incomingRequests {
-			seen = seen || r.Type == "peek"
+			sawPeek = sawPeek || r.Type == "peek"
 			if r.WantReply {
 				err := r.Reply(r.Type == "yes",
 					append([]byte(r.Type), r.Payload...))
@@ -585,10 +624,6 @@ func TestMuxGlobalRequest(t *testing.T) {
 	if ok, data, err := clientMux.SendRequest("no", true, []byte("a")); ok || string(data) != "noa" || err != nil {
 		t.Errorf("SendRequest(\"no\", true, \"a\"): %v %v %v",
 			ok, data, err)
-	}
-
-	if !seen {
-		t.Errorf("never saw 'peek' request")
 	}
 }
 
@@ -739,11 +774,54 @@ func TestMuxMaxPacketSize(t *testing.T) {
 		t.Errorf("could not send packet")
 	}
 
-	go a.SendRequest("hello", false, nil)
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Add(1)
+	go func() {
+		a.SendRequest("hello", false, nil)
+		wg.Done()
+	}()
 
 	_, ok := <-b.incomingRequests
 	if ok {
 		t.Errorf("connection still alive after receiving large packet.")
+	}
+}
+
+func TestMuxChannelWindowDeferredUpdates(t *testing.T) {
+	s, c, mux := channelPair(t)
+	cTransport := mux.conn.(*memTransport)
+	defer s.Close()
+	defer c.Close()
+	defer mux.Close()
+
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+
+	data := make([]byte, 1024)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		_, err := s.Write(data)
+		if err != nil {
+			t.Errorf("Write: %v", err)
+			return
+		}
+	}()
+	cWritesInit := cTransport.getWriteCount()
+	buf := make([]byte, 1)
+	for i := 0; i < len(data); i++ {
+		n, err := c.Read(buf)
+		if n != len(buf) || err != nil {
+			t.Fatalf("Read: %v, %v", n, err)
+		}
+	}
+	cWrites := cTransport.getWriteCount() - cWritesInit
+	// reading 1 KiB should not cause any window updates to be sent, but allow
+	// for some unexpected writes
+	if cWrites > 30 {
+		t.Fatalf("reading 1 KiB from channel caused %v writes", cWrites)
 	}
 }
 
