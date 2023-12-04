@@ -384,7 +384,7 @@ func (c *Client) dialContext(ctx context.Context, n, addr string) (net.Conn, err
 		if err != nil {
 			return nil, err
 		}
-		port, err := net.LookupPort(n, portString)
+		port, err := net.DefaultResolver.LookupPort(ctx, n, portString)
 		if err != nil {
 			return nil, err
 		}
