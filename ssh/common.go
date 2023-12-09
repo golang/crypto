@@ -236,6 +236,14 @@ var (
 	}
 )
 
+// NegotiatedAlgorithms defines algorithms negotiated between client and server.
+type NegotiatedAlgorithms struct {
+	KeyExchange string
+	HostKey     string
+	Read        DirectionAlgorithms
+	Write       DirectionAlgorithms
+}
+
 // Algorithms defines a set of algorithms that can be configured in the client
 // or server config for negotiation during a handshake.
 type Algorithms struct {
@@ -346,15 +354,16 @@ func findCommon(what string, client []string, server []string) (common string, e
 	return "", fmt.Errorf("ssh: no common algorithm for %s; client offered: %v, server offered: %v", what, client, server)
 }
 
-// directionAlgorithms records algorithm choices in one direction (either read or write)
-type directionAlgorithms struct {
+// DirectionAlgorithms defines the algorithms negotiated in one direction
+// (either read or write).
+type DirectionAlgorithms struct {
 	Cipher      string
 	MAC         string
-	Compression string
+	compression string
 }
 
 // rekeyBytes returns a rekeying intervals in bytes.
-func (a *directionAlgorithms) rekeyBytes() int64 {
+func (a *DirectionAlgorithms) rekeyBytes() int64 {
 	// According to RFC 4344 block ciphers should rekey after
 	// 2^(BLOCKSIZE/4) blocks. For all AES flavors BLOCKSIZE is
 	// 128.
@@ -374,27 +383,20 @@ var aeadCiphers = map[string]bool{
 	CipherChaCha20Poly1305: true,
 }
 
-type algorithms struct {
-	kex     string
-	hostKey string
-	w       directionAlgorithms
-	r       directionAlgorithms
-}
+func findAgreedAlgorithms(isClient bool, clientKexInit, serverKexInit *kexInitMsg) (algs *NegotiatedAlgorithms, err error) {
+	result := &NegotiatedAlgorithms{}
 
-func findAgreedAlgorithms(isClient bool, clientKexInit, serverKexInit *kexInitMsg) (algs *algorithms, err error) {
-	result := &algorithms{}
-
-	result.kex, err = findCommon("key exchange", clientKexInit.KexAlgos, serverKexInit.KexAlgos)
+	result.KeyExchange, err = findCommon("key exchange", clientKexInit.KexAlgos, serverKexInit.KexAlgos)
 	if err != nil {
 		return
 	}
 
-	result.hostKey, err = findCommon("host key", clientKexInit.ServerHostKeyAlgos, serverKexInit.ServerHostKeyAlgos)
+	result.HostKey, err = findCommon("host key", clientKexInit.ServerHostKeyAlgos, serverKexInit.ServerHostKeyAlgos)
 	if err != nil {
 		return
 	}
 
-	stoc, ctos := &result.w, &result.r
+	stoc, ctos := &result.Write, &result.Read
 	if isClient {
 		ctos, stoc = stoc, ctos
 	}
@@ -423,12 +425,12 @@ func findAgreedAlgorithms(isClient bool, clientKexInit, serverKexInit *kexInitMs
 		}
 	}
 
-	ctos.Compression, err = findCommon("client to server compression", clientKexInit.CompressionClientServer, serverKexInit.CompressionClientServer)
+	ctos.compression, err = findCommon("client to server compression", clientKexInit.CompressionClientServer, serverKexInit.CompressionClientServer)
 	if err != nil {
 		return
 	}
 
-	stoc.Compression, err = findCommon("server to client compression", clientKexInit.CompressionServerClient, serverKexInit.CompressionServerClient)
+	stoc.compression, err = findCommon("server to client compression", clientKexInit.CompressionServerClient, serverKexInit.CompressionServerClient)
 	if err != nil {
 		return
 	}

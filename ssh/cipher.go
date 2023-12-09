@@ -58,11 +58,11 @@ func newRC4(key, iv []byte) (cipher.Stream, error) {
 type cipherMode struct {
 	keySize int
 	ivSize  int
-	create  func(key, iv []byte, macKey []byte, algs directionAlgorithms) (packetCipher, error)
+	create  func(key, iv []byte, macKey []byte, algs DirectionAlgorithms) (packetCipher, error)
 }
 
-func streamCipherMode(skip int, createFunc func(key, iv []byte) (cipher.Stream, error)) func(key, iv []byte, macKey []byte, algs directionAlgorithms) (packetCipher, error) {
-	return func(key, iv, macKey []byte, algs directionAlgorithms) (packetCipher, error) {
+func streamCipherMode(skip int, createFunc func(key, iv []byte) (cipher.Stream, error)) func(key, iv []byte, macKey []byte, algs DirectionAlgorithms) (packetCipher, error) {
+	return func(key, iv, macKey []byte, algs DirectionAlgorithms) (packetCipher, error) {
 		stream, err := createFunc(key, iv)
 		if err != nil {
 			return nil, err
@@ -307,7 +307,7 @@ type gcmCipher struct {
 	buf    []byte
 }
 
-func newGCMCipher(key, iv, unusedMacKey []byte, unusedAlgs directionAlgorithms) (packetCipher, error) {
+func newGCMCipher(key, iv, unusedMacKey []byte, unusedAlgs DirectionAlgorithms) (packetCipher, error) {
 	c, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -429,7 +429,7 @@ type cbcCipher struct {
 	oracleCamouflage uint32
 }
 
-func newCBCCipher(c cipher.Block, key, iv, macKey []byte, algs directionAlgorithms) (packetCipher, error) {
+func newCBCCipher(c cipher.Block, key, iv, macKey []byte, algs DirectionAlgorithms) (packetCipher, error) {
 	cbc := &cbcCipher{
 		mac:        macModes[algs.MAC].new(macKey),
 		decrypter:  cipher.NewCBCDecrypter(c, iv),
@@ -443,7 +443,7 @@ func newCBCCipher(c cipher.Block, key, iv, macKey []byte, algs directionAlgorith
 	return cbc, nil
 }
 
-func newAESCBCCipher(key, iv, macKey []byte, algs directionAlgorithms) (packetCipher, error) {
+func newAESCBCCipher(key, iv, macKey []byte, algs DirectionAlgorithms) (packetCipher, error) {
 	c, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
@@ -457,7 +457,7 @@ func newAESCBCCipher(key, iv, macKey []byte, algs directionAlgorithms) (packetCi
 	return cbc, nil
 }
 
-func newTripleDESCBCCipher(key, iv, macKey []byte, algs directionAlgorithms) (packetCipher, error) {
+func newTripleDESCBCCipher(key, iv, macKey []byte, algs DirectionAlgorithms) (packetCipher, error) {
 	c, err := des.NewTripleDESCipher(key)
 	if err != nil {
 		return nil, err
@@ -648,7 +648,7 @@ type chacha20Poly1305Cipher struct {
 	buf        []byte
 }
 
-func newChaCha20Cipher(key, unusedIV, unusedMACKey []byte, unusedAlgs directionAlgorithms) (packetCipher, error) {
+func newChaCha20Cipher(key, unusedIV, unusedMACKey []byte, unusedAlgs DirectionAlgorithms) (packetCipher, error) {
 	if len(key) != 64 {
 		panic(len(key))
 	}
