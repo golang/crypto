@@ -252,13 +252,6 @@ func NewServerConn(c net.Conn, config *ServerConfig) (*ServerConn, <-chan NewCha
 			}
 		}
 	}
-	// Check if the config contains any unsupported key exchanges
-	for _, kex := range fullConf.KeyExchanges {
-		if _, ok := serverForbiddenKexAlgos[kex]; ok {
-			c.Close()
-			return nil, nil, nil, fmt.Errorf("ssh: unsupported key exchange %s for server", kex)
-		}
-	}
 
 	s := &connection{
 		sshConn: sshConn{conn: c},

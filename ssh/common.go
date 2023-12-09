@@ -279,13 +279,6 @@ func InsecureAlgorithms() Algorithms {
 	}
 }
 
-// serverForbiddenKexAlgos contains key exchange algorithms, that are forbidden
-// for the server half.
-var serverForbiddenKexAlgos = map[string]struct{}{
-	InsecureKeyExchangeDHGEXSHA1: {}, // server half implementation is only minimal to satisfy the automated tests
-	KeyExchangeDHGEXSHA256:       {}, // server half implementation is only minimal to satisfy the automated tests
-}
-
 var supportedCompressions = []string{compressionNone}
 
 // hashFuncs keeps the mapping of supported signature algorithms to their

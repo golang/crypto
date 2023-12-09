@@ -34,23 +34,29 @@ func sshClient(t *testing.T) string {
 	return sshCLI
 }
 
+// setupSSHCLIKeys writes the provided key files to a temporary directory and
+// returns the path to the private key.
+func setupSSHCLIKeys(t *testing.T, keyFiles map[string][]byte, privKeyName string) string {
+	tmpDir := t.TempDir()
+	for fn, content := range keyFiles {
+		if err := os.WriteFile(filepath.Join(tmpDir, fn), content, 0600); err != nil {
+			t.Fatalf("WriteFile(%q): %v", fn, err)
+		}
+	}
+	return filepath.Join(tmpDir, privKeyName)
+}
+
 func TestSSHCLIAuth(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skipf("always fails on Windows, see #64403")
 	}
 	sshCLI := sshClient(t)
-	dir := t.TempDir()
-	keyPrivPath := filepath.Join(dir, "rsa")
-
-	for fn, content := range map[string][]byte{
-		keyPrivPath:                        testdata.PEMBytes["rsa"],
-		keyPrivPath + ".pub":               ssh.MarshalAuthorizedKey(testPublicKeys["rsa"]),
-		filepath.Join(dir, "rsa-cert.pub"): testdata.SSHCertificates["rsa-user-testcertificate"],
-	} {
-		if err := os.WriteFile(fn, content, 0600); err != nil {
-			t.Fatalf("WriteFile(%q): %v", fn, err)
-		}
+	keyFiles := map[string][]byte{
+		"rsa":          testdata.PEMBytes["rsa"],
+		"rsa.pub":      ssh.MarshalAuthorizedKey(testPublicKeys["rsa"]),
+		"rsa-cert.pub": testdata.SSHCertificates["rsa-user-testcertificate"],
 	}
+	keyPrivPath := setupSSHCLIKeys(t, keyFiles, "rsa")
 
 	certChecker := ssh.CertChecker{
 		IsUserAuthority: func(k ssh.PublicKey) bool {
@@ -96,5 +102,54 @@ func TestSSHCLIAuth(t *testing.T) {
 	out, err = cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("user certificate authentication failed, error: %v, command output %q", err, string(out))
+	}
+}
+
+func TestSSHCLIKeyExchanges(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skipf("always fails on Windows, see #64403")
+	}
+	sshCLI := sshClient(t)
+	keyFiles := map[string][]byte{
+		"rsa":     testdata.PEMBytes["rsa"],
+		"rsa.pub": ssh.MarshalAuthorizedKey(testPublicKeys["rsa"]),
+	}
+	keyPrivPath := setupSSHCLIKeys(t, keyFiles, "rsa")
+
+	keyExchanges := append(ssh.SupportedAlgorithms().KeyExchanges, ssh.InsecureAlgorithms().KeyExchanges...)
+	for _, kex := range keyExchanges {
+		t.Run(kex, func(t *testing.T) {
+			config := &ssh.ServerConfig{
+				Config: ssh.Config{
+					KeyExchanges: []string{kex},
+				},
+				PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
+					if conn.User() == "testpubkey" && bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+						return nil, nil
+					}
+
+					return nil, fmt.Errorf("pubkey for %q not acceptable", conn.User())
+				},
+			}
+			config.AddHostKey(testSigners["rsa"])
+
+			server, err := newTestServer(config)
+			if err != nil {
+				t.Fatalf("unable to start test server: %v", err)
+			}
+			defer server.Close()
+
+			port, err := server.port()
+			if err != nil {
+				t.Fatalf("unable to get server port: %v", err)
+			}
+
+			cmd := testenv.Command(t, sshCLI, "-vvv", "-i", keyPrivPath, "-o", "StrictHostKeyChecking=no",
+				"-o", fmt.Sprintf("KexAlgorithms=%s", kex), "-p", port, "testpubkey@127.0.0.1", "true")
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("%s failed, error: %v, command output %q", kex, err, string(out))
+			}
+		})
 	}
 }
