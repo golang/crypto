@@ -71,10 +71,10 @@ func TestNewServerConnValidationErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("NewServerConn with invalid public key auth algorithms succeeded")
 	}
-	if !c.closed.Load() {
+	if !c.isClosed() {
 		t.Fatal("NewServerConn with invalid public key auth algorithms left connection open")
 	}
-	if c.used.Load() {
+	if c.isUsed() {
 		t.Fatal("NewServerConn with invalid public key auth algorithms used connection")
 	}
 
@@ -88,27 +88,35 @@ func TestNewServerConnValidationErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("NewServerConn with unsupported key exchange succeeded")
 	}
-	if !c.closed.Load() {
+	if !c.isClosed() {
 		t.Fatal("NewServerConn with unsupported key exchange left connection open")
 	}
-	if c.used.Load() {
+	if c.isUsed() {
 		t.Fatal("NewServerConn with unsupported key exchange used connection")
 	}
 }
 
 type markerConn struct {
-	closed atomic.Bool
-	used   atomic.Bool
+	closed uint32
+	used   uint32
+}
+
+func (c *markerConn) isClosed() bool {
+	return atomic.LoadUint32(&c.closed) != 0
+}
+
+func (c *markerConn) isUsed() bool {
+	return atomic.LoadUint32(&c.used) != 0
 }
 
 func (c *markerConn) Close() error {
-	c.closed.Store(true)
+	atomic.StoreUint32(&c.closed, 1)
 	return nil
 }
 
 func (c *markerConn) Read(b []byte) (n int, err error) {
-	c.used.Store(true)
-	if c.closed.Load() {
+	atomic.StoreUint32(&c.used, 1)
+	if atomic.LoadUint32(&c.closed) != 0 {
 		return 0, net.ErrClosed
 	} else {
 		return 0, io.EOF
@@ -116,8 +124,8 @@ func (c *markerConn) Read(b []byte) (n int, err error) {
 }
 
 func (c *markerConn) Write(b []byte) (n int, err error) {
-	c.used.Store(true)
-	if c.closed.Load() {
+	atomic.StoreUint32(&c.used, 1)
+	if atomic.LoadUint32(&c.closed) != 0 {
 		return 0, net.ErrClosed
 	} else {
 		return 0, io.ErrClosedPipe
