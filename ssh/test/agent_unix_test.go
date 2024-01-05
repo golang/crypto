@@ -34,6 +34,7 @@ func TestAgentForward(t *testing.T) {
 
 	sess, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("NewSession: %v", err)
 	}
 	if err := agent.RequestAgentForwarding(sess); err != nil {

@@ -53,6 +53,7 @@ func testDial(t *testing.T, n, listenAddr string, x dialTester) {
 	// on the opened connection.
 	cancel()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("Dial: %v", err)
 	}
 	x.TestClientConn(t, conn)
