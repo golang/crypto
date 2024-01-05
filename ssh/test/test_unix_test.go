@@ -178,7 +178,7 @@ func (s *server) TryDial(config *ssh.ClientConfig) (*ssh.Client, error) {
 
 // addr is the user specified host:port. While we don't actually dial it,
 // we need to know this for host key matching
-func (s *server) TryDialWithAddr(config *ssh.ClientConfig, addr string) (*ssh.Client, error) {
+func (s *server) TryDialWithAddr(config *ssh.ClientConfig, addr string) (client *ssh.Client, err error) {
 	sshd, err := exec.LookPath("sshd")
 	if err != nil {
 		s.t.Skipf("skipping test: %v", err)
@@ -188,13 +188,26 @@ func (s *server) TryDialWithAddr(config *ssh.ClientConfig, addr string) (*ssh.Cl
 	if err != nil {
 		s.t.Fatalf("unixConnection: %v", err)
 	}
+	defer func() {
+		// Close c2 after we've started the sshd command so that it won't prevent c1
+		// from returning EOF when the sshd command exits.
+		c2.Close()
 
-	cmd := testenv.Command(s.t, sshd, "-f", s.configfile, "-i", "-e")
+		// Leave c1 open if we're returning a client that wraps it.
+		// (The client is responsible for closing it.)
+		// Otherwise, close it to free up the socket.
+		if client == nil {
+			c1.Close()
+		}
+	}()
+
 	f, err := c2.File()
 	if err != nil {
 		s.t.Fatalf("UnixConn.File: %v", err)
 	}
 	defer f.Close()
+
+	cmd := testenv.Command(s.t, sshd, "-f", s.configfile, "-i", "-e")
 	cmd.Stdin = f
 	cmd.Stdout = f
 	cmd.Stderr = new(bytes.Buffer)
@@ -223,7 +236,7 @@ func (s *server) TryDialWithAddr(config *ssh.ClientConfig, addr string) (*ssh.Cl
 		// processes are killed too.
 		cmd.Process.Signal(os.Interrupt)
 		cmd.Wait()
-		if s.t.Failed() {
+		if s.t.Failed() || testing.Verbose() {
 			// log any output from sshd process
 			s.t.Logf("sshd:\n%s", cmd.Stderr)
 		}
