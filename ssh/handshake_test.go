@@ -395,6 +395,10 @@ func (n *errorKeyingTransport) readPacket() ([]byte, error) {
 	return n.packetConn.readPacket()
 }
 
+func (n *errorKeyingTransport) setStrictMode() error { return nil }
+
+func (n *errorKeyingTransport) setInitialKEXDone() {}
+
 func TestHandshakeErrorHandlingRead(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		testHandshakeErrorHandlingN(t, i, -1, false)
@@ -618,5 +622,400 @@ func TestNoSHA2Support(t *testing.T) {
 
 	if _, _, _, err := NewClientConn(c2, "", clientConf); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestMultiAlgoSignerHandshake(t *testing.T) {
+	algorithmSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	multiAlgoSigner, err := NewSignerWithAlgorithms(algorithmSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	if err != nil {
+		t.Fatalf("unable to create multi algorithm signer: %v", err)
+	}
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			return &Permissions{}, nil
+		},
+	}
+	serverConf.AddHostKey(multiAlgoSigner)
+	go NewServerConn(c1, serverConf)
+
+	clientConf := &ClientConfig{
+		User:              "test",
+		Auth:              []AuthMethod{Password("testpw")},
+		HostKeyCallback:   FixedHostKey(testSigners["rsa"].PublicKey()),
+		HostKeyAlgorithms: []string{KeyAlgoRSASHA512},
+	}
+
+	if _, _, _, err := NewClientConn(c2, "", clientConf); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMultiAlgoSignerNoCommonHostKeyAlgo(t *testing.T) {
+	algorithmSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	multiAlgoSigner, err := NewSignerWithAlgorithms(algorithmSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	if err != nil {
+		t.Fatalf("unable to create multi algorithm signer: %v", err)
+	}
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	// ssh-rsa is disabled server side
+	serverConf := &ServerConfig{
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			return &Permissions{}, nil
+		},
+	}
+	serverConf.AddHostKey(multiAlgoSigner)
+	go NewServerConn(c1, serverConf)
+
+	// the client only supports ssh-rsa
+	clientConf := &ClientConfig{
+		User:              "test",
+		Auth:              []AuthMethod{Password("testpw")},
+		HostKeyCallback:   FixedHostKey(testSigners["rsa"].PublicKey()),
+		HostKeyAlgorithms: []string{KeyAlgoRSA},
+	}
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err == nil {
+		t.Fatal("succeeded connecting with no common hostkey algorithm")
+	}
+}
+
+func TestPickIncompatibleHostKeyAlgo(t *testing.T) {
+	algorithmSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	multiAlgoSigner, err := NewSignerWithAlgorithms(algorithmSigner, []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512})
+	if err != nil {
+		t.Fatalf("unable to create multi algorithm signer: %v", err)
+	}
+	signer := pickHostKey([]Signer{multiAlgoSigner}, KeyAlgoRSA)
+	if signer != nil {
+		t.Fatal("incompatible signer returned")
+	}
+}
+
+func TestStrictKEXResetSeqFirstKEX(t *testing.T) {
+	if runtime.GOOS == "plan9" {
+		t.Skip("see golang.org/issue/7237")
+	}
+
+	checker := &syncChecker{
+		waitCall: make(chan int, 10),
+		called:   make(chan int, 10),
+	}
+
+	checker.waitCall <- 1
+	trC, trS, err := handshakePair(&ClientConfig{HostKeyCallback: checker.Check}, "addr", false)
+	if err != nil {
+		t.Fatalf("handshakePair: %v", err)
+	}
+	<-checker.called
+
+	t.Cleanup(func() {
+		trC.Close()
+		trS.Close()
+	})
+
+	// Throw away the msgExtInfo packet sent during the handshake by the server
+	_, err = trC.readPacket()
+	if err != nil {
+		t.Fatalf("readPacket failed: %s", err)
+	}
+
+	// close the handshake transports before checking the sequence number to
+	// avoid races.
+	trC.Close()
+	trS.Close()
+
+	// check that the sequence number counters. We reset after msgNewKeys, but
+	// then the server immediately writes msgExtInfo, and we close the
+	// transports so we expect read 2, write 0 on the client and read 1, write 1
+	// on the server.
+	if trC.conn.(*transport).reader.seqNum != 2 || trC.conn.(*transport).writer.seqNum != 0 ||
+		trS.conn.(*transport).reader.seqNum != 1 || trS.conn.(*transport).writer.seqNum != 1 {
+		t.Errorf(
+			"unexpected sequence counters:\nclient: reader %d (expected 2), writer %d (expected 0)\nserver: reader %d (expected 1), writer %d (expected 1)",
+			trC.conn.(*transport).reader.seqNum,
+			trC.conn.(*transport).writer.seqNum,
+			trS.conn.(*transport).reader.seqNum,
+			trS.conn.(*transport).writer.seqNum,
+		)
+	}
+}
+
+func TestStrictKEXResetSeqSuccessiveKEX(t *testing.T) {
+	if runtime.GOOS == "plan9" {
+		t.Skip("see golang.org/issue/7237")
+	}
+
+	checker := &syncChecker{
+		waitCall: make(chan int, 10),
+		called:   make(chan int, 10),
+	}
+
+	checker.waitCall <- 1
+	trC, trS, err := handshakePair(&ClientConfig{HostKeyCallback: checker.Check}, "addr", false)
+	if err != nil {
+		t.Fatalf("handshakePair: %v", err)
+	}
+	<-checker.called
+
+	t.Cleanup(func() {
+		trC.Close()
+		trS.Close()
+	})
+
+	// Throw away the msgExtInfo packet sent during the handshake by the server
+	_, err = trC.readPacket()
+	if err != nil {
+		t.Fatalf("readPacket failed: %s", err)
+	}
+
+	// write and read five packets on either side to bump the sequence numbers
+	for i := 0; i < 5; i++ {
+		if err := trC.writePacket([]byte{msgRequestSuccess}); err != nil {
+			t.Fatalf("writePacket failed: %s", err)
+		}
+		if _, err := trS.readPacket(); err != nil {
+			t.Fatalf("readPacket failed: %s", err)
+		}
+		if err := trS.writePacket([]byte{msgRequestSuccess}); err != nil {
+			t.Fatalf("writePacket failed: %s", err)
+		}
+		if _, err := trC.readPacket(); err != nil {
+			t.Fatalf("readPacket failed: %s", err)
+		}
+	}
+
+	// Request a key exchange, which should cause the sequence numbers to reset
+	checker.waitCall <- 1
+	trC.requestKeyExchange()
+	<-checker.called
+
+	// write a packet on the client, and then read it, to verify the key change has actually happened, since
+	// the HostKeyCallback is called _during_ the handshake, so isn't actually indicative of the handshake
+	// finishing.
+	dummyPacket := []byte{99}
+	if err := trS.writePacket(dummyPacket); err != nil {
+		t.Fatalf("writePacket failed: %s", err)
+	}
+	if p, err := trC.readPacket(); err != nil {
+		t.Fatalf("readPacket failed: %s", err)
+	} else if !bytes.Equal(p, dummyPacket) {
+		t.Fatalf("unexpected packet: got %x, want %x", p, dummyPacket)
+	}
+
+	// close the handshake transports before checking the sequence number to
+	// avoid races.
+	trC.Close()
+	trS.Close()
+
+	if trC.conn.(*transport).reader.seqNum != 2 || trC.conn.(*transport).writer.seqNum != 0 ||
+		trS.conn.(*transport).reader.seqNum != 1 || trS.conn.(*transport).writer.seqNum != 1 {
+		t.Errorf(
+			"unexpected sequence counters:\nclient: reader %d (expected 2), writer %d (expected 0)\nserver: reader %d (expected 1), writer %d (expected 1)",
+			trC.conn.(*transport).reader.seqNum,
+			trC.conn.(*transport).writer.seqNum,
+			trS.conn.(*transport).reader.seqNum,
+			trS.conn.(*transport).writer.seqNum,
+		)
+	}
+}
+
+func TestSeqNumIncrease(t *testing.T) {
+	if runtime.GOOS == "plan9" {
+		t.Skip("see golang.org/issue/7237")
+	}
+
+	checker := &syncChecker{
+		waitCall: make(chan int, 10),
+		called:   make(chan int, 10),
+	}
+
+	checker.waitCall <- 1
+	trC, trS, err := handshakePair(&ClientConfig{HostKeyCallback: checker.Check}, "addr", false)
+	if err != nil {
+		t.Fatalf("handshakePair: %v", err)
+	}
+	<-checker.called
+
+	t.Cleanup(func() {
+		trC.Close()
+		trS.Close()
+	})
+
+	// Throw away the msgExtInfo packet sent during the handshake by the server
+	_, err = trC.readPacket()
+	if err != nil {
+		t.Fatalf("readPacket failed: %s", err)
+	}
+
+	// write and read five packets on either side to bump the sequence numbers
+	for i := 0; i < 5; i++ {
+		if err := trC.writePacket([]byte{msgRequestSuccess}); err != nil {
+			t.Fatalf("writePacket failed: %s", err)
+		}
+		if _, err := trS.readPacket(); err != nil {
+			t.Fatalf("readPacket failed: %s", err)
+		}
+		if err := trS.writePacket([]byte{msgRequestSuccess}); err != nil {
+			t.Fatalf("writePacket failed: %s", err)
+		}
+		if _, err := trC.readPacket(); err != nil {
+			t.Fatalf("readPacket failed: %s", err)
+		}
+	}
+
+	// close the handshake transports before checking the sequence number to
+	// avoid races.
+	trC.Close()
+	trS.Close()
+
+	if trC.conn.(*transport).reader.seqNum != 7 || trC.conn.(*transport).writer.seqNum != 5 ||
+		trS.conn.(*transport).reader.seqNum != 6 || trS.conn.(*transport).writer.seqNum != 6 {
+		t.Errorf(
+			"unexpected sequence counters:\nclient: reader %d (expected 7), writer %d (expected 5)\nserver: reader %d (expected 6), writer %d (expected 6)",
+			trC.conn.(*transport).reader.seqNum,
+			trC.conn.(*transport).writer.seqNum,
+			trS.conn.(*transport).reader.seqNum,
+			trS.conn.(*transport).writer.seqNum,
+		)
+	}
+}
+
+func TestStrictKEXUnexpectedMsg(t *testing.T) {
+	if runtime.GOOS == "plan9" {
+		t.Skip("see golang.org/issue/7237")
+	}
+
+	// Check that unexpected messages during the handshake cause failure
+	_, _, err := handshakePair(&ClientConfig{HostKeyCallback: func(hostname string, remote net.Addr, key PublicKey) error { return nil }}, "addr", true)
+	if err == nil {
+		t.Fatal("handshake should fail when there are unexpected messages during the handshake")
+	}
+
+	trC, trS, err := handshakePair(&ClientConfig{HostKeyCallback: func(hostname string, remote net.Addr, key PublicKey) error { return nil }}, "addr", false)
+	if err != nil {
+		t.Fatalf("handshake failed: %s", err)
+	}
+
+	// Check that ignore/debug pacekts are still ignored outside of the handshake
+	if err := trC.writePacket([]byte{msgIgnore}); err != nil {
+		t.Fatalf("writePacket failed: %s", err)
+	}
+	if err := trC.writePacket([]byte{msgDebug}); err != nil {
+		t.Fatalf("writePacket failed: %s", err)
+	}
+	dummyPacket := []byte{99}
+	if err := trC.writePacket(dummyPacket); err != nil {
+		t.Fatalf("writePacket failed: %s", err)
+	}
+
+	if p, err := trS.readPacket(); err != nil {
+		t.Fatalf("readPacket failed: %s", err)
+	} else if !bytes.Equal(p, dummyPacket) {
+		t.Fatalf("unexpected packet: got %x, want %x", p, dummyPacket)
+	}
+}
+
+func TestStrictKEXMixed(t *testing.T) {
+	// Test that we still support a mixed connection, where one side sends kex-strict but the other
+	// side doesn't.
+
+	a, b, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe failed: %s", err)
+	}
+
+	var trC, trS keyingTransport
+
+	trC = newTransport(a, rand.Reader, true)
+	trS = newTransport(b, rand.Reader, false)
+	trS = addNoiseTransport(trS)
+
+	clientConf := &ClientConfig{HostKeyCallback: func(hostname string, remote net.Addr, key PublicKey) error { return nil }}
+	clientConf.SetDefaults()
+
+	v := []byte("version")
+	client := newClientTransport(trC, v, v, clientConf, "addr", a.RemoteAddr())
+
+	serverConf := &ServerConfig{}
+	serverConf.AddHostKey(testSigners["ecdsa"])
+	serverConf.AddHostKey(testSigners["rsa"])
+	serverConf.SetDefaults()
+
+	transport := newHandshakeTransport(trS, &serverConf.Config, []byte("version"), []byte("version"))
+	transport.hostKeys = serverConf.hostKeys
+	transport.publicKeyAuthAlgorithms = serverConf.PublicKeyAuthAlgorithms
+
+	readOneFailure := make(chan error, 1)
+	go func() {
+		if _, err := transport.readOnePacket(true); err != nil {
+			readOneFailure <- err
+		}
+	}()
+
+	// Basically sendKexInit, but without the kex-strict extension algorithm
+	msg := &kexInitMsg{
+		KexAlgos:                transport.config.KeyExchanges,
+		CiphersClientServer:     transport.config.Ciphers,
+		CiphersServerClient:     transport.config.Ciphers,
+		MACsClientServer:        transport.config.MACs,
+		MACsServerClient:        transport.config.MACs,
+		CompressionClientServer: supportedCompressions,
+		CompressionServerClient: supportedCompressions,
+		ServerHostKeyAlgos:      []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512, KeyAlgoRSA},
+	}
+	packet := Marshal(msg)
+	// writePacket destroys the contents, so save a copy.
+	packetCopy := make([]byte, len(packet))
+	copy(packetCopy, packet)
+	if err := transport.pushPacket(packetCopy); err != nil {
+		t.Fatalf("pushPacket: %s", err)
+	}
+	transport.sentInitMsg = msg
+	transport.sentInitPacket = packet
+
+	if err := transport.getWriteError(); err != nil {
+		t.Fatalf("getWriteError failed: %s", err)
+	}
+	var request *pendingKex
+	select {
+	case err = <-readOneFailure:
+		t.Fatalf("server readOnePacket failed: %s", err)
+	case request = <-transport.startKex:
+		break
+	}
+
+	// We expect the following calls to fail if the side which does not support
+	// kex-strict sends unexpected/ignored packets during the handshake, even if
+	// the other side does support kex-strict.
+
+	if err := transport.enterKeyExchange(request.otherInit); err != nil {
+		t.Fatalf("enterKeyExchange failed: %s", err)
+	}
+	if err := client.waitSession(); err != nil {
+		t.Fatalf("client.waitSession: %v", err)
 	}
 }

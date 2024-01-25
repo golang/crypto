@@ -243,7 +243,11 @@ func TestParseConstraints(t *testing.T) {
 			ExtensionDetails: []byte(fmt.Sprintf("details: %d", i)),
 		}
 		expect = append(expect, ext)
-		data = append(data, agentConstrainExtension)
+		if i%2 == 0 {
+			data = append(data, agentConstrainExtension)
+		} else {
+			data = append(data, agentConstrainExtensionV00)
+		}
 		data = append(data, ssh.Marshal(ext)...)
 	}
 	_, _, extensions, err := parseConstraints(data)

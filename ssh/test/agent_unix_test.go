@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris
-// +build aix darwin dragonfly freebsd linux netbsd openbsd solaris
 
 package test
 
@@ -35,6 +34,7 @@ func TestAgentForward(t *testing.T) {
 
 	sess, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("NewSession: %v", err)
 	}
 	if err := agent.RequestAgentForwarding(sess); err != nil {

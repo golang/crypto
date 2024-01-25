@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build aix || darwin || dragonfly || freebsd || linux || netbsd || openbsd || solaris
-// +build aix darwin dragonfly freebsd linux netbsd openbsd solaris
 
 package test
 
@@ -13,6 +12,7 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -28,6 +28,9 @@ func testPortForward(t *testing.T, n, listenAddr string) {
 
 	sshListener, err := conn.Listen(n, listenAddr)
 	if err != nil {
+		if runtime.GOOS == "darwin" && err == io.EOF {
+			t.Skipf("skipping test broken on some versions of macOS; see https://go.dev/issue/64959")
+		}
 		t.Fatal(err)
 	}
 
@@ -123,6 +126,9 @@ func testAcceptClose(t *testing.T, n, listenAddr string) {
 
 	sshListener, err := conn.Listen(n, listenAddr)
 	if err != nil {
+		if runtime.GOOS == "darwin" && err == io.EOF {
+			t.Skipf("skipping test broken on some versions of macOS; see https://go.dev/issue/64959")
+		}
 		t.Fatal(err)
 	}
 
@@ -164,6 +170,9 @@ func testPortForwardConnectionClose(t *testing.T, n, listenAddr string) {
 
 	sshListener, err := client.Listen(n, listenAddr)
 	if err != nil {
+		if runtime.GOOS == "darwin" && err == io.EOF {
+			t.Skipf("skipping test broken on some versions of macOS; see https://go.dev/issue/64959")
+		}
 		t.Fatal(err)
 	}
 

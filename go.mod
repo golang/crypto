@@ -1,11 +1,11 @@
 module golang.org/x/crypto
 
-go 1.17
+go 1.18
 
 require (
 	golang.org/x/net v0.10.0 // tagx:ignore
-	golang.org/x/sys v0.10.0
-	golang.org/x/term v0.10.0
+	golang.org/x/sys v0.16.0
+	golang.org/x/term v0.16.0
 )
 
-require golang.org/x/text v0.11.0 // indirect
+require golang.org/x/text v0.14.0 // indirect

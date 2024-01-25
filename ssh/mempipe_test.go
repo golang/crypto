@@ -13,9 +13,10 @@ import (
 // An in-memory packetConn. It is safe to call Close and writePacket
 // from different goroutines.
 type memTransport struct {
-	eof     bool
-	pending [][]byte
-	write   *memTransport
+	eof        bool
+	pending    [][]byte
+	write      *memTransport
+	writeCount uint64
 	sync.Mutex
 	*sync.Cond
 }
@@ -63,7 +64,14 @@ func (t *memTransport) writePacket(p []byte) error {
 	copy(c, p)
 	t.write.pending = append(t.write.pending, c)
 	t.write.Cond.Signal()
+	t.writeCount++
 	return nil
+}
+
+func (t *memTransport) getWriteCount() uint64 {
+	t.write.Lock()
+	defer t.write.Unlock()
+	return t.writeCount
 }
 
 func memPipe() (a, b packetConn) {
@@ -81,6 +89,9 @@ func TestMemPipe(t *testing.T) {
 	if err := a.writePacket([]byte{42}); err != nil {
 		t.Fatalf("writePacket: %v", err)
 	}
+	if wc := a.(*memTransport).getWriteCount(); wc != 1 {
+		t.Fatalf("got %v, want 1", wc)
+	}
 	if err := a.Close(); err != nil {
 		t.Fatal("Close: ", err)
 	}
@@ -94,6 +105,9 @@ func TestMemPipe(t *testing.T) {
 	p, err = b.readPacket()
 	if err != io.EOF {
 		t.Fatalf("got %v, %v, want EOF", p, err)
+	}
+	if wc := b.(*memTransport).getWriteCount(); wc != 0 {
+		t.Fatalf("got %v, want 0", wc)
 	}
 }
 

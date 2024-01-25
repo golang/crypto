@@ -5,7 +5,10 @@
 package ssh
 
 import (
+	"context"
+	"net"
 	"testing"
+	"time"
 )
 
 func TestAutoPortListenBroken(t *testing.T) {
@@ -16,5 +19,35 @@ func TestAutoPortListenBroken(t *testing.T) {
 	}
 	if isBrokenOpenSSHVersion(works) {
 		t.Errorf("version %q marked as broken", works)
+	}
+}
+
+func TestClientImplementsDialContext(t *testing.T) {
+	type ContextDialer interface {
+		DialContext(context.Context, string, string) (net.Conn, error)
+	}
+	// Belt and suspenders assertion, since package net does not
+	// declare a ContextDialer type.
+	var _ ContextDialer = &net.Dialer{}
+	var _ ContextDialer = &Client{}
+}
+
+func TestClientDialContextWithCancel(t *testing.T) {
+	c := &Client{}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := c.DialContext(ctx, "tcp", "localhost:1000")
+	if err != context.Canceled {
+		t.Errorf("DialContext: got nil error, expected %v", context.Canceled)
+	}
+}
+
+func TestClientDialContextWithDeadline(t *testing.T) {
+	c := &Client{}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now())
+	defer cancel()
+	_, err := c.DialContext(ctx, "tcp", "localhost:1000")
+	if err != context.DeadlineExceeded {
+		t.Errorf("DialContext: got nil error, expected %v", context.DeadlineExceeded)
 	}
 }

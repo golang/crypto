@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build generate
-// +build generate
 
 //go:generate go run gen_fallback_bundle.go
 
@@ -18,6 +17,7 @@ import (
 	"go/format"
 	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"sort"
@@ -87,12 +87,26 @@ func main() {
 			log.Fatalf("failed to request %q: %s", *certDataURL, err)
 		}
 		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+			log.Fatalf("got non-200 OK status code: %v body: %q", resp.Status, body)
+		} else if ct, want := resp.Header.Get("Content-Type"), `text/plain; charset="UTF-8"`; ct != want {
+			if mediaType, _, err := mime.ParseMediaType(ct); err != nil {
+				log.Fatalf("bad Content-Type header %q: %v", ct, err)
+			} else if mediaType != "text/plain" {
+				log.Fatalf("got media type %q, want %q", mediaType, "text/plain")
+			}
+		}
 		certdata = resp.Body
 	}
 
 	certs, err := nss.Parse(certdata)
 	if err != nil {
 		log.Fatalf("failed to parse %q: %s", *certDataPath, err)
+	}
+
+	if len(certs) == 0 {
+		log.Fatal("certdata.txt appears to contain zero roots")
 	}
 
 	sort.Slice(certs, func(i, j int) bool {

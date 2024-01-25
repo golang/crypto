@@ -187,10 +187,30 @@ func TestHostKeyCert(t *testing.T) {
 	}
 
 	for _, test := range []struct {
-		addr    string
-		succeed bool
+		addr                    string
+		succeed                 bool
+		certSignerAlgorithms    []string // Empty means no algorithm restrictions.
+		clientHostKeyAlgorithms []string
 	}{
 		{addr: "hostname:22", succeed: true},
+		{
+			addr:                    "hostname:22",
+			succeed:                 true,
+			certSignerAlgorithms:    []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512},
+			clientHostKeyAlgorithms: []string{CertAlgoRSASHA512v01},
+		},
+		{
+			addr:                    "hostname:22",
+			succeed:                 false,
+			certSignerAlgorithms:    []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512},
+			clientHostKeyAlgorithms: []string{CertAlgoRSAv01},
+		},
+		{
+			addr:                    "hostname:22",
+			succeed:                 false,
+			certSignerAlgorithms:    []string{KeyAlgoRSASHA256, KeyAlgoRSASHA512},
+			clientHostKeyAlgorithms: []string{KeyAlgoRSASHA512}, // Not a certificate algorithm.
+		},
 		{addr: "otherhost:22", succeed: false}, // The certificate is valid for 'otherhost' as hostname, but we only recognize the authority of the signer for the address 'hostname:22'
 		{addr: "lasthost:22", succeed: false},
 	} {
@@ -207,14 +227,24 @@ func TestHostKeyCert(t *testing.T) {
 			conf := ServerConfig{
 				NoClientAuth: true,
 			}
-			conf.AddHostKey(certSigner)
+			if len(test.certSignerAlgorithms) > 0 {
+				mas, err := NewSignerWithAlgorithms(certSigner.(AlgorithmSigner), test.certSignerAlgorithms)
+				if err != nil {
+					errc <- err
+					return
+				}
+				conf.AddHostKey(mas)
+			} else {
+				conf.AddHostKey(certSigner)
+			}
 			_, _, _, err := NewServerConn(c1, &conf)
 			errc <- err
 		}()
 
 		config := &ClientConfig{
-			User:            "user",
-			HostKeyCallback: checker.CheckHostKey,
+			User:              "user",
+			HostKeyCallback:   checker.CheckHostKey,
+			HostKeyAlgorithms: test.clientHostKeyAlgorithms,
 		}
 		_, _, _, err = NewClientConn(c2, test.addr, config)
 
@@ -242,6 +272,20 @@ func (s *legacyRSASigner) Sign(rand io.Reader, data []byte) (*Signature, error) 
 }
 
 func TestCertTypes(t *testing.T) {
+	algorithmSigner, ok := testSigners["rsa"].(AlgorithmSigner)
+	if !ok {
+		t.Fatal("rsa test signer does not implement the AlgorithmSigner interface")
+	}
+	multiAlgoSignerSHA256, err := NewSignerWithAlgorithms(algorithmSigner, []string{KeyAlgoRSASHA256})
+	if err != nil {
+		t.Fatalf("unable to create multi algorithm signer SHA256: %v", err)
+	}
+	// Algorithms are in order of preference, we expect rsa-sha2-512 to be used.
+	multiAlgoSignerSHA512, err := NewSignerWithAlgorithms(algorithmSigner, []string{KeyAlgoRSASHA512, KeyAlgoRSASHA256})
+	if err != nil {
+		t.Fatalf("unable to create multi algorithm signer SHA512: %v", err)
+	}
+
 	var testVars = []struct {
 		name   string
 		signer Signer
@@ -251,8 +295,10 @@ func TestCertTypes(t *testing.T) {
 		{CertAlgoECDSA384v01, testSigners["ecdsap384"], ""},
 		{CertAlgoECDSA521v01, testSigners["ecdsap521"], ""},
 		{CertAlgoED25519v01, testSigners["ed25519"], ""},
-		{CertAlgoRSAv01, testSigners["rsa"], KeyAlgoRSASHA512},
+		{CertAlgoRSAv01, testSigners["rsa"], KeyAlgoRSASHA256},
 		{"legacyRSASigner", &legacyRSASigner{testSigners["rsa"]}, KeyAlgoRSA},
+		{"multiAlgoRSASignerSHA256", multiAlgoSignerSHA256, KeyAlgoRSASHA256},
+		{"multiAlgoRSASignerSHA512", multiAlgoSignerSHA512, KeyAlgoRSASHA512},
 		{CertAlgoDSAv01, testSigners["dsa"], ""},
 	}
 
@@ -314,6 +360,48 @@ func TestCertTypes(t *testing.T) {
 			_, _, _, err = NewClientConn(c2, "", config)
 			if err != nil {
 				t.Fatalf("error connecting: %v", err)
+			}
+		})
+	}
+}
+
+func TestCertSignWithMultiAlgorithmSigner(t *testing.T) {
+	type testcase struct {
+		sigAlgo   string
+		algoritms []string
+	}
+	cases := []testcase{
+		{
+			sigAlgo:   KeyAlgoRSA,
+			algoritms: []string{KeyAlgoRSA, KeyAlgoRSASHA512},
+		},
+		{
+			sigAlgo:   KeyAlgoRSASHA256,
+			algoritms: []string{KeyAlgoRSASHA256, KeyAlgoRSA, KeyAlgoRSASHA512},
+		},
+		{
+			sigAlgo:   KeyAlgoRSASHA512,
+			algoritms: []string{KeyAlgoRSASHA512, KeyAlgoRSASHA256},
+		},
+	}
+
+	cert := &Certificate{
+		Key:         testPublicKeys["rsa"],
+		ValidBefore: CertTimeInfinity,
+		CertType:    UserCert,
+	}
+
+	for _, c := range cases {
+		t.Run(c.sigAlgo, func(t *testing.T) {
+			signer, err := NewSignerWithAlgorithms(testSigners["rsa"].(AlgorithmSigner), c.algoritms)
+			if err != nil {
+				t.Fatalf("NewSignerWithAlgorithms error: %v", err)
+			}
+			if err := cert.SignCert(rand.Reader, signer); err != nil {
+				t.Fatalf("SignCert error: %v", err)
+			}
+			if cert.Signature.Format != c.sigAlgo {
+				t.Fatalf("got signature format %q, want %q", cert.Signature.Format, c.sigAlgo)
 			}
 		})
 	}

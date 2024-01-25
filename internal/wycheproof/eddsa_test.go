@@ -3,14 +3,12 @@
 // license that can be found in the LICENSE file.
 
 //go:build go1.13
-// +build go1.13
 
 package wycheproof
 
 import (
+	"crypto/ed25519"
 	"testing"
-
-	"golang.org/x/crypto/ed25519"
 )
 
 func TestEddsa(t *testing.T) {

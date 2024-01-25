@@ -1076,3 +1076,209 @@ func TestCompatibleAlgoAndSignatures(t *testing.T) {
 		}
 	}
 }
+
+func TestPickSignatureAlgorithm(t *testing.T) {
+	type testcase struct {
+		name       string
+		extensions map[string][]byte
+	}
+	cases := []testcase{
+		{
+			name: "server with empty server-sig-algs",
+			extensions: map[string][]byte{
+				"server-sig-algs": []byte(``),
+			},
+		},
+		{
+			name:       "server with no server-sig-algs",
+			extensions: nil,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			signer, ok := testSigners["rsa"].(MultiAlgorithmSigner)
+			if !ok {
+				t.Fatalf("rsa test signer does not implement the MultiAlgorithmSigner interface")
+			}
+			// The signer supports the public key algorithm which is then returned.
+			_, algo, err := pickSignatureAlgorithm(signer, c.extensions)
+			if err != nil {
+				t.Fatalf("got %v, want no error", err)
+			}
+			if algo != signer.PublicKey().Type() {
+				t.Fatalf("got algo %q, want %q", algo, signer.PublicKey().Type())
+			}
+			// Test a signer that uses a certificate algorithm as the public key
+			// type.
+			cert := &Certificate{
+				CertType: UserCert,
+				Key:      signer.PublicKey(),
+			}
+			cert.SignCert(rand.Reader, signer)
+
+			certSigner, err := NewCertSigner(cert, signer)
+			if err != nil {
+				t.Fatalf("error generating cert signer: %v", err)
+			}
+			// The signer supports the public key algorithm and the
+			// public key format is a certificate type so the cerificate
+			// algorithm matching the key format must be returned
+			_, algo, err = pickSignatureAlgorithm(certSigner, c.extensions)
+			if err != nil {
+				t.Fatalf("got %v, want no error", err)
+			}
+			if algo != certSigner.PublicKey().Type() {
+				t.Fatalf("got algo %q, want %q", algo, certSigner.PublicKey().Type())
+			}
+			signer, err = NewSignerWithAlgorithms(signer.(AlgorithmSigner), []string{KeyAlgoRSASHA512, KeyAlgoRSASHA256})
+			if err != nil {
+				t.Fatalf("unable to create signer with algorithms: %v", err)
+			}
+			// The signer does not support the public key algorithm so an error
+			// is returned.
+			_, _, err = pickSignatureAlgorithm(signer, c.extensions)
+			if err == nil {
+				t.Fatal("got no error, no common public key signature algorithm error expected")
+			}
+		})
+	}
+}
+
+// configurablePublicKeyCallback is a public key callback that allows to
+// configure the signature algorithm and format. This way we can emulate the
+// behavior of buggy clients.
+type configurablePublicKeyCallback struct {
+	signer          AlgorithmSigner
+	signatureAlgo   string
+	signatureFormat string
+}
+
+func (cb configurablePublicKeyCallback) method() string {
+	return "publickey"
+}
+
+func (cb configurablePublicKeyCallback) auth(session []byte, user string, c packetConn, rand io.Reader, extensions map[string][]byte) (authResult, []string, error) {
+	pub := cb.signer.PublicKey()
+
+	ok, err := validateKey(pub, cb.signatureAlgo, user, c)
+	if err != nil {
+		return authFailure, nil, err
+	}
+	if !ok {
+		return authFailure, nil, fmt.Errorf("invalid public key")
+	}
+
+	pubKey := pub.Marshal()
+	data := buildDataSignedForAuth(session, userAuthRequestMsg{
+		User:    user,
+		Service: serviceSSH,
+		Method:  cb.method(),
+	}, cb.signatureAlgo, pubKey)
+	sign, err := cb.signer.SignWithAlgorithm(rand, data, underlyingAlgo(cb.signatureFormat))
+	if err != nil {
+		return authFailure, nil, err
+	}
+
+	s := Marshal(sign)
+	sig := make([]byte, stringLength(len(s)))
+	marshalString(sig, s)
+	msg := publickeyAuthMsg{
+		User:     user,
+		Service:  serviceSSH,
+		Method:   cb.method(),
+		HasSig:   true,
+		Algoname: cb.signatureAlgo,
+		PubKey:   pubKey,
+		Sig:      sig,
+	}
+	p := Marshal(&msg)
+	if err := c.writePacket(p); err != nil {
+		return authFailure, nil, err
+	}
+	var success authResult
+	success, methods, err := handleAuthResponse(c)
+	if err != nil {
+		return authFailure, nil, err
+	}
+	if success == authSuccess || !contains(methods, cb.method()) {
+		return success, methods, err
+	}
+
+	return authFailure, methods, nil
+}
+
+func TestPublicKeyAndAlgoCompatibility(t *testing.T) {
+	cert := &Certificate{
+		Key:         testPublicKeys["rsa"],
+		ValidBefore: CertTimeInfinity,
+		CertType:    UserCert,
+	}
+	cert.SignCert(rand.Reader, testSigners["ecdsa"])
+	certSigner, err := NewCertSigner(cert, testSigners["rsa"])
+	if err != nil {
+		t.Fatalf("NewCertSigner: %v", err)
+	}
+
+	clientConfig := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		Auth: []AuthMethod{
+			configurablePublicKeyCallback{
+				signer:          certSigner.(AlgorithmSigner),
+				signatureAlgo:   KeyAlgoRSASHA256,
+				signatureFormat: KeyAlgoRSASHA256,
+			},
+		},
+	}
+	if err := tryAuth(t, clientConfig); err == nil {
+		t.Error("cert login passed with incompatible public key type and algorithm")
+	}
+}
+
+func TestClientAuthGPGAgentCompat(t *testing.T) {
+	clientConfig := &ClientConfig{
+		User:            "testuser",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		Auth: []AuthMethod{
+			// algorithm rsa-sha2-512 and signature format ssh-rsa.
+			configurablePublicKeyCallback{
+				signer:          testSigners["rsa"].(AlgorithmSigner),
+				signatureAlgo:   KeyAlgoRSASHA512,
+				signatureFormat: KeyAlgoRSA,
+			},
+		},
+	}
+	if err := tryAuth(t, clientConfig); err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+}
+
+func TestCertAuthOpenSSHCompat(t *testing.T) {
+	cert := &Certificate{
+		Key:         testPublicKeys["rsa"],
+		ValidBefore: CertTimeInfinity,
+		CertType:    UserCert,
+	}
+	cert.SignCert(rand.Reader, testSigners["ecdsa"])
+	certSigner, err := NewCertSigner(cert, testSigners["rsa"])
+	if err != nil {
+		t.Fatalf("NewCertSigner: %v", err)
+	}
+
+	clientConfig := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		Auth: []AuthMethod{
+			// algorithm ssh-rsa-cert-v01@openssh.com and signature format
+			// rsa-sha2-256.
+			configurablePublicKeyCallback{
+				signer:          certSigner.(AlgorithmSigner),
+				signatureAlgo:   CertAlgoRSAv01,
+				signatureFormat: KeyAlgoRSASHA256,
+			},
+		},
+	}
+	if err := tryAuth(t, clientConfig); err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+}

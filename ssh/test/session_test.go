@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 //go:build !windows && !js && !wasip1
-// +build !windows,!js,!wasip1
 
 package test
 
@@ -23,6 +22,13 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
+func skipIfIssue64959(t *testing.T, err error) {
+	if err != nil && runtime.GOOS == "darwin" && strings.Contains(err.Error(), "ssh: unexpected packet in response to channel open: <nil>") {
+		t.Helper()
+		t.Skipf("skipping test broken on some versions of macOS; see https://go.dev/issue/64959")
+	}
+}
+
 func TestRunCommandSuccess(t *testing.T) {
 	server := newServer(t)
 	conn := server.Dial(clientConfig())
@@ -30,6 +36,7 @@ func TestRunCommandSuccess(t *testing.T) {
 
 	session, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("session failed: %v", err)
 	}
 	defer session.Close()
@@ -67,6 +74,7 @@ func TestRunCommandStdin(t *testing.T) {
 
 	session, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("session failed: %v", err)
 	}
 	defer session.Close()
@@ -89,6 +97,7 @@ func TestRunCommandStdinError(t *testing.T) {
 
 	session, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("session failed: %v", err)
 	}
 	defer session.Close()
@@ -112,6 +121,7 @@ func TestRunCommandFailed(t *testing.T) {
 
 	session, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("session failed: %v", err)
 	}
 	defer session.Close()
@@ -128,6 +138,7 @@ func TestRunCommandWeClosed(t *testing.T) {
 
 	session, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("session failed: %v", err)
 	}
 	err = session.Shell()
@@ -147,6 +158,7 @@ func TestFuncLargeRead(t *testing.T) {
 
 	session, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("unable to create new session: %s", err)
 	}
 
@@ -183,6 +195,7 @@ func TestKeyChange(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		session, err := conn.NewSession()
 		if err != nil {
+			skipIfIssue64959(t, err)
 			t.Fatalf("unable to create new session: %s", err)
 		}
 
@@ -224,6 +237,7 @@ func TestValidTerminalMode(t *testing.T) {
 
 	session, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("session failed: %v", err)
 	}
 	defer session.Close()
@@ -288,6 +302,7 @@ func TestWindowChange(t *testing.T) {
 
 	session, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("session failed: %v", err)
 	}
 	defer session.Close()
@@ -350,6 +365,7 @@ func testOneCipher(t *testing.T, cipher string, cipherOrder []string) {
 	// Exercise receiving data from the server
 	session, err := conn.NewSession()
 	if err != nil {
+		skipIfIssue64959(t, err)
 		t.Fatalf("NewSession: %v", err)
 	}
 
