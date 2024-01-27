@@ -1294,3 +1294,73 @@ func TestNegotiatedAlgorithms(t *testing.T) {
 		}
 	}
 }
+
+func TestAlgorithmNegotiationError(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		Config: Config{
+			Ciphers: []string{CipherAES128CTR, CipherAES256CTR},
+		},
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			return &Permissions{}, nil
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	srvErrCh := make(chan error, 1)
+	go func() {
+		_, _, _, err := NewServerConn(c1, serverConf)
+		srvErrCh <- err
+	}()
+
+	clientConf := &ClientConfig{
+		Config: Config{
+			Ciphers: []string{CipherAES128GCM, CipherAES256GCM},
+		},
+		User:            "test",
+		Auth:            []AuthMethod{Password("testpw")},
+		HostKeyCallback: FixedHostKey(testSigners["rsa"].PublicKey()),
+	}
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err == nil {
+		t.Fatal("client connection succeded expected algorithm negotiation error")
+	}
+	var negotiationError *AlgorithmNegotiationError
+	if !errors.As(err, &negotiationError) {
+		t.Fatalf("expected algorithm negotiation error, got %v", err)
+	}
+	expectedErrorString := fmt.Sprintf("ssh: handshake failed: ssh: no common algorithm for client to server cipher; we offered: %v, peer offered: %v",
+		clientConf.Ciphers, serverConf.Ciphers)
+	if err.Error() != expectedErrorString {
+		t.Fatalf("expected error string %q, got %q", expectedErrorString, err.Error())
+	}
+	if !reflect.DeepEqual(negotiationError.RequestedAlgorithms, serverConf.Ciphers) {
+		t.Fatalf("expected requested algorithms %v, got %v", serverConf.Ciphers, negotiationError.RequestedAlgorithms)
+	}
+	if !reflect.DeepEqual(negotiationError.SupportedAlgorithms, clientConf.Ciphers) {
+		t.Fatalf("expected supported algorithms %v, got %v", clientConf.Ciphers, negotiationError.SupportedAlgorithms)
+	}
+	err = <-srvErrCh
+	negotiationError = nil
+	if !errors.As(err, &negotiationError) {
+		t.Fatalf("expected algorithm negotiation error, got %v", err)
+	}
+	expectedErrorString = fmt.Sprintf("ssh: no common algorithm for client to server cipher; we offered: %v, peer offered: %v",
+		serverConf.Ciphers, clientConf.Ciphers)
+	if err.Error() != expectedErrorString {
+		t.Fatalf("expected error string %q, got %q", expectedErrorString, err.Error())
+	}
+	if !reflect.DeepEqual(negotiationError.RequestedAlgorithms, clientConf.Ciphers) {
+		t.Fatalf("expected requested algorithms %v, got %v", clientConf.Ciphers, negotiationError.RequestedAlgorithms)
+	}
+	if !reflect.DeepEqual(negotiationError.SupportedAlgorithms, serverConf.Ciphers) {
+		t.Fatalf("expected supported algorithms %v, got %v", serverConf.Ciphers, negotiationError.SupportedAlgorithms)
+	}
+}
