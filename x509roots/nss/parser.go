@@ -147,6 +147,20 @@ func parseTrustClass(s *bufio.Scanner) ([sha1.Size]byte, *trustObj, error) {
 	return h, to, nil
 }
 
+// manualExclusions contains a map of SHA1 fingerprints of roots that we manually exclude
+// from the bundle for various reasons.
+var manualExclusions = map[string]bool{
+	// TUBITAK Kamu SM SSL Kok Sertifikasi - Surum 1
+	// We exclude this root because mozilla manually constrains this root to
+	// issue names under .tr, but this information is only encoded in the CCADB
+	// IncludedCACertificateReport, in a field the format of which is
+	// undocumented, and is only used for this particular certificate. Rather
+	// than adding special parsing for this, we skip it. When code constraint
+	// support is available, we may also want to simply add a manual constraint,
+	// rather than a manual exclusion.
+	"3143649becce27eced3a3f0b8f0de4e891ddeeca": true,
+}
+
 // Parse parses a NSS certdata.txt formatted file, returning only
 // trusted serverAuth roots, as well as any additional constraints. This parser
 // is very opinionated, only returning roots that are currently trusted for
@@ -246,6 +260,9 @@ func Parse(r io.Reader) ([]*Certificate, error) {
 			return nil, fmt.Errorf("missing trust object for certificate with SHA1 hash: %x", h)
 		}
 		if !e.trust.trusted {
+			continue
+		}
+		if manualExclusions[fmt.Sprintf("%x", h)] {
 			continue
 		}
 		nssCert := &Certificate{X509: e.cert.c}
