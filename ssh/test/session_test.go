@@ -448,7 +448,6 @@ func TestKeyExchanges(t *testing.T) {
 func TestClientAuthAlgorithms(t *testing.T) {
 	for _, key := range []string{
 		"rsa",
-		"dsa",
 		"ecdsa",
 		"ed25519",
 	} {

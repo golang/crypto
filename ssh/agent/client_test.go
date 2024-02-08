@@ -164,15 +164,23 @@ func testAgentInterface(t *testing.T, agent ExtendedAgent, key interface{}, cert
 	data := []byte("hello")
 	sig, err := agent.Sign(pubKey, data)
 	if err != nil {
-		t.Fatalf("Sign(%s): %v", pubKey.Type(), err)
-	}
-
-	if err := pubKey.Verify(data, sig); err != nil {
-		t.Fatalf("Verify(%s): %v", pubKey.Type(), err)
+		t.Logf("sign failed with key type %q", pubKey.Type())
+		// In integration tests ssh-dss and ssh-rsa (SHA1 signatures) may be
+		// disabled for security reasons, we check SHA-2 variants later.
+		if pubKey.Type() != ssh.KeyAlgoDSA && pubKey.Type() != ssh.KeyAlgoRSA && pubKey.Type() != ssh.CertAlgoRSAv01 {
+			t.Fatalf("Sign(%s): %v", pubKey.Type(), err)
+		}
+	} else {
+		if err := pubKey.Verify(data, sig); err != nil {
+			t.Logf("verify failed with key type %q", pubKey.Type())
+			if pubKey.Type() != ssh.KeyAlgoRSA {
+				t.Fatalf("Verify(%s): %v", pubKey.Type(), err)
+			}
+		}
 	}
 
 	// For tests on RSA keys, try signing with SHA-256 and SHA-512 flags
-	if pubKey.Type() == "ssh-rsa" {
+	if pubKey.Type() == ssh.KeyAlgoRSA {
 		sshFlagTest := func(flag SignatureFlags, expectedSigFormat string) {
 			sig, err = agent.SignWithFlags(pubKey, data, flag)
 			if err != nil {
@@ -185,7 +193,6 @@ func testAgentInterface(t *testing.T, agent ExtendedAgent, key interface{}, cert
 				t.Fatalf("Verify(%s): %v", pubKey.Type(), err)
 			}
 		}
-		sshFlagTest(0, ssh.KeyAlgoRSA)
 		sshFlagTest(SignatureFlagRsaSha256, ssh.KeyAlgoRSASHA256)
 		sshFlagTest(SignatureFlagRsaSha512, ssh.KeyAlgoRSASHA512)
 	}
