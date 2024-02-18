@@ -357,11 +357,6 @@ func testOneCipher(t *testing.T, cipher string, cipherOrder []string) {
 
 	numBytes := 4096
 
-	// Exercise sending data to the server
-	if _, _, err := conn.Conn.SendRequest("drop-me", false, make([]byte, numBytes)); err != nil {
-		t.Fatalf("SendRequest: %v", err)
-	}
-
 	// Exercise receiving data from the server
 	session, err := conn.NewSession()
 	if err != nil {
@@ -376,6 +371,11 @@ func testOneCipher(t *testing.T, cipher string, cipherOrder []string) {
 
 	if len(out) != numBytes {
 		t.Fatalf("got %d bytes, want %d bytes", len(out), numBytes)
+	}
+
+	// Exercise sending data to the server
+	if _, _, err := conn.Conn.SendRequest("drop-me", false, make([]byte, numBytes)); err != nil {
+		t.Fatalf("SendRequest: %v", err)
 	}
 }
 
