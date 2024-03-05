@@ -384,7 +384,7 @@ func ExampleCertificate_SignCert() {
 	}
 	mas, err := ssh.NewSignerWithAlgorithms(signer.(ssh.AlgorithmSigner), []string{ssh.KeyAlgoRSASHA256})
 	if err != nil {
-		log.Fatal("unable to create signer with algoritms: ", err)
+		log.Fatal("unable to create signer with algorithms: ", err)
 	}
 	certificate := ssh.Certificate{
 		Key:      publicKey,

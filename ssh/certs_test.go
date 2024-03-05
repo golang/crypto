@@ -367,21 +367,21 @@ func TestCertTypes(t *testing.T) {
 
 func TestCertSignWithMultiAlgorithmSigner(t *testing.T) {
 	type testcase struct {
-		sigAlgo   string
-		algoritms []string
+		sigAlgo    string
+		algorithms []string
 	}
 	cases := []testcase{
 		{
-			sigAlgo:   KeyAlgoRSA,
-			algoritms: []string{KeyAlgoRSA, KeyAlgoRSASHA512},
+			sigAlgo:    KeyAlgoRSA,
+			algorithms: []string{KeyAlgoRSA, KeyAlgoRSASHA512},
 		},
 		{
-			sigAlgo:   KeyAlgoRSASHA256,
-			algoritms: []string{KeyAlgoRSASHA256, KeyAlgoRSA, KeyAlgoRSASHA512},
+			sigAlgo:    KeyAlgoRSASHA256,
+			algorithms: []string{KeyAlgoRSASHA256, KeyAlgoRSA, KeyAlgoRSASHA512},
 		},
 		{
-			sigAlgo:   KeyAlgoRSASHA512,
-			algoritms: []string{KeyAlgoRSASHA512, KeyAlgoRSASHA256},
+			sigAlgo:    KeyAlgoRSASHA512,
+			algorithms: []string{KeyAlgoRSASHA512, KeyAlgoRSASHA256},
 		},
 	}
 
@@ -393,7 +393,7 @@ func TestCertSignWithMultiAlgorithmSigner(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.sigAlgo, func(t *testing.T) {
-			signer, err := NewSignerWithAlgorithms(testSigners["rsa"].(AlgorithmSigner), c.algoritms)
+			signer, err := NewSignerWithAlgorithms(testSigners["rsa"].(AlgorithmSigner), c.algorithms)
 			if err != nil {
 				t.Fatalf("NewSignerWithAlgorithms error: %v", err)
 			}
