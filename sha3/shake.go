@@ -17,6 +17,7 @@ package sha3
 
 import (
 	"encoding/binary"
+	"errors"
 	"hash"
 	"io"
 )
@@ -80,7 +81,11 @@ func leftEncode(value uint64) []byte {
 	return b[i-1:]
 }
 
-func newCShake(N, S []byte, rate, outputLen int, dsbyte byte) ShakeHash {
+func newCShake(N, S []byte, rate, outputLen int, dsbyte byte) (ShakeHash, error) {
+	if len(N) >= 256 || len(S) >= 256 {
+		return nil, errors.New("crypto/cSHAKE: N and S can be at most 255 bytes long")
+	}
+
 	c := cshakeState{state: &state{rate: rate, outputLen: outputLen, dsbyte: dsbyte}}
 
 	// leftEncode returns max 9 bytes
@@ -90,7 +95,7 @@ func newCShake(N, S []byte, rate, outputLen int, dsbyte byte) ShakeHash {
 	c.initBlock = append(c.initBlock, leftEncode(uint64(len(S)*8))...)
 	c.initBlock = append(c.initBlock, S...)
 	c.Write(bytepad(c.initBlock, c.rate))
-	return &c
+	return &c, nil
 }
 
 // Reset resets the hash to initial state.
@@ -137,9 +142,10 @@ func NewShake256() ShakeHash {
 // desired. S is a customization byte string used for domain separation - two cSHAKE
 // computations on same input with different S yield unrelated outputs.
 // When N and S are both empty, this is equivalent to NewShake128.
-func NewCShake128(N, S []byte) ShakeHash {
+// N and S can be at most 255 bytes long.
+func NewCShake128(N, S []byte) (ShakeHash, error) {
 	if len(N) == 0 && len(S) == 0 {
-		return NewShake128()
+		return NewShake128(), nil
 	}
 	return newCShake(N, S, rate128, 32, dsbyteCShake)
 }
@@ -150,9 +156,10 @@ func NewCShake128(N, S []byte) ShakeHash {
 // desired. S is a customization byte string used for domain separation - two cSHAKE
 // computations on same input with different S yield unrelated outputs.
 // When N and S are both empty, this is equivalent to NewShake256.
-func NewCShake256(N, S []byte) ShakeHash {
+// N and S can be at most 255 bytes long.
+func NewCShake256(N, S []byte) (ShakeHash, error) {
 	if len(N) == 0 && len(S) == 0 {
-		return NewShake256()
+		return NewShake256(), nil
 	}
 	return newCShake(N, S, rate256, 64, dsbyteCShake)
 }
