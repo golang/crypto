@@ -82,8 +82,8 @@ func leftEncode(value uint64) []byte {
 }
 
 func newCShake(N, S []byte, rate, outputLen int, dsbyte byte) (ShakeHash, error) {
-	if len(N) >= 255 || len(S) >= 255 {
-		return nil, errors.New("crypto/cSHAKE: N and S should less than 255 bytes")
+	if len(N) >= 256 || len(S) >= 256 {
+		return nil, errors.New("crypto/cSHAKE: N and S can be at most 255 bytes long")
 	}
 
 	c := cshakeState{state: &state{rate: rate, outputLen: outputLen, dsbyte: dsbyte}}
