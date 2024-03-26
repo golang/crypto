@@ -333,7 +333,7 @@ func (db *hostKeyDB) check(address string, remote net.Addr, remoteKey ssh.Public
 
 	host, port, err := net.SplitHostPort(remote.String())
 	if err != nil {
-		return fmt.Errorf("knownhosts: SplitHostPort(%s): %v", remote, err)
+		return fmt.Errorf("knownhosts: SplitHostPort(%s): %w", remote, err)
 	}
 
 	hostToCheck := addr{host, port}
@@ -341,7 +341,7 @@ func (db *hostKeyDB) check(address string, remote net.Addr, remoteKey ssh.Public
 		// Give preference to the hostname if available.
 		host, port, err := net.SplitHostPort(address)
 		if err != nil {
-			return fmt.Errorf("knownhosts: SplitHostPort(%s): %v", address, err)
+			return fmt.Errorf("knownhosts: SplitHostPort(%s): %w", address, err)
 		}
 
 		hostToCheck = addr{host, port}
@@ -402,7 +402,7 @@ func (db *hostKeyDB) Read(r io.Reader, filename string) error {
 		}
 
 		if err := db.parseLine(line, filename, lineNum); err != nil {
-			return fmt.Errorf("knownhosts: %s:%d: %v", filename, lineNum, err)
+			return fmt.Errorf("knownhosts: %s:%d: %w", filename, lineNum, err)
 		}
 	}
 	return scanner.Err()
