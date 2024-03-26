@@ -127,7 +127,8 @@ func (s *String) readLengthPrefixed(lenLen int, outChild *String) bool {
 		length = length << 8
 		length = length | uint32(b)
 	}
-	v := s.read(int(length))
+	n := int(length)
+	v := s.read(n) // returns nil if n is negative due to overflow
 	if v == nil {
 		return false
 	}
@@ -153,6 +154,14 @@ func (s *String) ReadUint16LengthPrefixed(out *String) bool {
 // the read was successful.
 func (s *String) ReadUint24LengthPrefixed(out *String) bool {
 	return s.readLengthPrefixed(3, out)
+}
+
+// ReadUint32LengthPrefixed reads the content of a big-endian, 32-bit
+// length-prefixed value into out and advances over it. It reports whether
+// the read was successful.
+// On 32-bit platform read fails if length is greater than max int.
+func (s *String) ReadUint32LengthPrefixed(out *String) bool {
+	return s.readLengthPrefixed(4, out)
 }
 
 // ReadBytes reads n bytes into out and advances over them. It reports
