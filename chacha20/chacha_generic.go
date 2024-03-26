@@ -74,10 +74,19 @@ func NewUnauthenticatedCipher(key, nonce []byte) (*Cipher, error) {
 	// be inlined, and depending on how the caller uses the return value, won't
 	// escape to the heap.
 	c := &Cipher{}
-	return newUnauthenticatedCipher(c, key, nonce)
+	return c.Init(key, nonce)
 }
 
-func newUnauthenticatedCipher(c *Cipher, key, nonce []byte) (*Cipher, error) {
+// Init initialises an existing ChaCha20 stream cipher structure with the given
+// 32 bytes key and a 12 or 24 bytes nonce. If a nonce of 24 bytes is provided,
+// the XChaCha20 construction will be used. It returns an error if key or nonce
+// have any other length.
+//
+// Note that ChaCha20, like all stream ciphers, is not authenticated and allows
+// attackers to silently tamper with the plaintext. For this reason, it is more
+// appropriate as a building block than as a standalone encryption mechanism.
+// Instead, consider using package golang.org/x/crypto/chacha20poly1305.
+func (s *Cipher) Init(key, nonce []byte) (*Cipher, error) {
 	if len(key) != KeySize {
 		return nil, errors.New("chacha20: wrong key size")
 	}
@@ -93,8 +102,10 @@ func newUnauthenticatedCipher(c *Cipher, key, nonce []byte) (*Cipher, error) {
 		return nil, errors.New("chacha20: wrong nonce size")
 	}
 
+	s.counter, s.len, s.overflow, s.precompDone = 0, 0, false, false
+
 	key, nonce = key[:KeySize], nonce[:NonceSize] // bounds check elimination hint
-	c.key = [8]uint32{
+	s.key = [8]uint32{
 		binary.LittleEndian.Uint32(key[0:4]),
 		binary.LittleEndian.Uint32(key[4:8]),
 		binary.LittleEndian.Uint32(key[8:12]),
@@ -104,12 +115,12 @@ func newUnauthenticatedCipher(c *Cipher, key, nonce []byte) (*Cipher, error) {
 		binary.LittleEndian.Uint32(key[24:28]),
 		binary.LittleEndian.Uint32(key[28:32]),
 	}
-	c.nonce = [3]uint32{
+	s.nonce = [3]uint32{
 		binary.LittleEndian.Uint32(nonce[0:4]),
 		binary.LittleEndian.Uint32(nonce[4:8]),
 		binary.LittleEndian.Uint32(nonce[8:12]),
 	}
-	return c, nil
+	return s, nil
 }
 
 // The constant first 4 words of the ChaCha20 state.
