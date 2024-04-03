@@ -5,8 +5,10 @@
 package ssh
 
 import (
+	"errors"
 	"io"
 	"net"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -59,6 +61,133 @@ func TestClientAuthRestrictedPublicKeyAlgos(t *testing.T) {
 			t.Errorf("%s: succeeded, but want error", tt.name)
 		}
 		<-done
+	}
+}
+
+func TestMaxAuthTriesNoneMethod(t *testing.T) {
+	username := "testuser"
+	serverConfig := &ServerConfig{
+		MaxAuthTries: 2,
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			if conn.User() == username && string(password) == clientPassword {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	var serverAuthErrors []error
+
+	serverConfig.AddHostKey(testSigners["rsa"])
+	serverConfig.AuthLogCallback = func(conn ConnMetadata, method string, err error) {
+		serverAuthErrors = append(serverAuthErrors, err)
+	}
+	go newServer(c1, serverConfig)
+
+	clientConfig := ClientConfig{
+		User:            username,
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+	clientConfig.SetDefaults()
+	// Our client will send 'none' auth only once, so we need to send the
+	// requests manually.
+	c := &connection{
+		sshConn: sshConn{
+			conn:          c2,
+			user:          username,
+			clientVersion: []byte(packageVersion),
+		},
+	}
+	c.serverVersion, err = exchangeVersions(c.sshConn.conn, c.clientVersion)
+	if err != nil {
+		t.Fatalf("unable to exchange version: %v", err)
+	}
+	c.transport = newClientTransport(
+		newTransport(c.sshConn.conn, clientConfig.Rand, true /* is client */),
+		c.clientVersion, c.serverVersion, &clientConfig, "", c.sshConn.RemoteAddr())
+	if err := c.transport.waitSession(); err != nil {
+		t.Fatalf("unable to wait session: %v", err)
+	}
+	c.sessionID = c.transport.getSessionID()
+	if err := c.transport.writePacket(Marshal(&serviceRequestMsg{serviceUserAuth})); err != nil {
+		t.Fatalf("unable to send ssh-userauth message: %v", err)
+	}
+	packet, err := c.transport.readPacket()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(packet) > 0 && packet[0] == msgExtInfo {
+		packet, err = c.transport.readPacket()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var serviceAccept serviceAcceptMsg
+	if err := Unmarshal(packet, &serviceAccept); err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i <= serverConfig.MaxAuthTries; i++ {
+		auth := new(noneAuth)
+		_, _, err := auth.auth(c.sessionID, clientConfig.User, c.transport, clientConfig.Rand, nil)
+		if i < serverConfig.MaxAuthTries {
+			if err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err == nil {
+			t.Fatal("client: got no error")
+		} else if !strings.Contains(err.Error(), "too many authentication failures") {
+			t.Fatalf("client: got unexpected error: %v", err)
+		}
+	}
+	if len(serverAuthErrors) != 3 {
+		t.Fatalf("unexpected number of server auth errors: %v, errors: %+v", len(serverAuthErrors), serverAuthErrors)
+	}
+	for _, err := range serverAuthErrors {
+		if !errors.Is(err, ErrNoAuth) {
+			t.Errorf("go error: %v; want: %v", err, ErrNoAuth)
+		}
+	}
+}
+
+func TestMaxAuthTriesFirstNoneAuthErrorIgnored(t *testing.T) {
+	username := "testuser"
+	serverConfig := &ServerConfig{
+		MaxAuthTries: 1,
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			if conn.User() == username && string(password) == clientPassword {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	clientConfig := &ClientConfig{
+		User: username,
+		Auth: []AuthMethod{
+			Password(clientPassword),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	serverAuthErrors, err := doClientServerAuth(t, serverConfig, clientConfig)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+	if len(serverAuthErrors) != 2 {
+		t.Fatalf("unexpected number of server auth errors: %v, errors: %+v", len(serverAuthErrors), serverAuthErrors)
+	}
+	if !errors.Is(serverAuthErrors[0], ErrNoAuth) {
+		t.Errorf("go error: %v; want: %v", serverAuthErrors[0], ErrNoAuth)
+	}
+	if serverAuthErrors[1] != nil {
+		t.Errorf("unexpected error: %v", serverAuthErrors[1])
 	}
 }
 

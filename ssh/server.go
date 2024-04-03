@@ -468,6 +468,7 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 	var perms *Permissions
 
 	authFailures := 0
+	noneAuthCount := 0
 	var authErrs []error
 	var displayedBanner bool
 	partialSuccessReturned := false
@@ -534,6 +535,7 @@ userAuthLoop:
 
 		switch userAuthReq.Method {
 		case "none":
+			noneAuthCount++
 			// We don't allow none authentication after a partial success
 			// response.
 			if config.NoClientAuth && !partialSuccessReturned {
@@ -755,7 +757,7 @@ userAuthLoop:
 			failureMsg.PartialSuccess = true
 		} else {
 			// Allow initial attempt of 'none' without penalty.
-			if authFailures > 0 || userAuthReq.Method != "none" {
+			if authFailures > 0 || userAuthReq.Method != "none" || noneAuthCount != 1 {
 				authFailures++
 			}
 			if config.MaxAuthTries > 0 && authFailures >= config.MaxAuthTries {
@@ -777,7 +779,7 @@ userAuthLoop:
 				// disconnect, should we only send that message.)
 				//
 				// Either way, OpenSSH disconnects immediately after the last
-				// failed authnetication attempt, and given they are typically
+				// failed authentication attempt, and given they are typically
 				// considered the golden implementation it seems reasonable
 				// to match that behavior.
 				continue
