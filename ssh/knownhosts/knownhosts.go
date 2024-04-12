@@ -481,17 +481,17 @@ func decodeHash(encoded string) (hashType string, salt, hash []byte, err error) 
 		err = errors.New("knownhosts: hashed host must start with '|'")
 		return
 	}
-	components := strings.Split(encoded, "|")
-	if len(components) != 4 {
+	components := strings.Split(encoded[1:], "|")
+	if len(components) != 3 {
 		err = fmt.Errorf("knownhosts: got %d components, want 3", len(components))
 		return
 	}
 
-	hashType = components[1]
-	if salt, err = base64.StdEncoding.DecodeString(components[2]); err != nil {
+	hashType = components[0]
+	if salt, err = base64.StdEncoding.DecodeString(components[1]); err != nil {
 		return
 	}
-	if hash, err = base64.StdEncoding.DecodeString(components[3]); err != nil {
+	if hash, err = base64.StdEncoding.DecodeString(components[2]); err != nil {
 		return
 	}
 	return
