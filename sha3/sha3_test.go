@@ -188,6 +188,34 @@ func TestKeccak(t *testing.T) {
 	}
 }
 
+// TestShakeSum tests that the output of Sum matches the output of Read.
+func TestShakeSum(t *testing.T) {
+	tests := [...]struct {
+		name        string
+		hash        ShakeHash
+		expectedLen int
+	}{
+		{"SHAKE128", NewShake128(), 32},
+		{"SHAKE256", NewShake256(), 64},
+		{"cSHAKE128", NewCShake128([]byte{'X'}, nil), 32},
+		{"cSHAKE256", NewCShake256([]byte{'X'}, nil), 64},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			s := test.hash.Sum(nil)
+			if len(s) != test.expectedLen {
+				t.Errorf("Unexpected digest length: got %d, want %d", len(s), test.expectedLen)
+			}
+			r := make([]byte, test.expectedLen)
+			test.hash.Read(r)
+			if !bytes.Equal(s, r) {
+				t.Errorf("Mismatch between Sum and Read:\nSum:  %s\nRead: %s", hex.EncodeToString(s), hex.EncodeToString(r))
+			}
+		})
+	}
+}
+
 // TestUnalignedWrite tests that writing data in an arbitrary pattern with
 // small input buffers.
 func TestUnalignedWrite(t *testing.T) {
