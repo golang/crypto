@@ -132,7 +132,7 @@ func TestRevokedUserID(t *testing.T) {
 	}
 }
 
-// TestExternallyRevokableKey attempts to load and parse a key with a third party revocation permission.
+// TestExternallyRevocableKey attempts to load and parse a key with a third party revocation permission.
 func TestExternallyRevocableKey(t *testing.T) {
 	kring, err := ReadKeyRing(readerFromHex(subkeyUsageHex))
 	if err != nil {
