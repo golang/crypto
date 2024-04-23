@@ -10,6 +10,8 @@ package test
 
 import (
 	"bytes"
+	"crypto/rand"
+	"crypto/rsa"
 	"errors"
 	"fmt"
 	"io"
@@ -466,5 +468,34 @@ func TestClientAuthAlgorithms(t *testing.T) {
 				t.Errorf("failed for key %q", key)
 			}
 		})
+	}
+}
+
+func TestClientAuthDisconnect(t *testing.T) {
+	// Generate a new key that is not accepted by server
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate key: %v", err)
+	}
+	signer, err := ssh.NewSignerFromKey(key)
+	if err != nil {
+		t.Fatalf("failed to create signer from key: %v", err)
+	}
+
+	// Start server with MaxAuthTries 1 and publickey and password auth enabled
+	server := newServerForConfig(t, "MaxAuthTries", map[string]string{})
+
+	// Connect to server, expect failure and that PasswordCallback is not called
+	config := clientConfig()
+	config.Auth = []ssh.AuthMethod{
+		ssh.PublicKeys(signer),
+		ssh.PasswordCallback(func() (string, error) {
+			t.Errorf("unexpected call to PasswordCallback()")
+			return "notaverygoodpassword", nil
+		}),
+	}
+	_, err = server.TryDial(config)
+	if err == nil {
+		t.Errorf("expected TryDial() to fail")
 	}
 }
