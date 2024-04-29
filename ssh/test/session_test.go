@@ -482,10 +482,12 @@ func TestClientAuthDisconnect(t *testing.T) {
 		t.Fatalf("failed to create signer from key: %v", err)
 	}
 
-	// Start server with MaxAuthTries 1 and publickey and password auth enabled
+	// Start server with MaxAuthTries 1 and publickey and password auth
+	// enabled
 	server := newServerForConfig(t, "MaxAuthTries", map[string]string{})
 
-	// Connect to server, expect failure and that PasswordCallback is not called
+	// Connect to server, expect failure and that PasswordCallback is not
+	// called
 	config := clientConfig()
 	config.Auth = []ssh.AuthMethod{
 		ssh.PublicKeys(signer),
