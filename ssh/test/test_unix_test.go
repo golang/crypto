@@ -61,7 +61,7 @@ AuthenticationMethods {{.AuthMethods}}
 `
 	maxAuthTriesSshdConfigTail = `
 PasswordAuthentication yes
-MaxAuthTries 1	
+MaxAuthTries 1
 `
 )
 
