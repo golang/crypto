@@ -202,7 +202,7 @@ func benchamarkChaCha20Poly1305Open(b *testing.B, buf []byte, nonceSize int) {
 }
 
 func BenchmarkChacha20Poly1305(b *testing.B) {
-	for _, length := range []int{64, 1350, 8 * 1024} {
+	for _, length := range []int{64, 1024, 1350, 2 * 1024, 4 * 1024, 8 * 1024, 16 * 1024} {
 		b.Run("Open-"+strconv.Itoa(length), func(b *testing.B) {
 			benchamarkChaCha20Poly1305Open(b, make([]byte, length), NonceSize)
 		})
