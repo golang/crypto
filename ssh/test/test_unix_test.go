@@ -59,11 +59,16 @@ PasswordAuthentication yes
 ChallengeResponseAuthentication yes
 AuthenticationMethods {{.AuthMethods}}
 `
+	maxAuthTriesSshdConfigTail = `
+PasswordAuthentication yes
+MaxAuthTries 1
+`
 )
 
 var configTmpl = map[string]*template.Template{
-	"default":   template.Must(template.New("").Parse(defaultSshdConfig)),
-	"MultiAuth": template.Must(template.New("").Parse(defaultSshdConfig + multiAuthSshdConfigTail))}
+	"default":      template.Must(template.New("").Parse(defaultSshdConfig)),
+	"MultiAuth":    template.Must(template.New("").Parse(defaultSshdConfig + multiAuthSshdConfigTail)),
+	"MaxAuthTries": template.Must(template.New("").Parse(defaultSshdConfig + maxAuthTriesSshdConfigTail))}
 
 type server struct {
 	t          *testing.T
