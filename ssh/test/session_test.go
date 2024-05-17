@@ -10,8 +10,6 @@ package test
 
 import (
 	"bytes"
-	"crypto/rand"
-	"crypto/rsa"
 	"errors"
 	"fmt"
 	"io"
@@ -472,12 +470,42 @@ func TestClientAuthAlgorithms(t *testing.T) {
 }
 
 func TestClientAuthDisconnect(t *testing.T) {
-	// Generate a new key that is not accepted by server
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		t.Fatalf("failed to generate key: %v", err)
-	}
-	signer, err := ssh.NewSignerFromKey(key)
+	// Use a static key that is not accepted by server.
+	// This key has been generated with ollowing ssh-keygen command and
+	// used exclusively in this unit test:
+	// $ ssh-keygen -t RSA -b 2048 -f /tmp/static_key \
+	//   -C "Static RSA key for golang.org/x/crypto/ssh unit test"
+
+	const privKeyData = `-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABFwAAAAdzc2gtcn
+NhAAAAAwEAAQAAAQEAwV1Zg3MqX27nIQQNWd8V09P4q4F1fx7H2xNJdL3Yg3y91GFLJ92+
+0IiGV8n1VMGL/71PPhzyqBpUYSTpWjiU2JZSfA+iTg1GJBcOaEOA6vrXsTtXTHZ//mOT4d
+mlvuP4+9NqfCBLGXN7ZJpT+amkD8AVW9YW9QN3ipY61ZWxPaAocVpDd8rVgJTk54KvaPa7
+t4ddOSQDQq61aubIDR1Z3P+XjkB4piWOsbck3HJL+veTALy12C09tAhwUnZUAXS+DjhxOL
+xpDVclF/yXYhAvBvsjwyk/OC3+nK9F799hpQZsjxmbP7oN+tGwz06BUcAKi7u7QstENvvk
+85SDZy1q1QAAA/A7ylbJO8pWyQAAAAdzc2gtcnNhAAABAQDBXVmDcypfbuchBA1Z3xXT0/
+irgXV/HsfbE0l0vdiDfL3UYUsn3b7QiIZXyfVUwYv/vU8+HPKoGlRhJOlaOJTYllJ8D6JO
+DUYkFw5oQ4Dq+texO1dMdn/+Y5Ph2aW+4/j702p8IEsZc3tkmlP5qaQPwBVb1hb1A3eKlj
+rVlbE9oChxWkN3ytWAlOTngq9o9ru3h105JANCrrVq5sgNHVnc/5eOQHimJY6xtyTcckv6
+95MAvLXYLT20CHBSdlQBdL4OOHE4vGkNVyUX/JdiEC8G+yPDKT84Lf6cr0Xv32GlBmyPGZ
+s/ug360bDPToFRwAqLu7tCy0Q2++TzlINnLWrVAAAAAwEAAQAAAQAIvPDHMiyIxgCksGPF
+uyv9F9U4XjVip8/abE9zkAMJWW5++wuT/bRlBOUPRrWIXZEM9ETbtsqswo3Wxah+7CjRIH
+qR7SdFlYTP1jPk4yIKXF4OvggBUPySkMpAGJ9hwOMW8Ymcb4gn77JJ4aMoWIcXssje+XiC
+8iO+4UWU3SV2i6K7flK1UDCI5JVCyBr3DVf3QhMOgvwJl9TgD7FzWy1hkjuZq/Pzdv+fA2
+OfrUFiSukLNolidNoI9+KWa1yxixE+B2oN4Xan3ZbqGbL6Wc1dB+K9h/bNcu+SKf7fXWRi
+/vVG44A61xGDZzen1+eQlqFp7narkKXoaU71+45VXDThAAAAgBPWUdQykEEm0yOS6hPIW+
+hS8z1LXWGTEcag9fMwJXKE7cQFO3LEk+dXMbClHdhD/ydswOZYGSNepxwvmo/a5LiO2ulp
+W+5tnsNhcK3skdaf71t+boUEXBNZ6u3WNTkU7tDN8h9tebI+xlNceDGSGjOlNoHQVMKZdA
+W9TA4ZqXUPAAAAgQDWU0UZVOSCAOODPz4PYsbFKdCfXNP8O4+t9txyc9E3hsLAsVs+CpVX
+Gr219MGLrublzAxojipyzuQb6Tp1l9nsu7VkcBrPL8I1tokz0AyTnmNF3A9KszBal7gGNS
+a2qYuf6JO4cub1KzonxUJQHZPZq9YhCxOtDwTd+uyHZiPy9QAAAIEA5vayd+nfVJgCKTdf
+z5MFsxBSUj/cAYg7JYPS/0bZ5bEkLosL22wl5Tm/ZftJa8apkyBPhguAWt6jEWLoDiK+kn
+Fv0SaEq1HUdXgWmISVnWzv2pxdAtq/apmbxTg3iIJyrAwEDo13iImR3k6rNPx1m3i/jX56
+HLcvWM4Y6bFzbGEAAAA0U3RhdGljIFJTQSBrZXkgZm9yIGdvbGFuZy5vcmcveC9jcnlwdG
+8vc3NoIHVuaXQgdGVzdAECAwQFBgc=
+-----END OPENSSH PRIVATE KEY-----`
+
+	signer, err := ssh.ParsePrivateKey([]byte(privKeyData))
 	if err != nil {
 		t.Fatalf("failed to create signer from key: %v", err)
 	}
