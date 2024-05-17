@@ -471,7 +471,7 @@ func TestClientAuthAlgorithms(t *testing.T) {
 
 func TestClientAuthDisconnect(t *testing.T) {
 	// Use a static key that is not accepted by server.
-	// This key has been generated with ollowing ssh-keygen command and
+	// This key has been generated with following ssh-keygen command and
 	// used exclusively in this unit test:
 	// $ ssh-keygen -t RSA -b 2048 -f /tmp/static_key \
 	//   -C "Static RSA key for golang.org/x/crypto/ssh unit test"
