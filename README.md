@@ -1,23 +1,10 @@
-# Go Cryptography
+# golang-x-crypto
 
-[![Go Reference](https://pkg.go.dev/badge/golang.org/x/crypto.svg)](https://pkg.go.dev/golang.org/x/crypto)
+This is a temporary dev fork of Go's `golang.org/x/crypto` module,
+but only for `acme` development. All other packages have been removed.
 
-This repository holds supplementary Go cryptography libraries.
+# Contributing
 
-## Download/Install
+PRs not welcome here. This is where we temporarily put patches we're
+working on getting upstream ourselves.
 
-The easiest way to install is to run `go get -u golang.org/x/crypto/...`. You
-can also manually git clone the repository to `$GOPATH/src/golang.org/x/crypto`.
-
-## Report Issues / Send Patches
-
-This repository uses Gerrit for code changes. To learn how to submit changes to
-this repository, see https://golang.org/doc/contribute.html.
-
-The main issue tracker for the crypto repository is located at
-https://github.com/golang/go/issues. Prefix your issue with "x/crypto:" in the
-subject line, so it is easy to find.
-
-Note that contributions to the cryptography package receive additional scrutiny
-due to their sensitive nature. Patches may take longer than normal to receive
-feedback.

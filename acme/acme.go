@@ -179,13 +179,14 @@ func (c *Client) Discover(ctx context.Context) (Directory, error) {
 	c.addNonce(res.Header)
 
 	var v struct {
-		Reg       string `json:"newAccount"`
-		Authz     string `json:"newAuthz"`
-		Order     string `json:"newOrder"`
-		Revoke    string `json:"revokeCert"`
-		Nonce     string `json:"newNonce"`
-		KeyChange string `json:"keyChange"`
-		Meta      struct {
+		Reg         string `json:"newAccount"`
+		Authz       string `json:"newAuthz"`
+		Order       string `json:"newOrder"`
+		Revoke      string `json:"revokeCert"`
+		Nonce       string `json:"newNonce"`
+		KeyChange   string `json:"keyChange"`
+		RenewalInfo string `json:"renewalInfo"`
+		Meta        struct {
 			Terms        string   `json:"termsOfService"`
 			Website      string   `json:"website"`
 			CAA          []string `json:"caaIdentities"`
@@ -205,6 +206,7 @@ func (c *Client) Discover(ctx context.Context) (Directory, error) {
 		RevokeURL:               v.Revoke,
 		NonceURL:                v.Nonce,
 		KeyChangeURL:            v.KeyChange,
+		RenewalInfoURL:          v.RenewalInfo,
 		Terms:                   v.Meta.Terms,
 		Website:                 v.Meta.Website,
 		CAA:                     v.Meta.CAA,
@@ -255,6 +257,47 @@ func (c *Client) RevokeCert(ctx context.Context, key crypto.Signer, cert []byte,
 		return err
 	}
 	return c.revokeCertRFC(ctx, key, cert, reason)
+}
+
+// FetchRenewalInfo retrieves the RenewalInfo from Directory.RenewalInfoURL.
+func (c *Client) FetchRenewalInfo(ctx context.Context, leaf []byte) (*RenewalInfo, error) {
+	if _, err := c.Discover(ctx); err != nil {
+		return nil, err
+	}
+
+	parsedLeaf, err := x509.ParseCertificate(leaf)
+	if err != nil {
+		return nil, fmt.Errorf("parsing leaf certificate: %w", err)
+	}
+
+	renewalURL, err := c.getRenewalURL(parsedLeaf)
+	if err != nil {
+		return nil, fmt.Errorf("generating renewal info URL: %w", err)
+	}
+
+	res, err := c.get(ctx, renewalURL, wantStatus(http.StatusOK))
+	if err != nil {
+		return nil, fmt.Errorf("fetching renewal info: %w", err)
+	}
+	defer res.Body.Close()
+
+	var info RenewalInfo
+	if err := json.NewDecoder(res.Body).Decode(&info); err != nil {
+		return nil, fmt.Errorf("parsing renewal info response: %w", err)
+	}
+	return &info, nil
+}
+
+func (c *Client) getRenewalURL(cert *x509.Certificate) (string, error) {
+	// See https://www.ietf.org/archive/id/draft-ietf-acme-ari-04.html#name-the-renewalinfo-resource
+	// for how the request URL is built.
+	url := c.dir.RenewalInfoURL
+	if !strings.HasSuffix(url, "/") {
+		url += "/"
+	}
+	aki := base64.RawURLEncoding.EncodeToString(cert.AuthorityKeyId)
+	serial := base64.RawURLEncoding.EncodeToString(cert.SerialNumber.Bytes())
+	return fmt.Sprintf("%s%s.%s", url, aki, serial), nil
 }
 
 // AcceptTOS always returns true to indicate the acceptance of a CA's Terms of Service

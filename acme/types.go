@@ -288,6 +288,10 @@ type Directory struct {
 	// KeyChangeURL allows to perform account key rollover flow.
 	KeyChangeURL string
 
+	// RenewalInfoURL allows to perform certificate renewal using the ACME
+	// Renewal Information (ARI) Extension.
+	RenewalInfoURL string
+
 	// Term is a URI identifying the current terms of service.
 	Terms string
 
@@ -612,3 +616,17 @@ func WithTemplate(t *x509.Certificate) CertOption {
 type certOptTemplate x509.Certificate
 
 func (*certOptTemplate) privateCertOpt() {}
+
+// RenewalInfoWindow describes the time frame during which the ACME client
+// should attempt to renew, using the ACME Renewal Info Extension.
+type RenewalInfoWindow struct {
+	Start time.Time `json:"start"`
+	End   time.Time `json:"end"`
+}
+
+// RenewalInfo describes the suggested renewal window for a given certificate,
+// returned from an ACME server, using the ACME Renewal Info Extension.
+type RenewalInfo struct {
+	SuggestedWindow RenewalInfoWindow `json:"suggestedWindow"`
+	ExplanationURL  string            `json:"explanationURL"`
+}
