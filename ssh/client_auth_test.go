@@ -15,6 +15,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -1280,5 +1281,86 @@ func TestCertAuthOpenSSHCompat(t *testing.T) {
 	}
 	if err := tryAuth(t, clientConfig); err != nil {
 		t.Fatalf("unable to dial remote side: %s", err)
+	}
+}
+
+func TestKeyboardInteractiveAuthEarlyFail(t *testing.T) {
+	const maxAuthTries = 2
+
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	// Start testserver
+	go func() {
+		config := &ServerConfig{
+			MaxAuthTries: maxAuthTries,
+			KeyboardInteractiveCallback: func(c ConnMetadata,
+				client KeyboardInteractiveChallenge) (*Permissions, error) {
+				// Fail keyboard-interactive authentication early before
+				// any prompt is sent to client.
+				return nil, errors.New("keyboard-interactive auth failed")
+			},
+			PasswordCallback: func(c ConnMetadata,
+				pass []byte) (*Permissions, error) {
+				if string(pass) == clientPassword {
+					return nil, nil
+				}
+				return nil, errors.New("password auth failed")
+			},
+		}
+		config.AddHostKey(testSigners["rsa"])
+
+		conn, chans, reqs, err := NewServerConn(c2, config)
+		if err != nil {
+			return
+		}
+		_ = conn.Close()
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			DiscardRequests(reqs)
+		}()
+		for newChannel := range chans {
+			newChannel.Reject(Prohibited,
+				"testserver not accepting requests")
+		}
+		wg.Wait()
+	}()
+
+	// Connect to testserver expect KeyboardInteractive() to be not called and
+	// PasswordCallback() to be called.
+	passwordCallbackCalled := false
+	cfg := &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			RetryableAuthMethod(KeyboardInteractive(func(name,
+				instruction string, questions []string,
+				echos []bool) ([]string, error) {
+				t.Errorf("unexpected call to KeyboardInteractive()")
+				return []string{clientPassword}, nil
+			}), maxAuthTries),
+			RetryableAuthMethod(PasswordCallback(func() (secret string,
+				err error) {
+				t.Logf("PasswordCallback()")
+				passwordCallbackCalled = true
+				return clientPassword, nil
+			}), maxAuthTries),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	conn, _, _, _ := NewClientConn(c1, "", cfg)
+	if conn != nil {
+		conn.Close()
+	}
+
+	if !passwordCallbackCalled {
+		t.Errorf("expected PasswordCallback() to be called")
 	}
 }
