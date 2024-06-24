@@ -14,7 +14,7 @@ type exitStatusMsg struct {
 	Status uint32
 }
 
-// goServer is a test Go SSH server that accepts public key and certificate
+// goTestServer is a test Go SSH server that accepts public key and certificate
 // authentication and replies with a 0 exit status to any exec request without
 // running any commands.
 type goTestServer struct {
