@@ -1,6 +1,6 @@
 module golang.org/x/crypto
 
-go 1.18
+go 1.20
 
 require (
 	golang.org/x/net v0.21.0 // tagx:ignore

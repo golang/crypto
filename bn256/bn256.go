@@ -23,7 +23,7 @@
 // elliptic curve. This package is frozen, and not implemented in constant time.
 // There is a more complete implementation at github.com/cloudflare/bn256, but
 // note that it suffers from the same security issues of the underlying curve.
-package bn256 // import "golang.org/x/crypto/bn256"
+package bn256
 
 import (
 	"crypto/rand"
