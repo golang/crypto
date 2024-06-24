@@ -5,7 +5,6 @@
 package sha3
 
 import (
-	"crypto/subtle"
 	"encoding/binary"
 	"unsafe"
 
@@ -22,7 +21,7 @@ func xorIn(d *state, buf []byte) {
 		}
 	} else {
 		ab := (*[25 * 64 / 8]byte)(unsafe.Pointer(&d.a))
-		subtle.XORBytes(ab[:], ab[:], buf)
+		xorBytes(ab[:], ab[:], buf)
 	}
 }
 
