@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build (!arm64 && !s390x && !ppc64le) || !gc || purego
+//go:build (!arm64 && !s390x && !ppc64le && !mipsle) || !gc || purego
 
 package chacha20
 
