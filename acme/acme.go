@@ -101,6 +101,10 @@ type Client struct {
 	// will have no effect.
 	DirectoryURL string
 
+	// ShouldRetry reports whether a request can be retried based on the HTTP response status code.
+	// When ShouldRetry is nil, the default behavior will take precedence.
+	ShouldRetry func(resp *http.Response) bool
+
 	// RetryBackoff computes the duration after which the nth retry of a failed request
 	// should occur. The value of n for the first call on failure is 1.
 	// The values of r and resp are the request and response of the last failed attempt.
@@ -109,6 +113,7 @@ type Client struct {
 	//
 	// Requests which result in a 4xx client error are not retried,
 	// except for 400 Bad Request due to "bad nonce" errors and 429 Too Many Requests.
+	// If ShouldRetry is not nil, it will override the default behavior described above.
 	//
 	// If RetryBackoff is nil, a truncated exponential backoff algorithm
 	// with the ceiling of 10 seconds is used, where each subsequent retry n
