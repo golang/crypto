@@ -154,6 +154,44 @@ func TestKeySignWithAlgorithmVerify(t *testing.T) {
 	}
 }
 
+func TestKeySignWithShortSignature(t *testing.T) {
+	signer := testSigners["rsa"].(AlgorithmSigner)
+	pub := signer.PublicKey()
+	// Note: data obtained by empirically trying until a result
+	// starting with 0 appeared
+	tests := []struct {
+		algorithm string
+		data      []byte
+	}{
+		{
+			algorithm: KeyAlgoRSA,
+			data:      []byte("sign me92"),
+		},
+		{
+			algorithm: KeyAlgoRSASHA256,
+			data:      []byte("sign me294"),
+		},
+		{
+			algorithm: KeyAlgoRSASHA512,
+			data:      []byte("sign me60"),
+		},
+	}
+
+	for _, tt := range tests {
+		sig, err := signer.SignWithAlgorithm(rand.Reader, tt.data, tt.algorithm)
+		if err != nil {
+			t.Fatalf("Sign(%T): %v", signer, err)
+		}
+		if sig.Blob[0] != 0 {
+			t.Errorf("%s: Expected signature with a leading 0", tt.algorithm)
+		}
+		sig.Blob = sig.Blob[1:]
+		if err := pub.Verify(tt.data, sig); err != nil {
+			t.Errorf("publicKey.Verify(%s): %v", tt.algorithm, err)
+		}
+	}
+}
+
 func TestParseRSAPrivateKey(t *testing.T) {
 	key := testPrivateKeys["rsa"]
 
