@@ -165,9 +165,9 @@ func testAgentInterface(t *testing.T, agent ExtendedAgent, key interface{}, cert
 	sig, err := agent.Sign(pubKey, data)
 	if err != nil {
 		t.Logf("sign failed with key type %q", pubKey.Type())
-		// In integration tests ssh-dss and ssh-rsa (SHA1 signatures) may be
-		// disabled for security reasons, we check SHA-2 variants later.
-		if pubKey.Type() != ssh.KeyAlgoDSA && pubKey.Type() != ssh.KeyAlgoRSA && pubKey.Type() != ssh.CertAlgoRSAv01 {
+		// In integration tests ssh-rsa (SHA1 signatures) may be disabled for
+		// security reasons, we check SHA-2 variants later.
+		if pubKey.Type() != ssh.KeyAlgoRSA && pubKey.Type() != ssh.CertAlgoRSAv01 {
 			t.Fatalf("Sign(%s): %v", pubKey.Type(), err)
 		}
 	} else {
@@ -251,7 +251,7 @@ func TestMalformedRequests(t *testing.T) {
 }
 
 func TestAgent(t *testing.T) {
-	for _, keyType := range []string{"rsa", "dsa", "ecdsa", "ed25519"} {
+	for _, keyType := range []string{"rsa", "ecdsa", "ed25519"} {
 		testOpenSSHAgent(t, testPrivateKeys[keyType], nil, 0)
 		testKeyringAgent(t, testPrivateKeys[keyType], nil, 0)
 	}
@@ -409,7 +409,7 @@ func testLockAgent(agent Agent, t *testing.T) {
 	if err := agent.Add(AddedKey{PrivateKey: testPrivateKeys["rsa"], Comment: "comment 1"}); err != nil {
 		t.Errorf("Add: %v", err)
 	}
-	if err := agent.Add(AddedKey{PrivateKey: testPrivateKeys["dsa"], Comment: "comment dsa"}); err != nil {
+	if err := agent.Add(AddedKey{PrivateKey: testPrivateKeys["ecdsa"], Comment: "comment ecdsa"}); err != nil {
 		t.Errorf("Add: %v", err)
 	}
 	if keys, err := agent.List(); err != nil {
