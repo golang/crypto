@@ -51,6 +51,8 @@ func testPortForward(t *testing.T, n, listenAddr string) {
 		}
 	}()
 
+	// The forwarded address match the listen address because we run the tests
+	// on the same host.
 	forwardedAddr := sshListener.Addr().String()
 	netConn, err := net.Dial(n, forwardedAddr)
 	if err != nil {
@@ -111,6 +113,8 @@ func testPortForward(t *testing.T, n, listenAddr string) {
 }
 
 func TestPortForwardTCP(t *testing.T) {
+	testPortForward(t, "tcp", ":0")
+	testPortForward(t, "tcp", "[::]:0")
 	testPortForward(t, "tcp", "localhost:0")
 }
 
