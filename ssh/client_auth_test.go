@@ -613,7 +613,7 @@ func TestClientAuthMaxAuthTries(t *testing.T) {
 	}
 	serverConfig.AddHostKey(testSigners["rsa"])
 
-	expectedErr := fmt.Errorf("ssh: handshake failed: %v", &disconnectMsg{
+	expectedErr := fmt.Errorf("ssh: handshake failed: %v", &DisconnectError{
 		Reason:  2,
 		Message: "too many authentication failures",
 	})
@@ -676,7 +676,7 @@ func TestClientAuthMaxAuthTriesPublicKey(t *testing.T) {
 		t.Fatalf("unable to dial remote side: %s", err)
 	}
 
-	expectedErr := fmt.Errorf("ssh: handshake failed: %v", &disconnectMsg{
+	expectedErr := fmt.Errorf("ssh: handshake failed: %v", &DisconnectError{
 		Reason:  2,
 		Message: "too many authentication failures",
 	})
