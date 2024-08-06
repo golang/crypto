@@ -158,6 +158,11 @@ func (n *noneAuth) method() string {
 	return "none"
 }
 
+// None return an AuthMethod using "none" authentication defined in RFC 4252 section 5.2.
+func None() AuthMethod {
+	return new(noneAuth)
+}
+
 // passwordCallback is an AuthMethod that fetches the password through
 // a function call, e.g. by prompting the user.
 type passwordCallback func() (password string, err error)
