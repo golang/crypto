@@ -108,10 +108,13 @@ func (c *Client) ListenTCP(laddr *net.TCPAddr) (net.Listener, error) {
 		return c.autoPortListenWorkaround(laddr)
 	}
 
-	m := channelForwardMsg{
-		laddr.IP.String(),
-		uint32(laddr.Port),
+	var addr string
+	if laddr.IP == nil {
+		addr = ""
+	} else {
+		addr = laddr.IP.String()
 	}
+	m := channelForwardMsg{addr, uint32(laddr.Port)}
 	// send message
 	ok, resp, err := c.SendRequest("tcpip-forward", true, Marshal(&m))
 	if err != nil {
