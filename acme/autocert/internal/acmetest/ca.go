@@ -308,7 +308,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if err := decodePayload(&req, r.Body); err != nil {
-			ca.httpErrorf(w, http.StatusBadRequest, err.Error())
+			ca.httpErrorf(w, http.StatusBadRequest, "%v", err)
 			return
 		}
 
@@ -328,7 +328,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 			Identifiers []struct{ Value string }
 		}
 		if err := decodePayload(&req, r.Body); err != nil {
-			ca.httpErrorf(w, http.StatusBadRequest, err.Error())
+			ca.httpErrorf(w, http.StatusBadRequest, "%v", err)
 			return
 		}
 		ca.mu.Lock()
@@ -352,7 +352,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 		defer ca.mu.Unlock()
 		o, err := ca.storedOrder(strings.TrimPrefix(r.URL.Path, "/orders/"))
 		if err != nil {
-			ca.httpErrorf(w, http.StatusBadRequest, err.Error())
+			ca.httpErrorf(w, http.StatusBadRequest, "%v", err)
 			return
 		}
 		if err := json.NewEncoder(w).Encode(o); err != nil {
@@ -412,7 +412,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 		orderID := strings.TrimPrefix(r.URL.Path, "/new-cert/")
 		o, err := ca.storedOrder(orderID)
 		if err != nil {
-			ca.httpErrorf(w, http.StatusBadRequest, err.Error())
+			ca.httpErrorf(w, http.StatusBadRequest, "%v", err)
 			return
 		}
 		if o.Status != acme.StatusReady {
@@ -427,7 +427,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 		b, _ := base64.RawURLEncoding.DecodeString(req.CSR)
 		csr, err := x509.ParseCertificateRequest(b)
 		if err != nil {
-			ca.httpErrorf(w, http.StatusBadRequest, err.Error())
+			ca.httpErrorf(w, http.StatusBadRequest, "%v", err)
 			return
 		}
 		// Issue the certificate.
@@ -449,7 +449,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 		defer ca.mu.Unlock()
 		o, err := ca.storedOrder(strings.TrimPrefix(r.URL.Path, "/issued-cert/"))
 		if err != nil {
-			ca.httpErrorf(w, http.StatusBadRequest, err.Error())
+			ca.httpErrorf(w, http.StatusBadRequest, "%v", err)
 			return
 		}
 		if o.Status != acme.StatusValid {
