@@ -43,10 +43,6 @@ type disconnectMsg struct {
 	Language string
 }
 
-func (d *disconnectMsg) Error() string {
-	return fmt.Sprintf("ssh: disconnect, reason %d: %s", d.Reason, d.Message)
-}
-
 // See RFC 4253, section 7.1.
 const msgKexInit = 20
 
