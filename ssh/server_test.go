@@ -348,6 +348,92 @@ func TestPublicKeyCallbackLastSeen(t *testing.T) {
 	}
 }
 
+func TestPreAuthConnAndBanners(t *testing.T) {
+	testDone := make(chan struct{})
+	defer close(testDone)
+
+	authConnc := make(chan ServerPreAuthConn, 1)
+	serverConfig := &ServerConfig{
+		PreAuthConnCallback: func(c ServerPreAuthConn) {
+			t.Logf("got ServerPreAuthConn: %v", c)
+			authConnc <- c // for use later in the test
+			for _, s := range []string{"hello1", "hello2"} {
+				if err := c.SendAuthBanner(s); err != nil {
+					t.Errorf("failed to send banner %q: %v", s, err)
+				}
+			}
+			// Now start a goroutine to spam SendAuthBanner in hopes
+			// of hitting a race.
+			go func() {
+				for {
+					select {
+					case <-testDone:
+						return
+					default:
+						if err := c.SendAuthBanner("attempted-race"); err != nil && err != errSendBannerPhase {
+							t.Errorf("unexpected error from SendAuthBanner: %v", err)
+						}
+						time.Sleep(5 * time.Millisecond)
+					}
+				}
+			}()
+		},
+		NoClientAuth: true,
+		NoClientAuthCallback: func(ConnMetadata) (*Permissions, error) {
+			t.Logf("got NoClientAuthCallback")
+			return &Permissions{}, nil
+		},
+	}
+	serverConfig.AddHostKey(testSigners["rsa"])
+
+	var banners []string
+	clientConfig := &ClientConfig{
+		User:            "test",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		BannerCallback: func(msg string) error {
+			if msg != "attempted-race" {
+				banners = append(banners, msg)
+			}
+			return nil
+		},
+	}
+
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+	go newServer(c1, serverConfig)
+	c, _, _, err := NewClientConn(c2, "", clientConfig)
+	if err != nil {
+		t.Fatalf("client connection failed: %v", err)
+	}
+	defer c.Close()
+
+	wantBanners := []string{
+		"hello1",
+		"hello2",
+	}
+	if !reflect.DeepEqual(banners, wantBanners) {
+		t.Errorf("got banners:\n%q\nwant banners:\n%q", banners, wantBanners)
+	}
+
+	// Now that we're authenticated, verify that use of SendBanner
+	// is an error.
+	var bc ServerPreAuthConn
+	select {
+	case bc = <-authConnc:
+	default:
+		t.Fatal("expected ServerPreAuthConn")
+	}
+	if err := bc.SendAuthBanner("wrong-phase"); err == nil {
+		t.Error("unexpected success of SendAuthBanner after authentication")
+	} else if err != errSendBannerPhase {
+		t.Errorf("unexpected error: %v; want %v", err, errSendBannerPhase)
+	}
+}
+
 type markerConn struct {
 	closed uint32
 	used   uint32
