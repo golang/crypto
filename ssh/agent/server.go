@@ -73,7 +73,7 @@ type agentUnlockMsg struct {
 	Passphrase []byte `sshtype:"23"`
 }
 
-func (s *server) processRequest(data []byte) (interface{}, error) {
+func (s *server) processRequest(data []byte) (any, error) {
 	switch data[0] {
 	case agentRequestV1Identities:
 		return &agentV1IdentityMsg{0}, nil

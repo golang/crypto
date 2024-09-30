@@ -55,7 +55,7 @@ func TestHkdf(t *testing.T) {
 		// the size of the ikm in bits
 		KeySize int               `json:"keySize,omitempty"`
 		Tests   []*HkdfTestVector `json:"tests,omitempty"`
-		Type    interface{}       `json:"type,omitempty"`
+		Type    any               `json:"type,omitempty"`
 	}
 
 	// Root
@@ -75,7 +75,7 @@ func TestHkdf(t *testing.T) {
 
 		// the number of test vectors in this test
 		NumberOfTests int              `json:"numberOfTests,omitempty"`
-		Schema        interface{}      `json:"schema,omitempty"`
+		Schema        any              `json:"schema,omitempty"`
 		TestGroups    []*HkdfTestGroup `json:"testGroups,omitempty"`
 	}
 

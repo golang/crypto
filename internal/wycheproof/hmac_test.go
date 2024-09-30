@@ -44,7 +44,7 @@ func TestHMAC(t *testing.T) {
 		// the expected size of the tag in bits
 		TagSize int              `json:"tagSize,omitempty"`
 		Tests   []*MacTestVector `json:"tests,omitempty"`
-		Type    interface{}      `json:"type,omitempty"`
+		Type    any              `json:"type,omitempty"`
 	}
 
 	// Notes a description of the labels used in the test vectors
@@ -68,7 +68,7 @@ func TestHMAC(t *testing.T) {
 
 		// the number of test vectors in this test
 		NumberOfTests int             `json:"numberOfTests,omitempty"`
-		Schema        interface{}     `json:"schema,omitempty"`
+		Schema        any             `json:"schema,omitempty"`
 		TestGroups    []*MacTestGroup `json:"testGroups,omitempty"`
 	}
 

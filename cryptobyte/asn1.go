@@ -208,7 +208,7 @@ func (b *Builder) AddASN1NULL() {
 
 // MarshalASN1 calls encoding_asn1.Marshal on its input and appends the result if
 // successful or records an error if one occurred.
-func (b *Builder) MarshalASN1(v interface{}) {
+func (b *Builder) MarshalASN1(v any) {
 	// NOTE(martinkr): This is somewhat of a hack to allow propagation of
 	// encoding_asn1.Marshal errors into Builder.err. N.B. if you call MarshalASN1 with a
 	// value embedded into a struct, its tag information is lost.
@@ -270,7 +270,7 @@ func (s *String) ReadASN1Boolean(out *bool) bool {
 // big-endian binary values that share memory with s. Positive values will have
 // no leading zeroes, and zero will be returned as a single zero byte.
 // ReadASN1Integer reports whether the read was successful.
-func (s *String) ReadASN1Integer(out interface{}) bool {
+func (s *String) ReadASN1Integer(out any) bool {
 	switch out := out.(type) {
 	case *int, *int8, *int16, *int32, *int64:
 		var i int64
@@ -680,7 +680,7 @@ func (s *String) SkipOptionalASN1(tag asn1.Tag) bool {
 // tagged with tag into out and advances. If no element with a matching tag is
 // present, it writes defaultValue into out instead. Otherwise, it behaves like
 // ReadASN1Integer.
-func (s *String) ReadOptionalASN1Integer(out interface{}, tag asn1.Tag, defaultValue interface{}) bool {
+func (s *String) ReadOptionalASN1Integer(out any, tag asn1.Tag, defaultValue any) bool {
 	var present bool
 	var i String
 	if !s.ReadOptionalASN1(&i, &present, tag) {

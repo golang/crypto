@@ -59,7 +59,7 @@ func TestEddsa(t *testing.T) {
 		// Pem encoded public key
 		KeyPem string                 `json:"keyPem,omitempty"`
 		Tests  []*SignatureTestVector `json:"tests,omitempty"`
-		Type   interface{}            `json:"type,omitempty"`
+		Type   any                    `json:"type,omitempty"`
 	}
 
 	// Root
@@ -79,7 +79,7 @@ func TestEddsa(t *testing.T) {
 
 		// the number of test vectors in this test
 		NumberOfTests int               `json:"numberOfTests,omitempty"`
-		Schema        interface{}       `json:"schema,omitempty"`
+		Schema        any               `json:"schema,omitempty"`
 		TestGroups    []*EddsaTestGroup `json:"testGroups,omitempty"`
 	}
 

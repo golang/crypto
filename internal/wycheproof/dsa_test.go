@@ -71,7 +71,7 @@ func TestDsa(t *testing.T) {
 		// the hash function used for DSA
 		Sha   string                    `json:"sha,omitempty"`
 		Tests []*AsnSignatureTestVector `json:"tests,omitempty"`
-		Type  interface{}               `json:"type,omitempty"`
+		Type  any                       `json:"type,omitempty"`
 	}
 
 	// Notes a description of the labels used in the test vectors
@@ -95,7 +95,7 @@ func TestDsa(t *testing.T) {
 
 		// the number of test vectors in this test
 		NumberOfTests int             `json:"numberOfTests,omitempty"`
-		Schema        interface{}     `json:"schema,omitempty"`
+		Schema        any             `json:"schema,omitempty"`
 		TestGroups    []*DsaTestGroup `json:"testGroups,omitempty"`
 	}
 

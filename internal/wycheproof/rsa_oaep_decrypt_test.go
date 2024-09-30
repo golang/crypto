@@ -69,7 +69,7 @@ func TestRSAOAEPDecrypt(t *testing.T) {
 		// The hash function for hashing the label.
 		Sha   string                 `json:"sha,omitempty"`
 		Tests []*RsaesOaepTestVector `json:"tests,omitempty"`
-		Type  interface{}            `json:"type,omitempty"`
+		Type  any                    `json:"type,omitempty"`
 	}
 
 	// Root
@@ -89,7 +89,7 @@ func TestRSAOAEPDecrypt(t *testing.T) {
 
 		// the number of test vectors in this test
 		NumberOfTests int                   `json:"numberOfTests,omitempty"`
-		Schema        interface{}           `json:"schema,omitempty"`
+		Schema        any                   `json:"schema,omitempty"`
 		TestGroups    []*RsaesOaepTestGroup `json:"testGroups,omitempty"`
 	}
 

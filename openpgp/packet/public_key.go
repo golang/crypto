@@ -153,7 +153,7 @@ func (f *ecdhKdf) byteLen() int {
 type PublicKey struct {
 	CreationTime time.Time
 	PubKeyAlgo   PublicKeyAlgorithm
-	PublicKey    interface{} // *rsa.PublicKey, *dsa.PublicKey or *ecdsa.PublicKey
+	PublicKey    any // *rsa.PublicKey, *dsa.PublicKey or *ecdsa.PublicKey
 	Fingerprint  [20]byte
 	KeyId        uint64
 	IsSubkey     bool

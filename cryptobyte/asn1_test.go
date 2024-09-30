@@ -20,7 +20,7 @@ type readASN1Test struct {
 	in   []byte
 	tag  asn1.Tag
 	ok   bool
-	out  interface{}
+	out  any
 }
 
 var readASN1TestData = []readASN1Test{

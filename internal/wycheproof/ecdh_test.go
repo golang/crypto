@@ -108,7 +108,7 @@ func TestECDH(t *testing.T) {
 	}
 }
 
-func decodeCompressedPKIX(der []byte) (interface{}, error) {
+func decodeCompressedPKIX(der []byte) (any, error) {
 	s := cryptobyte.String(der)
 	var s1, s2 cryptobyte.String
 	var algoOID, namedCurveOID asn1.ObjectIdentifier

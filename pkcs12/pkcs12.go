@@ -94,7 +94,7 @@ const (
 
 // unmarshal calls asn1.Unmarshal, but also returns an error if there is any
 // trailing data after unmarshaling.
-func unmarshal(in []byte, out interface{}) error {
+func unmarshal(in []byte, out any) error {
 	trailing, err := asn1.Unmarshal(in, out)
 	if err != nil {
 		return err
@@ -222,7 +222,7 @@ func convertAttribute(attribute *pkcs12Attribute) (key, value string, err error)
 // Decode extracts a certificate and private key from pfxData. This function
 // assumes that there is only one certificate and only one private key in the
 // pfxData; if there are more use ToPEM instead.
-func Decode(pfxData []byte, password string) (privateKey interface{}, certificate *x509.Certificate, err error) {
+func Decode(pfxData []byte, password string) (privateKey any, certificate *x509.Certificate, err error) {
 	encodedPassword, err := bmpString(password)
 	if err != nil {
 		return nil, nil, err

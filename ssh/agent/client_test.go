@@ -105,21 +105,21 @@ func startKeyringAgent(t *testing.T) (client ExtendedAgent, cleanup func()) {
 	return startAgent(t, NewKeyring())
 }
 
-func testOpenSSHAgent(t *testing.T, key interface{}, cert *ssh.Certificate, lifetimeSecs uint32) {
+func testOpenSSHAgent(t *testing.T, key any, cert *ssh.Certificate, lifetimeSecs uint32) {
 	agent, _, cleanup := startOpenSSHAgent(t)
 	defer cleanup()
 
 	testAgentInterface(t, agent, key, cert, lifetimeSecs)
 }
 
-func testKeyringAgent(t *testing.T, key interface{}, cert *ssh.Certificate, lifetimeSecs uint32) {
+func testKeyringAgent(t *testing.T, key any, cert *ssh.Certificate, lifetimeSecs uint32) {
 	agent, cleanup := startKeyringAgent(t)
 	defer cleanup()
 
 	testAgentInterface(t, agent, key, cert, lifetimeSecs)
 }
 
-func testAgentInterface(t *testing.T, agent ExtendedAgent, key interface{}, cert *ssh.Certificate, lifetimeSecs uint32) {
+func testAgentInterface(t *testing.T, agent ExtendedAgent, key any, cert *ssh.Certificate, lifetimeSecs uint32) {
 	signer, err := ssh.NewSignerFromKey(key)
 	if err != nil {
 		t.Fatalf("NewSignerFromKey(%T): %v", key, err)

@@ -182,7 +182,7 @@ var signatureAlgorithmDetails = []struct {
 }
 
 // TODO(rlb): This is also from crypto/x509, so same comment as AGL's below
-func signingParamsForPublicKey(pub interface{}, requestedSigAlgo x509.SignatureAlgorithm) (hashFunc crypto.Hash, sigAlgo pkix.AlgorithmIdentifier, err error) {
+func signingParamsForPublicKey(pub any, requestedSigAlgo x509.SignatureAlgorithm) (hashFunc crypto.Hash, sigAlgo pkix.AlgorithmIdentifier, err error) {
 	var pubType x509.PublicKeyAlgorithm
 
 	switch pub := pub.(type) {

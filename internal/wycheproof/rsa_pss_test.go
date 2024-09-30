@@ -73,7 +73,7 @@ func TestRsaPss(t *testing.T) {
 		// the hash function used for the message
 		Sha   string                 `json:"sha,omitempty"`
 		Tests []*SignatureTestVector `json:"tests,omitempty"`
-		Type  interface{}            `json:"type,omitempty"`
+		Type  any                    `json:"type,omitempty"`
 	}
 
 	// Root
@@ -93,7 +93,7 @@ func TestRsaPss(t *testing.T) {
 
 		// the number of test vectors in this test
 		NumberOfTests int                     `json:"numberOfTests,omitempty"`
-		Schema        interface{}             `json:"schema,omitempty"`
+		Schema        any                     `json:"schema,omitempty"`
 		TestGroups    []*RsassaPkcs1TestGroup `json:"testGroups,omitempty"`
 	}
 

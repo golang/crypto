@@ -31,7 +31,7 @@ func TestECDSA(t *testing.T) {
 
 	type ECPublicKey struct {
 		// The EC group used by this public key
-		Curve interface{} `json:"curve"`
+		Curve any `json:"curve"`
 	}
 
 	type ECDSATestGroup struct {

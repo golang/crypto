@@ -64,7 +64,7 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func readTestVector(t *testing.T, f string, dest interface{}) {
+func readTestVector(t *testing.T, f string, dest any) {
 	b, err := os.ReadFile(filepath.Join(wycheproofTestVectorsDir, f))
 	if err != nil {
 		t.Fatalf("failed to read json file: %v", err)
@@ -82,7 +82,7 @@ func decodeHex(s string) []byte {
 	return b
 }
 
-func decodePublicKey(der string) interface{} {
+func decodePublicKey(der string) any {
 	d := decodeHex(der)
 	pub, err := x509.ParsePKIXPublicKey(d)
 	if err != nil {
