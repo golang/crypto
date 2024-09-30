@@ -16,7 +16,9 @@ package sha3
 // [2] https://doi.org/10.6028/NIST.SP.800-185
 
 import (
+	"bytes"
 	"encoding/binary"
+	"errors"
 	"hash"
 	"io"
 	"math/bits"
@@ -50,14 +52,6 @@ type cshakeState struct {
 	// initial state.
 	initBlock []byte
 }
-
-// Consts for configuring initial SHA-3 state
-const (
-	dsbyteShake  = 0x1f
-	dsbyteCShake = 0x04
-	rate128      = 168
-	rate256      = 136
-)
 
 func bytepad(data []byte, rate int) []byte {
 	out := make([]byte, 0, 9+len(data)+rate-1)
@@ -112,6 +106,30 @@ func (c *state) Clone() ShakeHash {
 	return c.clone()
 }
 
+func (c *cshakeState) MarshalBinary() ([]byte, error) {
+	return c.AppendBinary(make([]byte, 0, marshaledSize+len(c.initBlock)))
+}
+
+func (c *cshakeState) AppendBinary(b []byte) ([]byte, error) {
+	b, err := c.state.AppendBinary(b)
+	if err != nil {
+		return nil, err
+	}
+	b = append(b, c.initBlock...)
+	return b, nil
+}
+
+func (c *cshakeState) UnmarshalBinary(b []byte) error {
+	if len(b) <= marshaledSize {
+		return errors.New("sha3: invalid hash state")
+	}
+	if err := c.state.UnmarshalBinary(b[:marshaledSize]); err != nil {
+		return err
+	}
+	c.initBlock = bytes.Clone(b[marshaledSize:])
+	return nil
+}
+
 // NewShake128 creates a new SHAKE128 variable-output-length ShakeHash.
 // Its generic security strength is 128 bits against all attacks if at
 // least 32 bytes of its output are used.
@@ -127,11 +145,11 @@ func NewShake256() ShakeHash {
 }
 
 func newShake128Generic() *state {
-	return &state{rate: rate128, outputLen: 32, dsbyte: dsbyteShake}
+	return &state{rate: rateK256, outputLen: 32, dsbyte: dsbyteShake}
 }
 
 func newShake256Generic() *state {
-	return &state{rate: rate256, outputLen: 64, dsbyte: dsbyteShake}
+	return &state{rate: rateK512, outputLen: 64, dsbyte: dsbyteShake}
 }
 
 // NewCShake128 creates a new instance of cSHAKE128 variable-output-length ShakeHash,
@@ -144,7 +162,7 @@ func NewCShake128(N, S []byte) ShakeHash {
 	if len(N) == 0 && len(S) == 0 {
 		return NewShake128()
 	}
-	return newCShake(N, S, rate128, 32, dsbyteCShake)
+	return newCShake(N, S, rateK256, 32, dsbyteCShake)
 }
 
 // NewCShake256 creates a new instance of cSHAKE256 variable-output-length ShakeHash,
@@ -157,7 +175,7 @@ func NewCShake256(N, S []byte) ShakeHash {
 	if len(N) == 0 && len(S) == 0 {
 		return NewShake256()
 	}
-	return newCShake(N, S, rate256, 64, dsbyteCShake)
+	return newCShake(N, S, rateK512, 64, dsbyteCShake)
 }
 
 // ShakeSum128 writes an arbitrary-length digest of data into hash.

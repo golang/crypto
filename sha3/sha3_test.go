@@ -13,6 +13,7 @@ package sha3
 import (
 	"bytes"
 	"compress/flate"
+	"encoding"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -421,11 +422,11 @@ func TestCSHAKEAccumulated(t *testing.T) {
 	//    console.log(bytesToHex(acc.xof(32)));
 	//
 	t.Run("cSHAKE128", func(t *testing.T) {
-		testCSHAKEAccumulated(t, NewCShake128, rate128,
+		testCSHAKEAccumulated(t, NewCShake128, rateK256,
 			"bb14f8657c6ec5403d0b0e2ef3d3393497e9d3b1a9a9e8e6c81dbaa5fd809252")
 	})
 	t.Run("cSHAKE256", func(t *testing.T) {
-		testCSHAKEAccumulated(t, NewCShake256, rate256,
+		testCSHAKEAccumulated(t, NewCShake256, rateK512,
 			"0baaf9250c6e25f0c14ea5c7f9bfde54c8a922c8276437db28f3895bdf6eeeef")
 	})
 }
@@ -483,6 +484,43 @@ func TestCSHAKELargeS(t *testing.T) {
 	exp := "2cb9f237767e98f2614b8779cf096a52da9b3a849280bbddec820771ae529cf0"
 	if got := hex.EncodeToString(c.Sum(nil)); got != exp {
 		t.Errorf("got %s, want %s", got, exp)
+	}
+}
+
+func TestMarshalUnmarshal(t *testing.T) {
+	t.Run("SHA3-224", func(t *testing.T) { testMarshalUnmarshal(t, New224()) })
+	t.Run("SHA3-256", func(t *testing.T) { testMarshalUnmarshal(t, New256()) })
+	t.Run("SHA3-384", func(t *testing.T) { testMarshalUnmarshal(t, New384()) })
+	t.Run("SHA3-512", func(t *testing.T) { testMarshalUnmarshal(t, New512()) })
+	t.Run("SHAKE128", func(t *testing.T) { testMarshalUnmarshal(t, NewShake128()) })
+	t.Run("SHAKE256", func(t *testing.T) { testMarshalUnmarshal(t, NewShake256()) })
+	t.Run("cSHAKE128", func(t *testing.T) { testMarshalUnmarshal(t, NewCShake128([]byte("N"), []byte("S"))) })
+	t.Run("cSHAKE256", func(t *testing.T) { testMarshalUnmarshal(t, NewCShake256([]byte("N"), []byte("S"))) })
+	t.Run("Keccak-256", func(t *testing.T) { testMarshalUnmarshal(t, NewLegacyKeccak256()) })
+	t.Run("Keccak-512", func(t *testing.T) { testMarshalUnmarshal(t, NewLegacyKeccak512()) })
+}
+
+// TODO(filippo): move this to crypto/internal/cryptotest.
+func testMarshalUnmarshal(t *testing.T, h hash.Hash) {
+	buf := make([]byte, 200)
+	rand.Read(buf)
+	n := rand.Intn(200)
+	h.Write(buf)
+	want := h.Sum(nil)
+	h.Reset()
+	h.Write(buf[:n])
+	b, err := h.(encoding.BinaryMarshaler).MarshalBinary()
+	if err != nil {
+		t.Errorf("MarshalBinary: %v", err)
+	}
+	h.Write(bytes.Repeat([]byte{0}, 200))
+	if err := h.(encoding.BinaryUnmarshaler).UnmarshalBinary(b); err != nil {
+		t.Errorf("UnmarshalBinary: %v", err)
+	}
+	h.Write(buf[n:])
+	got := h.Sum(nil)
+	if !bytes.Equal(got, want) {
+		t.Errorf("got %x, want %x", got, want)
 	}
 }
 

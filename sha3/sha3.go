@@ -7,6 +7,7 @@ package sha3
 import (
 	"crypto/subtle"
 	"encoding/binary"
+	"errors"
 	"unsafe"
 
 	"golang.org/x/sys/cpu"
@@ -169,4 +170,75 @@ func (d *state) Sum(in []byte) []byte {
 	hash := make([]byte, dup.outputLen, 64) // explicit cap to allow stack allocation
 	dup.Read(hash)
 	return append(in, hash...)
+}
+
+const (
+	magicSHA3   = "sha\x08"
+	magicShake  = "sha\x09"
+	magicCShake = "sha\x0a"
+	magicKeccak = "sha\x0b"
+	// magic || rate || main state || n || sponge direction
+	marshaledSize = len(magicSHA3) + 1 + 200 + 1 + 1
+)
+
+func (d *state) MarshalBinary() ([]byte, error) {
+	return d.AppendBinary(make([]byte, 0, marshaledSize))
+}
+
+func (d *state) AppendBinary(b []byte) ([]byte, error) {
+	switch d.dsbyte {
+	case dsbyteSHA3:
+		b = append(b, magicSHA3...)
+	case dsbyteShake:
+		b = append(b, magicShake...)
+	case dsbyteCShake:
+		b = append(b, magicCShake...)
+	case dsbyteKeccak:
+		b = append(b, magicKeccak...)
+	default:
+		panic("unknown dsbyte")
+	}
+	// rate is at most 168, and n is at most rate.
+	b = append(b, byte(d.rate))
+	b = append(b, d.a[:]...)
+	b = append(b, byte(d.n), byte(d.state))
+	return b, nil
+}
+
+func (d *state) UnmarshalBinary(b []byte) error {
+	if len(b) != marshaledSize {
+		return errors.New("sha3: invalid hash state")
+	}
+
+	magic := string(b[:len(magicSHA3)])
+	b = b[len(magicSHA3):]
+	switch {
+	case magic == magicSHA3 && d.dsbyte == dsbyteSHA3:
+	case magic == magicShake && d.dsbyte == dsbyteShake:
+	case magic == magicCShake && d.dsbyte == dsbyteCShake:
+	case magic == magicKeccak && d.dsbyte == dsbyteKeccak:
+	default:
+		return errors.New("sha3: invalid hash state identifier")
+	}
+
+	rate := int(b[0])
+	b = b[1:]
+	if rate != d.rate {
+		return errors.New("sha3: invalid hash state function")
+	}
+
+	copy(d.a[:], b)
+	b = b[len(d.a):]
+
+	n, state := int(b[0]), spongeDirection(b[1])
+	if n > d.rate {
+		return errors.New("sha3: invalid hash state")
+	}
+	d.n = n
+	if state != spongeAbsorbing && state != spongeSqueezing {
+		return errors.New("sha3: invalid hash state")
+	}
+	d.state = state
+
+	return nil
 }
