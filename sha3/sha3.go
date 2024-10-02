@@ -143,14 +143,14 @@ func (d *state) Read(out []byte) (n int, err error) {
 
 	// Now, do the squeezing.
 	for len(out) > 0 {
-		x := copy(out, d.a[d.n:d.rate])
-		d.n += x
-		out = out[x:]
-
 		// Apply the permutation if we've squeezed the sponge dry.
 		if d.n == d.rate {
 			d.permute()
 		}
+
+		x := copy(out, d.a[d.n:d.rate])
+		d.n += x
+		out = out[x:]
 	}
 
 	return
