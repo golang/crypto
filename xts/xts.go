@@ -87,7 +87,7 @@ func (c *Cipher) Encrypt(ciphertext, plaintext []byte, sectorNum uint64) {
 
 	c.k2.Encrypt(tweak[:], tweak[:])
 
-	for len(plaintext) > 0 {
+	for len(plaintext) >= blockSize && len(ciphertext) >= blockSize {
 		for j := range tweak {
 			ciphertext[j] = plaintext[j] ^ tweak[j]
 		}
@@ -126,7 +126,7 @@ func (c *Cipher) Decrypt(plaintext, ciphertext []byte, sectorNum uint64) {
 
 	c.k2.Encrypt(tweak[:], tweak[:])
 
-	for len(ciphertext) > 0 {
+	for len(ciphertext) >= blockSize && len(plaintext) >= blockSize {
 		for j := range tweak {
 			plaintext[j] = ciphertext[j] ^ tweak[j]
 		}
