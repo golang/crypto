@@ -42,7 +42,7 @@ const DefaultACMEDirectory = "https://acme-v02.api.letsencrypt.org/directory"
 // entry due to an unsuccessful createCert call.
 // This is a variable instead of a const for testing.
 // TODO: Consider making it configurable or an exp backoff?
-var createCertRetryAfter = time.Minute
+var createCertRetryAfter = 24 * time.Hour
 
 // pseudoRand is safe for concurrent use.
 var pseudoRand *lockedMathRand
