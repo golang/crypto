@@ -358,34 +358,20 @@ func (db *hostKeyDB) checkAddr(a addr, remoteKey ssh.PublicKey) error {
 	// is just a key for the IP address, but not for the
 	// hostname?
 
-	// Algorithm => key.
-	knownKeys := map[string]KnownKey{}
+	keyErr := &KeyError{}
+
 	for _, l := range db.lines {
-		if l.match(a) {
-			typ := l.knownKey.Key.Type()
-			if _, ok := knownKeys[typ]; !ok {
-				knownKeys[typ] = l.knownKey
-			}
+		if !l.match(a) {
+			continue
+		}
+
+		keyErr.Want = append(keyErr.Want, l.knownKey)
+		if keyEq(l.knownKey.Key, remoteKey) {
+			return nil
 		}
 	}
 
-	keyErr := &KeyError{}
-	for _, v := range knownKeys {
-		keyErr.Want = append(keyErr.Want, v)
-	}
-
-	// Unknown remote host.
-	if len(knownKeys) == 0 {
-		return keyErr
-	}
-
-	// If the remote host starts using a different, unknown key type, we
-	// also interpret that as a mismatch.
-	if known, ok := knownKeys[remoteKey.Type()]; !ok || !keyEq(known.Key, remoteKey) {
-		return keyErr
-	}
-
-	return nil
+	return keyErr
 }
 
 // The Read function parses file contents.
