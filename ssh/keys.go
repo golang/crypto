@@ -1279,7 +1279,7 @@ func ParseRawPrivateKeyWithPassphrase(pemBytes, passphrase []byte) (interface{},
 		if err == x509.IncorrectPasswordError {
 			return nil, err
 		}
-		return nil, fmt.Errorf("ssh: cannot decode encrypted private keys: %v", err)
+		return nil, fmt.Errorf("ssh: cannot decode encrypted private keys: %w", err)
 	}
 
 	var result interface{}
@@ -1506,7 +1506,7 @@ func parseOpenSSHPrivateKey(key []byte, decrypt openSSHDecryptFunc) (crypto.Priv
 		if err, ok := err.(*PassphraseMissingError); ok {
 			pub, errPub := ParsePublicKey(w.PubKey)
 			if errPub != nil {
-				return nil, fmt.Errorf("ssh: failed to parse embedded public key: %v", errPub)
+				return nil, fmt.Errorf("ssh: failed to parse embedded public key: %w", errPub)
 			}
 			err.PublicKey = pub
 		}
