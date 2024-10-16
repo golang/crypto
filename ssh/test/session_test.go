@@ -125,7 +125,7 @@ func TestRunCommandFailed(t *testing.T) {
 		t.Fatalf("session failed: %v", err)
 	}
 	defer session.Close()
-	err = session.Run(`bash -c "kill -9 $$"`)
+	err = session.Run(`bash -c 'kill -9 $$'`)
 	if err == nil {
 		t.Fatalf("session succeeded: %v", err)
 	}
