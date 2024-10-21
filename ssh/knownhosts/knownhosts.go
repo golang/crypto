@@ -176,7 +176,7 @@ func nextWord(line []byte) (string, []byte) {
 	return string(line[:i]), bytes.TrimSpace(line[i:])
 }
 
-func parseLine(line []byte) (marker, host string, key ssh.PublicKey, err error) {
+func parseLine(line []byte) (marker, host, comments string, key ssh.PublicKey, err error) {
 	if w, next := nextWord(line); w == markerCert || w == markerRevoked {
 		marker = w
 		line = next
@@ -184,31 +184,33 @@ func parseLine(line []byte) (marker, host string, key ssh.PublicKey, err error) 
 
 	host, line = nextWord(line)
 	if len(line) == 0 {
-		return "", "", nil, errors.New("knownhosts: missing host pattern")
+		return "", "", "", nil, errors.New("knownhosts: missing host pattern")
 	}
 
 	// ignore the keytype as it's in the key blob anyway.
 	_, line = nextWord(line)
 	if len(line) == 0 {
-		return "", "", nil, errors.New("knownhosts: missing key type pattern")
+		return "", "", "", nil, errors.New("knownhosts: missing key type pattern")
 	}
 
-	keyBlob, _ := nextWord(line)
+	keyBlob, line := nextWord(line)
 
 	keyBytes, err := base64.StdEncoding.DecodeString(keyBlob)
 	if err != nil {
-		return "", "", nil, err
+		return "", "", "", nil, err
 	}
 	key, err = ssh.ParsePublicKey(keyBytes)
 	if err != nil {
-		return "", "", nil, err
+		return "", "", "", nil, err
 	}
+	// the rest of the line is the comment, and may include whitespace.
+	restOfLine := string(bytes.TrimSpace(line))
 
-	return marker, host, key, nil
+	return marker, host, restOfLine, key, nil
 }
 
 func (db *hostKeyDB) parseLine(line []byte, filename string, linenum int) error {
-	marker, pattern, key, err := parseLine(line)
+	marker, pattern, comments, key, err := parseLine(line)
 	if err != nil {
 		return err
 	}
@@ -218,6 +220,7 @@ func (db *hostKeyDB) parseLine(line []byte, filename string, linenum int) error 
 			Key:      key,
 			Filename: filename,
 			Line:     linenum,
+			Comments: comments,
 		}
 
 		return nil
@@ -229,6 +232,7 @@ func (db *hostKeyDB) parseLine(line []byte, filename string, linenum int) error 
 			Filename: filename,
 			Line:     linenum,
 			Key:      key,
+			Comments: comments,
 		},
 	}
 
@@ -241,7 +245,6 @@ func (db *hostKeyDB) parseLine(line []byte, filename string, linenum int) error 
 	if err != nil {
 		return err
 	}
-
 	db.lines = append(db.lines, entry)
 	return nil
 }
@@ -290,10 +293,11 @@ type KnownKey struct {
 	Key      ssh.PublicKey
 	Filename string
 	Line     int
+	Comments string
 }
 
 func (k *KnownKey) String() string {
-	return fmt.Sprintf("%s:%d: %s", k.Filename, k.Line, serialize(k.Key))
+	return fmt.Sprintf("%s:%d: %s %s", k.Filename, k.Line, serialize(k.Key), k.Comments)
 }
 
 // KeyError is returned if we did not find the key in the host key
@@ -433,6 +437,26 @@ func New(files ...string) (ssh.HostKeyCallback, error) {
 	certChecker.HostKeyFallback = db.check
 
 	return certChecker.CheckHostKey, nil
+}
+
+func NewKnownKeys(files ...string) ([]KnownKey, error) {
+	db := newHostKeyDB()
+	for _, fn := range files {
+		f, err := os.Open(fn)
+		if err != nil {
+			return nil, err
+		}
+		defer f.Close()
+		if err := db.Read(f, fn); err != nil {
+			return nil, err
+		}
+	}
+
+	keys := make([]KnownKey, 0, len(db.lines))
+	for _, l := range db.lines {
+		keys = append(keys, l.knownKey)
+	}
+	return keys, nil
 }
 
 // Normalize normalizes an address into the form used in known_hosts
