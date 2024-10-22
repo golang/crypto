@@ -138,6 +138,16 @@ func (c *Client) NewSession() (*Session, error) {
 	return newSession(ch, in)
 }
 
+func (c *Client) NewSessionAndChannel() (*Session, Channel, <-chan *Request, error) {
+	ch, in, err := c.OpenChannel("session", nil)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	session, err := newSession(ch, in)
+	return session, ch, in, err
+}
+
 func (c *Client) handleGlobalRequests(incoming <-chan *Request) {
 	for r := range incoming {
 		// This handles keepalive messages and matches
