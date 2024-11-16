@@ -516,7 +516,7 @@ func (c *Client) Accept(ctx context.Context, chal *Challenge) (*Challenge, error
 // AcceptWithPayload is a low-level Accept that informs the server that
 // the client accepts one of its challenges previously obtained with c.Authorize,
 // using a user-defined payload sent in the request. This allows the server and client
-// to agree on a custom challenge/response mechanisms that support both asynchronous
+// to agree on a custom challenge/response mechanism that support both asynchronous
 // and synchronous resolution schemes.
 func (c *Client) AcceptWithPayload(ctx context.Context, chal *Challenge, payload []byte) (*Challenge, error) {
 	if _, err := c.Discover(ctx); err != nil {
