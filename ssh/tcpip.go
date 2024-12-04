@@ -350,7 +350,7 @@ func (c *Client) DialContext(ctx context.Context, n, addr string) (net.Conn, err
 	}
 	ch := make(chan connErr)
 	go func() {
-		conn, err := c.Dial(n, addr)
+		conn, err := c.dialContext(ctx, n, addr)
 		select {
 		case ch <- connErr{conn, err}:
 		case <-ctx.Done():
@@ -369,7 +369,13 @@ func (c *Client) DialContext(ctx context.Context, n, addr string) (net.Conn, err
 
 // Dial initiates a connection to the addr from the remote host.
 // The resulting connection has a zero LocalAddr() and RemoteAddr().
+// For TCP addresses the port section of the address can be a port number or a service name.
+// Service names are resolved at the client side, domain names are resolved on the server.
 func (c *Client) Dial(n, addr string) (net.Conn, error) {
+	return c.dialContext(context.Background(), n, addr)
+}
+
+func (c *Client) dialContext(ctx context.Context, n, addr string) (net.Conn, error) {
 	var ch Channel
 	switch n {
 	case "tcp", "tcp4", "tcp6":
@@ -378,11 +384,11 @@ func (c *Client) Dial(n, addr string) (net.Conn, error) {
 		if err != nil {
 			return nil, err
 		}
-		port, err := strconv.ParseUint(portString, 10, 16)
+		port, err := net.DefaultResolver.LookupPort(ctx, n, portString)
 		if err != nil {
 			return nil, err
 		}
-		ch, err = c.dial(net.IPv4zero.String(), 0, host, int(port))
+		ch, err = c.dial(net.IPv4zero.String(), 0, host, port)
 		if err != nil {
 			return nil, err
 		}
@@ -441,18 +447,18 @@ func (c *Client) DialTCP(n string, laddr, raddr *net.TCPAddr) (net.Conn, error) 
 
 // RFC 4254 7.2
 type channelOpenDirectMsg struct {
-	raddr string
-	rport uint32
-	laddr string
-	lport uint32
+	Addr       string
+	Port       uint32
+	OriginAddr string
+	OriginPort uint32
 }
 
 func (c *Client) dial(laddr string, lport int, raddr string, rport int) (Channel, error) {
 	msg := channelOpenDirectMsg{
-		raddr: raddr,
-		rport: uint32(rport),
-		laddr: laddr,
-		lport: uint32(lport),
+		Addr:       raddr,
+		Port:       uint32(rport),
+		OriginAddr: laddr,
+		OriginPort: uint32(lport),
 	}
 	ch, in, err := c.OpenChannel("direct-tcpip", Marshal(&msg))
 	if err != nil {
