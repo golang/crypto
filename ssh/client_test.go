@@ -6,12 +6,14 @@ package ssh
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"errors"
 	"fmt"
 	"net"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestClientVersion(t *testing.T) {
@@ -363,5 +365,29 @@ func TestUnsupportedAlgorithm(t *testing.T) {
 				t.Errorf("%s: succeeded, but want error string %q", tt.name, tt.wantError)
 			}
 		})
+	}
+}
+
+func TestDialContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := DialContext(ctx, "tcp", ":22", &ClientConfig{})
+	wantErr := context.Canceled
+	if !errors.Is(err, wantErr) {
+		t.Errorf("DialContext: err == %v, expected %v", err, wantErr)
+	}
+
+	ctx, cancel = context.WithDeadline(context.Background(), time.Now())
+	defer cancel()
+	_, err = DialContext(ctx, "tcp", ":22", &ClientConfig{})
+	wantErr = context.DeadlineExceeded
+	if !errors.Is(err, wantErr) {
+		t.Errorf("DialContext: err == %v, expected %v", err, wantErr)
+	}
+
+	ctx = context.Background()
+	_, err = DialContext(ctx, "tcp", ":22", &ClientConfig{})
+	if _, ok := err.(*net.OpError); !ok {
+		t.Errorf("DialContext: err == %#v, expected *net.OpError", err)
 	}
 }
