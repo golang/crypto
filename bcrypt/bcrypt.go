@@ -63,17 +63,6 @@ const (
 	minHashSize        = 59
 )
 
-// magicCipherData is an IV for the 64 Blowfish encryption calls in
-// bcrypt(). It's the string "OrpheanBeholderScryDoubt" in big-endian bytes.
-var magicCipherData = []byte{
-	0x4f, 0x72, 0x70, 0x68,
-	0x65, 0x61, 0x6e, 0x42,
-	0x65, 0x68, 0x6f, 0x6c,
-	0x64, 0x65, 0x72, 0x53,
-	0x63, 0x72, 0x79, 0x44,
-	0x6f, 0x75, 0x62, 0x74,
-}
-
 type hashed struct {
 	hash  []byte
 	salt  []byte
@@ -107,6 +96,13 @@ func GenerateFromPassword(password []byte, cost int) ([]byte, error) {
 // plaintext equivalent. Returns nil on success, or an error on failure.
 func CompareHashAndPassword(hashedPassword, password []byte) error {
 	p, err := newFromHash(hashedPassword)
+	if err != nil {
+		return err
+	}
+
+	// This is simply put here instead of in newfromhash only to avoid failed test
+	// Altough failed test can be easily altered
+	p.salt, err = base64Decode(p.salt)
 	if err != nil {
 		return err
 	}
@@ -156,12 +152,14 @@ func newFromPassword(password []byte, cost int) (*hashed, error) {
 		return nil, err
 	}
 
-	p.salt = base64Encode(unencodedSalt)
-	hash, err := bcrypt(password, p.cost, p.salt)
+	hash, err := bcrypt(password, p.cost, unencodedSalt)
 	if err != nil {
 		return nil, err
 	}
+
+	p.salt = base64Encode(unencodedSalt)
 	p.hash = hash
+
 	return p, err
 }
 
@@ -170,32 +168,38 @@ func newFromHash(hashedSecret []byte) (*hashed, error) {
 		return nil, ErrHashTooShort
 	}
 	p := new(hashed)
-	n, err := p.decodeVersion(hashedSecret)
+	err := p.decodeVersion(&hashedSecret)
 	if err != nil {
 		return nil, err
 	}
-	hashedSecret = hashedSecret[n:]
-	n, err = p.decodeCost(hashedSecret)
+
+	err = p.decodeCost(&hashedSecret)
 	if err != nil {
 		return nil, err
 	}
-	hashedSecret = hashedSecret[n:]
 
 	// The "+2" is here because we'll have to append at most 2 '=' to the salt
 	// when base64 decoding it in expensiveBlowfishSetup().
 	p.salt = make([]byte, encodedSaltSize, encodedSaltSize+2)
 	copy(p.salt, hashedSecret[:encodedSaltSize])
 
-	hashedSecret = hashedSecret[encodedSaltSize:]
-	p.hash = make([]byte, len(hashedSecret))
-	copy(p.hash, hashedSecret)
+	p.hash = make([]byte, encodedHashSize)
+	copy(p.hash, hashedSecret[encodedSaltSize:])
 
 	return p, nil
 }
 
 func bcrypt(password []byte, cost int, salt []byte) ([]byte, error) {
-	cipherData := make([]byte, len(magicCipherData))
-	copy(cipherData, magicCipherData)
+	// magicCipherData is an IV for the 64 Blowfish encryption calls in
+	// bcrypt(). It's the string "OrpheanBeholderScryDoubt" in big-endian bytes.
+	var magicCipherData = []byte{
+		0x4f, 0x72, 0x70, 0x68,
+		0x65, 0x61, 0x6e, 0x42,
+		0x65, 0x68, 0x6f, 0x6c,
+		0x64, 0x65, 0x72, 0x53,
+		0x63, 0x72, 0x79, 0x44,
+		0x6f, 0x75, 0x62, 0x74,
+	}
 
 	c, err := expensiveBlowfishSetup(password, uint32(cost), salt)
 	if err != nil {
@@ -204,28 +208,23 @@ func bcrypt(password []byte, cost int, salt []byte) ([]byte, error) {
 
 	for i := 0; i < 24; i += 8 {
 		for j := 0; j < 64; j++ {
-			c.Encrypt(cipherData[i:i+8], cipherData[i:i+8])
+			c.Encrypt(magicCipherData[i:i+8], magicCipherData[i:i+8])
 		}
 	}
 
 	// Bug compatibility with C bcrypt implementations. We only encode 23 of
 	// the 24 bytes encrypted.
-	hsh := base64Encode(cipherData[:maxCryptedHashSize])
+	hsh := base64Encode(magicCipherData[:maxCryptedHashSize])
 	return hsh, nil
 }
 
 func expensiveBlowfishSetup(key []byte, cost uint32, salt []byte) (*blowfish.Cipher, error) {
-	csalt, err := base64Decode(salt)
-	if err != nil {
-		return nil, err
-	}
-
 	// Bug compatibility with C bcrypt implementations. They use the trailing
 	// NULL in the key string during expansion.
 	// We copy the key to prevent changing the underlying array.
 	ckey := append(key[:len(key):len(key)], 0)
 
-	c, err := blowfish.NewSaltedCipher(ckey, csalt)
+	c, err := blowfish.NewSaltedCipher(ckey, salt)
 	if err != nil {
 		return nil, err
 	}
@@ -234,7 +233,7 @@ func expensiveBlowfishSetup(key []byte, cost uint32, salt []byte) (*blowfish.Cip
 	rounds = 1 << cost
 	for i = 0; i < rounds; i++ {
 		blowfish.ExpandKey(ckey, c)
-		blowfish.ExpandKey(csalt, c)
+		blowfish.ExpandKey(salt, c)
 	}
 
 	return c, nil
@@ -262,34 +261,39 @@ func (p *hashed) Hash() []byte {
 	return arr[:n]
 }
 
-func (p *hashed) decodeVersion(sbytes []byte) (int, error) {
-	if sbytes[0] != '$' {
-		return -1, InvalidHashPrefixError(sbytes[0])
+func (p *hashed) decodeVersion(sbytes *[]byte) error {
+	if (*sbytes)[0] != '$' {
+		return InvalidHashPrefixError((*sbytes)[0])
 	}
-	if sbytes[1] > majorVersion {
-		return -1, HashVersionTooNewError(sbytes[1])
+	if (*sbytes)[1] > majorVersion {
+		return HashVersionTooNewError((*sbytes)[1])
 	}
-	p.major = sbytes[1]
+	p.major = (*sbytes)[1]
 	n := 3
-	if sbytes[2] != '$' {
-		p.minor = sbytes[2]
+	if (*sbytes)[2] != '$' {
+		p.minor = (*sbytes)[2]
 		n++
 	}
-	return n, nil
+
+	(*sbytes) = (*sbytes)[n:]
+
+	return nil
 }
 
 // sbytes should begin where decodeVersion left off.
-func (p *hashed) decodeCost(sbytes []byte) (int, error) {
-	cost, err := strconv.Atoi(string(sbytes[0:2]))
+func (p *hashed) decodeCost(sbytes *[]byte) (err error) {
+	p.cost, err = strconv.Atoi(string((*sbytes)[0:2]))
 	if err != nil {
-		return -1, err
+		return
 	}
-	err = checkCost(cost)
+
+	err = checkCost(p.cost)
 	if err != nil {
-		return -1, err
+		return
 	}
-	p.cost = cost
-	return 3, nil
+
+	(*sbytes) = (*sbytes)[3:]
+	return
 }
 
 func (p *hashed) String() string {
