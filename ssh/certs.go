@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net"
 	"sort"
 	"time"
@@ -62,7 +63,7 @@ type Signature struct {
 
 // CertTimeInfinity can be used for OpenSSHCertV01.ValidBefore to indicate that
 // a certificate does not expire.
-const CertTimeInfinity = 1<<64 - 1
+const CertTimeInfinity = math.MaxUint64
 
 // An Certificate represents an OpenSSH certificate as defined in
 // [PROTOCOL.certkeys]?rev=1.8. The Certificate type implements the
