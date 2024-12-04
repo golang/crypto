@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -292,11 +293,25 @@ const encodedTestHostnameHash = "|1|IHXZvQMvTcZTUU29+2vXFgx8Frs=|UGccIWfRVDwilMB
 
 func TestHostHash(t *testing.T) {
 	testHostHash(t, testHostname, encodedTestHostnameHash)
+	testHostHashDecode(t)
 }
 
 func TestHashList(t *testing.T) {
 	encoded := HashHostname(testHostname)
 	testHostHash(t, testHostname, encoded)
+}
+
+func testHostHashDecode(t *testing.T) {
+	for in, want := range map[string]string{
+		"1":                    "must start with '|'",
+		"|typ|salt":            "got 2 components",
+		"|typ|salt|hash|extra": "got 4 components",
+	} {
+		_, _, _, err := decodeHash(in)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("decodeHash: expected error to match %q, got %v", want, err)
+		}
+	}
 }
 
 func testHostHash(t *testing.T, hostname, encoded string) {
