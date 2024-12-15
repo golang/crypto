@@ -434,6 +434,380 @@ func TestPreAuthConnAndBanners(t *testing.T) {
 	}
 }
 
+func TestVerifiedPublicKeyCallback(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	extraKey := "extra"
+	extraDataString := "just a string"
+
+	serverConf := &ServerConfig{
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if permissions != nil && permissions.ExtraData != nil {
+				if !reflect.DeepEqual(map[any]any{extraKey: extraDataString}, permissions.ExtraData) {
+					t.Errorf("expected extra data: %v; got: %v", extraDataString, permissions.ExtraData)
+				}
+			} else {
+				t.Error("expected extra data is missing")
+			}
+			if signatureAlgorithm != KeyAlgoRSASHA256 {
+				t.Errorf("expected signature algorithm: %q; got: %q", KeyAlgoRSASHA256, signatureAlgorithm)
+			}
+			return permissions, nil
+		},
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			return &Permissions{ExtraData: map[any]any{extraKey: extraDataString}}, nil
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		conn, _, _, err := NewServerConn(c1, serverConf)
+		if err != nil {
+			t.Errorf("unexpected server error: %v", err)
+		}
+		if !reflect.DeepEqual(map[any]any{extraKey: extraDataString}, conn.Permissions.ExtraData) {
+			t.Errorf("expected extra data: %v; got: %v", extraDataString, conn.Permissions.ExtraData)
+		}
+	}()
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-done
+}
+
+func TestVerifiedPublicCallbackPartialSuccess(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+							if string(password) == clientPassword {
+								return nil, nil
+							}
+							return nil, nil
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+			Password(clientPassword),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func TestVerifiedPublicKeyCallbackPwdAndKey(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			if string(password) == clientPassword {
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+							if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+								return nil, nil
+							}
+							return nil, errors.New("invalid credentials")
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			Password(clientPassword),
+			PublicKeys(testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func TestVerifiedPubKeyCallbackAuthMethods(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+			return nil, nil
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err == nil {
+		t.Fatal("client login succeed with only VerifiedPublicKeyCallback defined")
+	}
+}
+
+func TestVerifiedPubKeyCallbackError(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			return nil, nil
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err == nil {
+		t.Fatal("client login succeed with VerifiedPublicKeyCallback returning an error")
+	}
+}
+
+func TestVerifiedPublicCallbackPartialSuccessBadUsage(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				// Returning PartialSuccessError is not permitted when
+				// VerifiedPublicKeyCallback is defined. This callback is
+				// invoked for both query requests and real authentications,
+				// while VerifiedPublicKeyCallback is only triggered if the
+				// client has proven control of the key.
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+							if string(password) == clientPassword {
+								return nil, nil
+							}
+							return nil, nil
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+							if string(password) == clientPassword {
+								return nil, nil
+							}
+							return nil, nil
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+			Password(clientPassword),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err == nil {
+		t.Fatal("authentication suceeded with PartialSuccess returned from PublicKeyCallback and  VerifiedPublicKeyCallback defined")
+	}
+}
+
+func TestVerifiedPublicKeyCallbackOnError(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	var verifiedCallbackCalled bool
+
+	serverConf := &ServerConfig{
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			verifiedCallbackCalled = true
+			return nil, nil
+		},
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			return nil, errors.New("invalid key")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		NewServerConn(c1, serverConf)
+	}()
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err == nil {
+		t.Fatal("authentication should fail")
+	}
+	<-done
+	if verifiedCallbackCalled {
+		t.Error("VerifiedPublicKeyCallback called after PublicKeyCallback returned an error")
+	}
+}
+
+func TestVerifiedPublicKeyCallbackOnly(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			return nil, nil
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		NewServerConn(c1, serverConf)
+	}()
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err == nil {
+		t.Fatal("authentication suceeded with only VerifiedPublicKeyCallback defined")
+	}
+	<-done
+}
+
 type markerConn struct {
 	closed uint32
 	used   uint32
