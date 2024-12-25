@@ -123,13 +123,13 @@ func (s *server) processRequest(data []byte) (interface{}, error) {
 			return nil, err
 		}
 
-		k := &Key{
-			Format: wk.Format,
-			Blob:   req.KeyBlob,
+		var err error
+		k, err := ssh.ParsePublicKey(req.KeyBlob)
+		if err != nil {
+			return nil, err
 		}
 
 		var sig *ssh.Signature
-		var err error
 		if extendedAgent, ok := s.agent.(ExtendedAgent); ok {
 			sig, err = extendedAgent.SignWithFlags(k, req.Data, SignatureFlags(req.Flags))
 		} else {
