@@ -510,11 +510,20 @@ func (c *Client) GetChallenge(ctx context.Context, url string) (*Challenge, erro
 //
 // The server will then perform the validation asynchronously.
 func (c *Client) Accept(ctx context.Context, chal *Challenge) (*Challenge, error) {
+	return c.AcceptWithPayload(ctx, chal, []byte("{}"))
+}
+
+// AcceptWithPayload is a low-level Accept that informs the server that
+// the client accepts one of its challenges previously obtained with c.Authorize,
+// using a user-defined payload sent in the request. This allows the server and client
+// to agree on a custom challenge/response mechanism that supports both asynchronous
+// and synchronous resolution schemes.
+func (c *Client) AcceptWithPayload(ctx context.Context, chal *Challenge, payload []byte) (*Challenge, error) {
 	if _, err := c.Discover(ctx); err != nil {
 		return nil, err
 	}
 
-	res, err := c.post(ctx, nil, chal.URI, json.RawMessage("{}"), wantStatus(
+	res, err := c.post(ctx, nil, chal.URI, json.RawMessage(payload), wantStatus(
 		http.StatusOK,       // according to the spec
 		http.StatusAccepted, // Let's Encrypt: see https://goo.gl/WsJ7VT (acme-divergences.md)
 	))
