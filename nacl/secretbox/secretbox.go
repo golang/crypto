@@ -72,7 +72,9 @@ func sliceForAppend(in []byte, n int) (head, tail []byte) {
 
 // Seal appends an encrypted and authenticated copy of message to out, which
 // must not overlap message. The key and nonce pair must be unique for each
-// distinct message and the output will be Overhead bytes longer than message.
+// distinct message. The output will be Overhead bytes longer than message.
+// The return value is a slice containing the entire output, which may point
+// to a newly allocated buffer if out lacks sufficient capacity.
 func Seal(out, message []byte, nonce *[24]byte, key *[32]byte) []byte {
 	var subKey [32]byte
 	var counter [16]byte
@@ -121,7 +123,10 @@ func Seal(out, message []byte, nonce *[24]byte, key *[32]byte) []byte {
 
 // Open authenticates and decrypts a box produced by Seal and appends the
 // message to out, which must not overlap box. The output will be Overhead
-// bytes smaller than box.
+// bytes smaller than box. The return value is a slice containing the entire
+// output, which may point to a newly allocated buffer if out lacks sufficient
+// capacity, and a boolean indicating whether the authentication was
+// successful.
 func Open(out, box []byte, nonce *[24]byte, key *[32]byte) ([]byte, bool) {
 	if len(box) < Overhead {
 		return nil, false
