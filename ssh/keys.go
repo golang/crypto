@@ -544,10 +544,8 @@ func (k *dsaPublicKey) Type() string {
 }
 
 func checkDSAParams(param *dsa.Parameters) error {
-	// SSH specifies FIPS 186-2, which only provided a single size
-	// (1024 bits) DSA key. FIPS 186-3 allows for larger key
-	// sizes, which would confuse SSH.
-	if l := param.P.BitLen(); l != 1024 {
+	// SSH and SFTP requires FIPS 186-3, which provides (1024, 2048, 3072) sizes.
+	if l := param.P.BitLen(); l != 1024 && l != 2048 && l != 3072 {
 		return fmt.Errorf("ssh: unsupported DSA key size %d", l)
 	}
 
