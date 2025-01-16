@@ -84,9 +84,15 @@ func DiscardRequests(in <-chan *Request) {
 	}
 }
 
+type connTransport interface {
+	packetConn
+	getSessionID() []byte
+	waitSession() error
+}
+
 // A connection represents an incoming connection.
 type connection struct {
-	transport *handshakeTransport
+	transport connTransport
 	sshConn
 
 	// The connection protocol.
