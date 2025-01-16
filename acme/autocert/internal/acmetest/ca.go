@@ -467,7 +467,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 func (ca *CAServer) storedOrder(i string) (*order, error) {
 	idx, err := strconv.Atoi(i)
 	if err != nil {
-		return nil, fmt.Errorf("storedOrder: %v", err)
+		return nil, fmt.Errorf("storedOrder: %w", err)
 	}
 	if idx < 0 {
 		return nil, fmt.Errorf("storedOrder: invalid order index %d", idx)
@@ -485,7 +485,7 @@ func (ca *CAServer) storedOrder(i string) (*order, error) {
 func (ca *CAServer) storedAuthz(i string) (*authorization, error) {
 	idx, err := strconv.Atoi(i)
 	if err != nil {
-		return nil, fmt.Errorf("storedAuthz: %v", err)
+		return nil, fmt.Errorf("storedAuthz: %w", err)
 	}
 	if idx < 0 {
 		return nil, fmt.Errorf("storedAuthz: invalid authz index %d", idx)
@@ -700,7 +700,7 @@ func (ca *CAServer) verifyALPNChallenge(a *authorization) error {
 	}
 
 	if err := crt.VerifyHostname(a.domain); err != nil {
-		return fmt.Errorf("verifyALPNChallenge: VerifyHostname: %v", err)
+		return fmt.Errorf("verifyALPNChallenge: VerifyHostname: %w", err)
 	}
 	// See RFC 8737, Section 6.1.
 	oid := asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 1, 31}

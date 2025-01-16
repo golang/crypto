@@ -334,7 +334,7 @@ func checkSourceAddress(addr net.Addr, sourceAddrs string) error {
 		} else {
 			_, ipNet, err := net.ParseCIDR(sourceAddr)
 			if err != nil {
-				return fmt.Errorf("ssh: error parsing source-address restriction %q: %v", sourceAddr, err)
+				return fmt.Errorf("ssh: error parsing source-address restriction %q: %w", sourceAddr, err)
 			}
 
 			if ipNet.Contains(tcpAddr.IP) {
