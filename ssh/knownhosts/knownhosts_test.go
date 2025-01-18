@@ -15,8 +15,10 @@ import (
 )
 
 const edKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGBAarftlLeoyf+v+nVchEZII/vna2PCV8FaX4vsF5BX"
+const edKeyComments = "comments are ignored"
 const alternateEdKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIXffBYeYL+WVzVru8npl5JHt2cjlr4ornFTWzoij9sx"
 const ecKeyStr = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNLCu01+wpXe3xB5olXCN4SqU2rQu0qjSRKJO4Bg+JRCPU+ENcgdA5srTU8xYDz/GEa4dzK5ldPw4J/gZgSXCMs="
+const ecKeyComments = "and may include whitespace"
 
 var ecKey, alternateEdKey, edKey ssh.PublicKey
 var testAddr = &net.TCPAddr{
@@ -163,7 +165,7 @@ func TestIPv6Address(t *testing.T) {
 }
 
 func TestBasic(t *testing.T) {
-	str := fmt.Sprintf("#comment\n\nserver.org,%s %s\notherhost %s", testAddr, edKeyStr, ecKeyStr)
+	str := fmt.Sprintf("#comment\n\nserver.org,%s %s %s\notherhost %s %s", testAddr, edKeyStr, edKeyComments, ecKeyStr, ecKeyComments)
 	db := testDB(t, str)
 	if err := db.check("server.org:22", testAddr, edKey); err != nil {
 		t.Errorf("got error %v, want none", err)
@@ -173,6 +175,7 @@ func TestBasic(t *testing.T) {
 		Key:      edKey,
 		Filename: "testdb",
 		Line:     3,
+		Comments: edKeyComments,
 	}
 	if err := db.check("server.org:22", testAddr, ecKey); err == nil {
 		t.Errorf("succeeded, want KeyError")
