@@ -94,7 +94,7 @@ func testPortForward(t *testing.T, n, listenAddr string) {
 	if len(sent) != len(read) {
 		t.Fatalf("got %d bytes, want %d", len(read), len(sent))
 	}
-	if bytes.Compare(sent, read) != 0 {
+	if !bytes.Equal(sent, read) {
 		t.Fatalf("read back data does not match")
 	}
 

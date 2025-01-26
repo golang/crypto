@@ -10,7 +10,6 @@ package test
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -26,108 +25,6 @@ func skipIfIssue64959(t *testing.T, err error) {
 	if err != nil && runtime.GOOS == "darwin" && strings.Contains(err.Error(), "ssh: unexpected packet in response to channel open: <nil>") {
 		t.Helper()
 		t.Skipf("skipping test broken on some versions of macOS; see https://go.dev/issue/64959")
-	}
-}
-
-func TestRunCommandSuccess(t *testing.T) {
-	server := newServer(t)
-	conn := server.Dial(clientConfig())
-	defer conn.Close()
-
-	session, err := conn.NewSession()
-	if err != nil {
-		skipIfIssue64959(t, err)
-		t.Fatalf("session failed: %v", err)
-	}
-	defer session.Close()
-	err = session.Run("true")
-	if err != nil {
-		t.Fatalf("session failed: %v", err)
-	}
-}
-
-func TestHostKeyCheck(t *testing.T) {
-	server := newServer(t)
-
-	conf := clientConfig()
-	hostDB := hostKeyDB()
-	conf.HostKeyCallback = hostDB.Check
-
-	// change the keys.
-	hostDB.keys[ssh.KeyAlgoRSA][25]++
-	hostDB.keys[ssh.KeyAlgoDSA][25]++
-	hostDB.keys[ssh.KeyAlgoECDSA256][25]++
-
-	conn, err := server.TryDial(conf)
-	if err == nil {
-		conn.Close()
-		t.Fatalf("dial should have failed.")
-	} else if !strings.Contains(err.Error(), "host key mismatch") {
-		t.Fatalf("'host key mismatch' not found in %v", err)
-	}
-}
-
-func TestRunCommandStdin(t *testing.T) {
-	server := newServer(t)
-	conn := server.Dial(clientConfig())
-	defer conn.Close()
-
-	session, err := conn.NewSession()
-	if err != nil {
-		skipIfIssue64959(t, err)
-		t.Fatalf("session failed: %v", err)
-	}
-	defer session.Close()
-
-	r, w := io.Pipe()
-	defer r.Close()
-	defer w.Close()
-	session.Stdin = r
-
-	err = session.Run("true")
-	if err != nil {
-		t.Fatalf("session failed: %v", err)
-	}
-}
-
-func TestRunCommandStdinError(t *testing.T) {
-	server := newServer(t)
-	conn := server.Dial(clientConfig())
-	defer conn.Close()
-
-	session, err := conn.NewSession()
-	if err != nil {
-		skipIfIssue64959(t, err)
-		t.Fatalf("session failed: %v", err)
-	}
-	defer session.Close()
-
-	r, w := io.Pipe()
-	defer r.Close()
-	session.Stdin = r
-	pipeErr := errors.New("closing write end of pipe")
-	w.CloseWithError(pipeErr)
-
-	err = session.Run("true")
-	if err != pipeErr {
-		t.Fatalf("expected %v, found %v", pipeErr, err)
-	}
-}
-
-func TestRunCommandFailed(t *testing.T) {
-	server := newServer(t)
-	conn := server.Dial(clientConfig())
-	defer conn.Close()
-
-	session, err := conn.NewSession()
-	if err != nil {
-		skipIfIssue64959(t, err)
-		t.Fatalf("session failed: %v", err)
-	}
-	defer session.Close()
-	err = session.Run(`bash -c "kill -9 $$"`)
-	if err == nil {
-		t.Fatalf("session succeeded: %v", err)
 	}
 }
 
@@ -290,59 +187,6 @@ func TestValidTerminalMode(t *testing.T) {
 	}
 }
 
-func TestWindowChange(t *testing.T) {
-	if runtime.GOOS == "aix" {
-		// On AIX, sshd cannot acquire /dev/pts/* if launched as
-		// a non-root user.
-		t.Skipf("skipping on %s", runtime.GOOS)
-	}
-	server := newServer(t)
-	conn := server.Dial(clientConfig())
-	defer conn.Close()
-
-	session, err := conn.NewSession()
-	if err != nil {
-		skipIfIssue64959(t, err)
-		t.Fatalf("session failed: %v", err)
-	}
-	defer session.Close()
-
-	stdout, err := session.StdoutPipe()
-	if err != nil {
-		t.Fatalf("unable to acquire stdout pipe: %s", err)
-	}
-
-	stdin, err := session.StdinPipe()
-	if err != nil {
-		t.Fatalf("unable to acquire stdin pipe: %s", err)
-	}
-
-	tm := ssh.TerminalModes{ssh.ECHO: 0}
-	if err = session.RequestPty("xterm", 80, 40, tm); err != nil {
-		t.Fatalf("req-pty failed: %s", err)
-	}
-
-	if err := session.WindowChange(100, 100); err != nil {
-		t.Fatalf("window-change failed: %s", err)
-	}
-
-	err = session.Shell()
-	if err != nil {
-		t.Fatalf("session failed: %s", err)
-	}
-
-	stdin.Write([]byte("stty size && exit\n"))
-
-	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, stdout); err != nil {
-		t.Fatalf("reading failed: %s", err)
-	}
-
-	if sttyOutput := buf.String(); !strings.Contains(sttyOutput, "100 100") {
-		t.Fatalf("terminal WindowChange failure: expected \"100 100\" stty output, got %s", sttyOutput)
-	}
-}
-
 func testOneCipher(t *testing.T, cipher string, cipherOrder []string) {
 	server := newServer(t)
 	conf := clientConfig()
@@ -392,55 +236,6 @@ func TestCiphers(t *testing.T) {
 	for _, ciph := range cipherOrder {
 		t.Run(ciph, func(t *testing.T) {
 			testOneCipher(t, ciph, cipherOrder)
-		})
-	}
-}
-
-func TestMACs(t *testing.T) {
-	var config ssh.Config
-	config.SetDefaults()
-	macOrder := config.MACs
-
-	for _, mac := range macOrder {
-		t.Run(mac, func(t *testing.T) {
-			server := newServer(t)
-			conf := clientConfig()
-			conf.MACs = []string{mac}
-			// Don't fail if sshd doesn't have the MAC.
-			conf.MACs = append(conf.MACs, macOrder...)
-			if conn, err := server.TryDial(conf); err == nil {
-				conn.Close()
-			} else {
-				t.Fatalf("failed for MAC %q", mac)
-			}
-		})
-	}
-}
-
-func TestKeyExchanges(t *testing.T) {
-	var config ssh.Config
-	config.SetDefaults()
-	kexOrder := config.KeyExchanges
-	// Based on the discussion in #17230, the key exchange algorithms
-	// diffie-hellman-group-exchange-sha1 and diffie-hellman-group-exchange-sha256
-	// are not included in the default list of supported kex so we have to add them
-	// here manually.
-	kexOrder = append(kexOrder, "diffie-hellman-group-exchange-sha1", "diffie-hellman-group-exchange-sha256")
-	// The key exchange algorithms diffie-hellman-group16-sha512 is disabled by
-	// default so we add it here manually.
-	kexOrder = append(kexOrder, "diffie-hellman-group16-sha512")
-	for _, kex := range kexOrder {
-		t.Run(kex, func(t *testing.T) {
-			server := newServer(t)
-			conf := clientConfig()
-			// Don't fail if sshd doesn't have the kex.
-			conf.KeyExchanges = append([]string{kex}, kexOrder...)
-			conn, err := server.TryDial(conf)
-			if err == nil {
-				conn.Close()
-			} else {
-				t.Errorf("failed for kex %q", kex)
-			}
 		})
 	}
 }

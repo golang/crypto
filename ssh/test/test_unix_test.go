@@ -13,139 +13,17 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"net"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
 	"testing"
-	"text/template"
 
 	"golang.org/x/crypto/internal/testenv"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/testdata"
 )
-
-const (
-	defaultSshdConfig = `
-Protocol 2
-Banner {{.Dir}}/banner
-HostKey {{.Dir}}/id_rsa
-HostKey {{.Dir}}/id_dsa
-HostKey {{.Dir}}/id_ecdsa
-HostCertificate {{.Dir}}/id_rsa-sha2-512-cert.pub
-Pidfile {{.Dir}}/sshd.pid
-#UsePrivilegeSeparation no
-KeyRegenerationInterval 3600
-ServerKeyBits 768
-SyslogFacility AUTH
-LogLevel DEBUG2
-LoginGraceTime 120
-PermitRootLogin no
-StrictModes no
-RSAAuthentication yes
-PubkeyAuthentication yes
-AuthorizedKeysFile	{{.Dir}}/authorized_keys
-TrustedUserCAKeys {{.Dir}}/id_ecdsa.pub
-IgnoreRhosts yes
-RhostsRSAAuthentication no
-HostbasedAuthentication no
-PubkeyAcceptedKeyTypes=*
-`
-	multiAuthSshdConfigTail = `
-UsePAM yes
-PasswordAuthentication yes
-ChallengeResponseAuthentication yes
-AuthenticationMethods {{.AuthMethods}}
-`
-	maxAuthTriesSshdConfigTail = `
-PasswordAuthentication yes
-MaxAuthTries 1
-`
-)
-
-var configTmpl = map[string]*template.Template{
-	"default":      template.Must(template.New("").Parse(defaultSshdConfig)),
-	"MultiAuth":    template.Must(template.New("").Parse(defaultSshdConfig + multiAuthSshdConfigTail)),
-	"MaxAuthTries": template.Must(template.New("").Parse(defaultSshdConfig + maxAuthTriesSshdConfigTail))}
-
-type server struct {
-	t          *testing.T
-	configfile string
-
-	testUser     string // test username for sshd
-	testPasswd   string // test password for sshd
-	sshdTestPwSo string // dynamic library to inject a custom password into sshd
-
-	lastDialConn net.Conn
-}
-
-func username() string {
-	var username string
-	if user, err := user.Current(); err == nil {
-		username = user.Username
-	} else {
-		// user.Current() currently requires cgo. If an error is
-		// returned attempt to get the username from the environment.
-		log.Printf("user.Current: %v; falling back on $USER", err)
-		username = os.Getenv("USER")
-	}
-	if username == "" {
-		panic("Unable to get username")
-	}
-	return username
-}
-
-type storedHostKey struct {
-	// keys map from an algorithm string to binary key data.
-	keys map[string][]byte
-
-	// checkCount counts the Check calls. Used for testing
-	// rekeying.
-	checkCount int
-}
-
-func (k *storedHostKey) Add(key ssh.PublicKey) {
-	if k.keys == nil {
-		k.keys = map[string][]byte{}
-	}
-	k.keys[key.Type()] = key.Marshal()
-}
-
-func (k *storedHostKey) Check(addr string, remote net.Addr, key ssh.PublicKey) error {
-	k.checkCount++
-	algo := key.Type()
-
-	if k.keys == nil || bytes.Compare(key.Marshal(), k.keys[algo]) != 0 {
-		return fmt.Errorf("host key mismatch. Got %q, want %q", key, k.keys[algo])
-	}
-	return nil
-}
-
-func hostKeyDB() *storedHostKey {
-	keyChecker := &storedHostKey{}
-	keyChecker.Add(testPublicKeys["ecdsa"])
-	keyChecker.Add(testPublicKeys["rsa"])
-	keyChecker.Add(testPublicKeys["dsa"])
-	return keyChecker
-}
-
-func clientConfig() *ssh.ClientConfig {
-	config := &ssh.ClientConfig{
-		User: username(),
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(testSigners["user"]),
-		},
-		HostKeyCallback: hostKeyDB().Check,
-		HostKeyAlgorithms: []string{ // by default, don't allow certs as this affects the hostKeyDB checker
-			ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521,
-			ssh.KeyAlgoRSA, ssh.KeyAlgoDSA,
-			ssh.KeyAlgoED25519,
-		},
-	}
-	return config
-}
 
 // unixConnection creates two halves of a connected net.UnixConn.  It
 // is used for connecting the Go SSH client with sshd without opening
@@ -260,17 +138,6 @@ func (s *server) Dial(config *ssh.ClientConfig) *ssh.Client {
 		s.t.Fatalf("ssh.Client: %v", err)
 	}
 	return conn
-}
-
-func writeFile(path string, contents []byte) {
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_TRUNC|os.O_CREATE, 0600)
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close()
-	if _, err := f.Write(contents); err != nil {
-		panic(err)
-	}
 }
 
 // generate random password
