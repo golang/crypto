@@ -232,6 +232,11 @@ func (test *clientTest) run(t *testing.T, write bool) {
 
 func recordingsClientConfig() *ssh.ClientConfig {
 	config := clientConfig()
+	// Remove ML-KEM since it only works with Go 1.24.
+	config.SetDefaults()
+	if config.KeyExchanges[0] == "mlkem768x25519-sha256" {
+		config.KeyExchanges = config.KeyExchanges[1:]
+	}
 	config.Rand = sha3.NewShake128()
 	config.Auth = []ssh.AuthMethod{
 		ssh.PublicKeys(testSigners["rsa"]),

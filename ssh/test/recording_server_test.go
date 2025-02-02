@@ -218,6 +218,12 @@ func recordingsServerConfig() *ssh.ServerConfig {
 			return nil, nil
 		},
 	}
+	config.SetDefaults()
+	// Remove ML-KEM since it only works with Go 1.24.
+	config.SetDefaults()
+	if config.KeyExchanges[0] == "mlkem768x25519-sha256" {
+		config.KeyExchanges = config.KeyExchanges[1:]
+	}
 	config.AddHostKey(testSigners["rsa"])
 	return config
 }
@@ -230,7 +236,8 @@ func TestServerKeyExchanges(t *testing.T) {
 	for _, kex := range config.KeyExchanges {
 		// Exclude ecdh for now, to make them determistic we should use see a
 		// stream of fixed bytes as the random source.
-		if !strings.HasPrefix(kex, "ecdh-") {
+		// Exclude ML-KEM because server side is not deterministic.
+		if !strings.HasPrefix(kex, "ecdh-") && !strings.HasPrefix(kex, "mlkem") {
 			keyExchanges = append(keyExchanges, kex)
 		}
 	}
