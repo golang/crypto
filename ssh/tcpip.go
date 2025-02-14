@@ -321,10 +321,7 @@ func (l *tcpListener) Close() error {
 
 	// this also closes the listener.
 	l.conn.forwards.remove(l.laddr)
-	ok, _, err := l.conn.SendRequest("cancel-tcpip-forward", true, Marshal(&m))
-	if err == nil && !ok {
-		err = errors.New("ssh: cancel-tcpip-forward failed")
-	}
+	_, _, err := l.conn.SendRequest("cancel-tcpip-forward", false, Marshal(&m))
 	return err
 }
 
