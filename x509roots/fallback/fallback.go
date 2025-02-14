@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-//go:build go1.20
-
 // Package fallback embeds a set of fallback X.509 trusted roots in the
 // application by automatically invoking [x509.SetFallbackRoots]. This allows
 // the application to work correctly even if the operating system does not
