@@ -387,7 +387,7 @@ func parseRSACert(req []byte) (*AddedKey, error) {
 		N    *big.Int
 	}
 	if err := ssh.Unmarshal(cert.Key.Marshal(), &rsaPub); err != nil {
-		return nil, fmt.Errorf("agent: Unmarshal failed to parse public key: %v", err)
+		return nil, fmt.Errorf("agent: Unmarshal failed to parse public key: %w", err)
 	}
 
 	if rsaPub.E.BitLen() > 30 {
@@ -431,7 +431,7 @@ func parseDSACert(req []byte) (*AddedKey, error) {
 		P, Q, G, Y *big.Int
 	}
 	if err := ssh.Unmarshal(cert.Key.Marshal(), &w); err != nil {
-		return nil, fmt.Errorf("agent: Unmarshal failed to parse public key: %v", err)
+		return nil, fmt.Errorf("agent: Unmarshal failed to parse public key: %w", err)
 	}
 
 	priv := &dsa.PrivateKey{
