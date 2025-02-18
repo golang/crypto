@@ -38,7 +38,7 @@ func tryAuth(t *testing.T, config *ClientConfig) error {
 	return err
 }
 
-// tryAuth runs a handshake with a given config against an SSH server
+// tryAuthWithGSSAPIWithMICConfig runs a handshake with a given config against an SSH server
 // with a given GSSAPIWithMICConfig and config serverConfig. Returns both client and server side errors.
 func tryAuthWithGSSAPIWithMICConfig(t *testing.T, clientConfig *ClientConfig, gssAPIWithMICConfig *GSSAPIWithMICConfig) error {
 	err, _ := tryAuthBothSides(t, clientConfig, gssAPIWithMICConfig)

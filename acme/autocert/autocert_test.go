@@ -619,7 +619,7 @@ func TestCache(t *testing.T) {
 		PrivateKey:  ecdsaKey,
 	}
 
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 512)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -694,7 +694,7 @@ func TestValidCert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key3, err := rsa.GenerateKey(rand.Reader, 512)
+	key3, err := rsa.GenerateKey(rand.Reader, 1024)
 	if err != nil {
 		t.Fatal(err)
 	}
