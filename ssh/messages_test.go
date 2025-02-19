@@ -206,6 +206,62 @@ func TestMarshalMultiTag(t *testing.T) {
 	}
 }
 
+func TestDecode(t *testing.T) {
+	rnd := rand.New(rand.NewSource(0))
+	kexInit := new(kexInitMsg).Generate(rnd, 10).Interface()
+	kexDHInit := new(kexDHInitMsg).Generate(rnd, 10).Interface()
+	kexDHReply := new(kexDHReplyMsg)
+	kexDHReply.Y = randomInt(rnd)
+	// Note: userAuthSuccessMsg can't be tested directly since it
+	// doesn't have a field for sshtype. So it's tested separately
+	// at the end.
+	decodeMessageTypes := []interface{}{
+		new(disconnectMsg),
+		new(serviceRequestMsg),
+		new(serviceAcceptMsg),
+		new(extInfoMsg),
+		kexInit,
+		kexDHInit,
+		kexDHReply,
+		new(userAuthRequestMsg),
+		new(userAuthFailureMsg),
+		new(userAuthBannerMsg),
+		new(userAuthPubKeyOkMsg),
+		new(globalRequestMsg),
+		new(globalRequestSuccessMsg),
+		new(globalRequestFailureMsg),
+		new(channelOpenMsg),
+		new(channelDataMsg),
+		new(channelOpenConfirmMsg),
+		new(channelOpenFailureMsg),
+		new(windowAdjustMsg),
+		new(channelEOFMsg),
+		new(channelCloseMsg),
+		new(channelRequestMsg),
+		new(channelRequestSuccessMsg),
+		new(channelRequestFailureMsg),
+		new(userAuthGSSAPIToken),
+		new(userAuthGSSAPIMIC),
+		new(userAuthGSSAPIErrTok),
+		new(userAuthGSSAPIError),
+	}
+	for _, msg := range decodeMessageTypes {
+		decoded, err := decode(Marshal(msg))
+		if err != nil {
+			t.Errorf("error decoding %T", msg)
+		} else if reflect.TypeOf(msg) != reflect.TypeOf(decoded) {
+			t.Errorf("error decoding %T, unexpected %T", msg, decoded)
+		}
+	}
+
+	userAuthSuccess, err := decode([]byte{msgUserAuthSuccess})
+	if err != nil {
+		t.Errorf("error decoding userAuthSuccessMsg")
+	} else if reflect.TypeOf(userAuthSuccess) != reflect.TypeOf((*userAuthSuccessMsg)(nil)) {
+		t.Errorf("error decoding userAuthSuccessMsg, unexpected %T", userAuthSuccess)
+	}
+}
+
 func randomBytes(out []byte, rand *rand.Rand) {
 	for i := 0; i < len(out); i++ {
 		out[i] = byte(rand.Int31())
