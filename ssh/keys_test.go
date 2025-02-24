@@ -595,6 +595,36 @@ var knownHostsParseTests = []struct {
 
 		"", "", nil, "",
 	},
+	{
+		"@marker \tlocalhost,[host2:123]\tssh-rsa aabbccdd comment comment",
+		"short read",
+
+		"", "", nil, "",
+	},
+	{
+		"@marker \tlocalhost,[host2:123]\tssh-rsa {RSAPUB}\tcomment comment\r\n",
+		"",
+
+		"marker", "comment comment", []string{"localhost", "[host2:123]"}, "",
+	},
+	{
+		"@marker \tlocalhost,[host2:123]\tssh-rsa {RSAPUB}\tcomment comment\r\nthe rest",
+		"",
+
+		"marker", "comment comment", []string{"localhost", "[host2:123]"}, "the rest",
+	},
+	{
+		"@marker localhost",
+		"invalid entry in known_hosts data",
+
+		"", "", nil, "",
+	},
+	{
+		"localhost\tssh-rsa",
+		"invalid entry in known_hosts data",
+
+		"", "", nil, "",
+	},
 }
 
 func TestKnownHostsParsing(t *testing.T) {
