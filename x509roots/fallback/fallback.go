@@ -22,8 +22,19 @@ import "crypto/x509"
 
 func init() {
 	p := x509.NewCertPool()
-	for _, c := range bundle {
-		p.AddCert(c)
+	for _, c := range parsedCertificates {
+		if len(c.constraints) == 0 {
+			p.AddCert(c.cert)
+		} else {
+			p.AddCertWithConstraint(c.cert, func(chain []*x509.Certificate) error {
+				for _, constraint := range c.constraints {
+					if err := constraint(chain); err != nil {
+						return err
+					}
+				}
+				return nil
+			})
+		}
 	}
 	x509.SetFallbackRoots(p)
 }
