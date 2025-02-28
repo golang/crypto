@@ -12,7 +12,7 @@ import (
 )
 
 // renewJitter is the maximum deviation from Manager.RenewBefore.
-const renewJitter = time.Hour
+const renewJitter = 24 * time.Hour
 
 // domainRenewal tracks the state used by the periodic timers
 // renewing a single domain's cert.
