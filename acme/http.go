@@ -21,9 +21,13 @@ import (
 	"time"
 )
 
-// retryTimer encapsulates common logic for retrying unsuccessful requests.
+// retries encapsulates common logic for retrying unsuccessful requests.
 // It is not safe for concurrent use.
-type retryTimer struct {
+type retries struct {
+	// shouldRetry reports whether a request can be retried based on the HTTP response status code.
+	// See Client.ShouldRetry doc comment.
+	shouldRetry func(resp *http.Response) bool
+
 	// backoffFn provides backoff delay sequence for retries.
 	// See Client.RetryBackoff doc comment.
 	backoffFn func(n int, r *http.Request, res *http.Response) time.Duration
@@ -31,15 +35,15 @@ type retryTimer struct {
 	n int
 }
 
-func (t *retryTimer) inc() {
-	t.n++
+func (r *retries) inc() {
+	r.n++
 }
 
 // backoff pauses the current goroutine as described in Client.RetryBackoff.
-func (t *retryTimer) backoff(ctx context.Context, r *http.Request, res *http.Response) error {
-	d := t.backoffFn(t.n, r, res)
+func (r *retries) backoff(ctx context.Context, req *http.Request, resp *http.Response) error {
+	d := r.backoffFn(r.n, req, resp)
 	if d <= 0 {
-		return fmt.Errorf("acme: no more retries for %s; tried %d time(s)", r.URL, t.n)
+		return fmt.Errorf("acme: no more retries for %s; tried %d time(s)", req.URL, r.n)
 	}
 	wakeup := time.NewTimer(d)
 	defer wakeup.Stop()
@@ -51,12 +55,21 @@ func (t *retryTimer) backoff(ctx context.Context, r *http.Request, res *http.Res
 	}
 }
 
-func (c *Client) retryTimer() *retryTimer {
-	f := c.RetryBackoff
-	if f == nil {
-		f = defaultBackoff
+func (c *Client) retries() *retries {
+	backoff := c.RetryBackoff
+	if backoff == nil {
+		backoff = defaultBackoff
 	}
-	return &retryTimer{backoffFn: f}
+
+	shouldRetry := c.ShouldRetry
+	if shouldRetry == nil {
+		shouldRetry = defaultShouldRetry
+	}
+
+	return &retries{
+		backoffFn:   backoff,
+		shouldRetry: shouldRetry,
+	}
 }
 
 // defaultBackoff provides default Client.RetryBackoff implementation
@@ -129,30 +142,30 @@ func wantStatus(codes ...int) resOkay {
 // get retries unsuccessful attempts according to c.RetryBackoff
 // until the context is done or a non-retriable error is received.
 func (c *Client) get(ctx context.Context, url string, ok resOkay) (*http.Response, error) {
-	retry := c.retryTimer()
+	retry := c.retries()
 	for {
 		req, err := http.NewRequest("GET", url, nil)
 		if err != nil {
 			return nil, err
 		}
-		res, err := c.doNoRetry(ctx, req)
+		resp, err := c.doNoRetry(ctx, req)
 		switch {
 		case err != nil:
 			return nil, err
-		case ok(res):
-			return res, nil
-		case isRetriable(res.StatusCode):
+		case ok(resp):
+			return resp, nil
+		case retry.shouldRetry(resp):
 			retry.inc()
-			resErr := responseError(res)
-			res.Body.Close()
+			resErr := responseError(resp)
+			resp.Body.Close()
 			// Ignore the error value from retry.backoff
 			// and return the one from last retry, as received from the CA.
-			if retry.backoff(ctx, req, res) != nil {
+			if retry.backoff(ctx, req, resp) != nil {
 				return nil, resErr
 			}
 		default:
-			defer res.Body.Close()
-			return nil, responseError(res)
+			defer resp.Body.Close()
+			return nil, responseError(resp)
 		}
 	}
 }
@@ -173,30 +186,30 @@ func (c *Client) postAsGet(ctx context.Context, url string, ok resOkay) (*http.R
 // until the context is done or a non-retriable error is received.
 // It uses postNoRetry to make individual requests.
 func (c *Client) post(ctx context.Context, key crypto.Signer, url string, body interface{}, ok resOkay) (*http.Response, error) {
-	retry := c.retryTimer()
+	retry := c.retries()
 	for {
-		res, req, err := c.postNoRetry(ctx, key, url, body)
+		resp, req, err := c.postNoRetry(ctx, key, url, body)
 		if err != nil {
 			return nil, err
 		}
-		if ok(res) {
-			return res, nil
+		if ok(resp) {
+			return resp, nil
 		}
-		resErr := responseError(res)
-		res.Body.Close()
+		resErr := responseError(resp)
+		resp.Body.Close()
 		switch {
-		// Check for bad nonce before isRetriable because it may have been returned
+		// Check for bad nonce before defaultShouldRetry because it may have been returned
 		// with an unretriable response code such as 400 Bad Request.
 		case isBadNonce(resErr):
 			// Consider any previously stored nonce values to be invalid.
 			c.clearNonces()
-		case !isRetriable(res.StatusCode):
+		case !retry.shouldRetry(resp):
 			return nil, resErr
 		}
 		retry.inc()
 		// Ignore the error value from retry.backoff
 		// and return the one from last retry, as received from the CA.
-		if err := retry.backoff(ctx, req, res); err != nil {
+		if err := retry.backoff(ctx, req, resp); err != nil {
 			return nil, resErr
 		}
 	}
@@ -316,13 +329,13 @@ func isBadNonce(err error) bool {
 	return ok && strings.HasSuffix(strings.ToLower(ae.ProblemType), ":badnonce")
 }
 
-// isRetriable reports whether a request can be retried
-// based on the response status code.
+// defaultShouldRetry reports whether a request can be retried
+// based on the HTTP response status code.
 //
 // Note that a "bad nonce" error is returned with a non-retriable 400 Bad Request code.
 // Callers should parse the response and check with isBadNonce.
-func isRetriable(code int) bool {
-	return code <= 399 || code >= 500 || code == http.StatusTooManyRequests
+func defaultShouldRetry(resp *http.Response) bool {
+	return resp.StatusCode <= 399 || resp.StatusCode >= 500 || resp.StatusCode == http.StatusTooManyRequests
 }
 
 // responseError creates an error of Error type from resp.
