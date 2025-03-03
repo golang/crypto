@@ -7,6 +7,7 @@ package ssh_test
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"fmt"
@@ -17,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
@@ -260,6 +262,30 @@ func ExampleDial() {
 		log.Fatal("Failed to run: " + err.Error())
 	}
 	fmt.Println(b.String())
+}
+
+func ExampleDialContext() {
+	var hostKey ssh.PublicKey
+	config := &ssh.ClientConfig{
+		User: "username",
+		Auth: []ssh.AuthMethod{
+			ssh.Password("yourpassword"),
+		},
+		HostKeyCallback: ssh.FixedHostKey(hostKey),
+	}
+
+	// The Context supplied to DialContext allows the caller to control
+	// the timeout or cancel opening an SSH connection.
+	//
+	// Cancelling the context after DialContext returns will not effect
+	// the resulting Client.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	client, err := ssh.DialContext(ctx, "tcp", "yourserver.com:22", config)
+	if err != nil {
+		log.Fatal("Failed to dial: ", err)
+	}
+	defer client.Close()
 }
 
 func ExamplePublicKeys() {
