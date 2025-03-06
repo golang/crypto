@@ -196,14 +196,17 @@ func (r *keyring) Sign(key ssh.PublicKey, data []byte) (*ssh.Signature, error) {
 
 func (r *keyring) SignWithFlags(key ssh.PublicKey, data []byte, flags SignatureFlags) (*ssh.Signature, error) {
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.locked {
+		r.mu.Unlock()
 		return nil, errLocked
 	}
 
 	r.expireKeysLocked()
+	keys := append(r.keys[:0:0], r.keys...)
+	r.mu.Unlock()
+
 	wanted := key.Marshal()
-	for _, k := range r.keys {
+	for _, k := range keys {
 		if bytes.Equal(k.signer.PublicKey().Marshal(), wanted) {
 			if flags == 0 {
 				return k.signer.Sign(rand.Reader, data)
