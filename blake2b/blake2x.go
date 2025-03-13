@@ -60,7 +60,7 @@ func NewXOF(size uint32, key []byte) (XOF, error) {
 		size = magicUnknownOutputLength
 	}
 	x := &xof{
-		d: digest{
+		d: Digest{
 			size:   Size,
 			keyLen: len(key),
 		},
@@ -72,7 +72,7 @@ func NewXOF(size uint32, key []byte) (XOF, error) {
 }
 
 type xof struct {
-	d                digest
+	d                Digest
 	length           uint32
 	remaining        uint64
 	cfg, root, block [Size]byte
@@ -169,7 +169,7 @@ func (x *xof) Read(p []byte) (n int, err error) {
 	return
 }
 
-func (d *digest) initConfig(cfg *[Size]byte) {
+func (d *Digest) initConfig(cfg *[Size]byte) {
 	d.offset, d.c[0], d.c[1] = 0, 0, 0
 	for i := range d.h {
 		d.h[i] = iv[i] ^ binary.LittleEndian.Uint64(cfg[i*8:])
