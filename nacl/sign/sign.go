@@ -44,7 +44,9 @@ func GenerateKey(rand io.Reader) (publicKey *[32]byte, privateKey *[64]byte, err
 }
 
 // Sign appends a signed copy of message to out, which will be Overhead bytes
-// longer than the original and must not overlap it.
+// longer than the original and must not overlap it. The return value is a
+// slice containing the signed message, which may point to a newly allocated
+// buffer if out lacks sufficient capacity.
 func Sign(out, message []byte, privateKey *[64]byte) []byte {
 	sig := ed25519.Sign(ed25519.PrivateKey((*privateKey)[:]), message)
 	ret, out := sliceForAppend(out, Overhead+len(message))
@@ -58,7 +60,9 @@ func Sign(out, message []byte, privateKey *[64]byte) []byte {
 
 // Open verifies a signed message produced by Sign and appends the message to
 // out, which must not overlap the signed message. The output will be Overhead
-// bytes smaller than the signed message.
+// bytes smaller than the signed message. The return values are the updated out
+// slice containing the verified message and a boolean indicating whether the
+// signature verification was successful.
 func Open(out, signedMessage []byte, publicKey *[32]byte) ([]byte, bool) {
 	if len(signedMessage) < Overhead {
 		return nil, false
