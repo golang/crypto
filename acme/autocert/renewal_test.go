@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/acme"
-	"golang.org/x/crypto/acme/autocert/internal/acmetest"
+	"github.com/khulnasoft/golang-crypto/acme"
+	"github.com/khulnasoft/golang-crypto/acme/autocert/internal/acmetest"
 )
 
 func TestRenewalNext(t *testing.T) {

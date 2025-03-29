@@ -27,8 +27,8 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/crypto/acme"
-	"golang.org/x/crypto/acme/autocert/internal/acmetest"
+	"github.com/khulnasoft/golang-crypto/acme"
+	"github.com/khulnasoft/golang-crypto/acme/autocert/internal/acmetest"
 )
 
 var (
@@ -619,7 +619,7 @@ func TestCache(t *testing.T) {
 		PrivateKey:  ecdsaKey,
 	}
 
-	rsaKey, err := rsa.GenerateKey(rand.Reader, 1024)
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 512)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -694,7 +694,7 @@ func TestValidCert(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	key3, err := rsa.GenerateKey(rand.Reader, 1024)
+	key3, err := rsa.GenerateKey(rand.Reader, 512)
 	if err != nil {
 		t.Fatal(err)
 	}

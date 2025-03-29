@@ -19,7 +19,7 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/crypto/ssh"
+	"github.com/khulnasoft/golang-crypto/ssh"
 )
 
 func skipIfIssue64959(t *testing.T, err error) {

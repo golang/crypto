@@ -227,6 +227,8 @@ func (m *mux) onePacket() error {
 	}
 
 	switch packet[0] {
+	case msgUnimplemented:
+		return nil
 	case msgChannelOpen:
 		return m.handleChannelOpen(packet)
 	case msgGlobalRequest, msgRequestSuccess, msgRequestFailure:

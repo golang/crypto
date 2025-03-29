@@ -24,7 +24,7 @@ import (
 	"crypto/ed25519"
 	"io"
 
-	"golang.org/x/crypto/internal/alias"
+	"github.com/khulnasoft/golang-crypto/internal/alias"
 )
 
 // Overhead is the number of bytes of overhead when signing a message.

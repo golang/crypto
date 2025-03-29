@@ -59,27 +59,6 @@ type GSSAPIWithMICConfig struct {
 	Server GSSAPIServer
 }
 
-// SendAuthBanner implements [ServerPreAuthConn].
-func (s *connection) SendAuthBanner(msg string) error {
-	return s.transport.writePacket(Marshal(&userAuthBannerMsg{
-		Message: msg,
-	}))
-}
-
-func (*connection) unexportedMethodForFutureProofing() {}
-
-// ServerPreAuthConn is the interface available on an incoming server
-// connection before authentication has completed.
-type ServerPreAuthConn interface {
-	unexportedMethodForFutureProofing() // permits growing ServerPreAuthConn safely later, ala testing.TB
-
-	ConnMetadata
-
-	// SendAuthBanner sends a banner message to the client.
-	// It returns an error once the authentication phase has ended.
-	SendAuthBanner(string) error
-}
-
 // ServerConfig holds server specific configuration data.
 type ServerConfig struct {
 	// Config contains configuration shared between client and server.
@@ -104,6 +83,7 @@ type ServerConfig struct {
 	// attempts to authenticate with auth method "none".
 	// NoClientAuth must also be set to true for this be used, or
 	// this func is unused.
+	// If the function returns ErrDenied, the connection is terminated.
 	NoClientAuthCallback func(ConnMetadata) (*Permissions, error)
 
 	// MaxAuthTries specifies the maximum number of authentication attempts
@@ -114,6 +94,7 @@ type ServerConfig struct {
 
 	// PasswordCallback, if non-nil, is called when a user
 	// attempts to authenticate using a password.
+	// If the function returns ErrDenied, the connection is terminated.
 	PasswordCallback func(conn ConnMetadata, password []byte) (*Permissions, error)
 
 	// PublicKeyCallback, if non-nil, is called when a client
@@ -124,6 +105,7 @@ type ServerConfig struct {
 	// offered is in fact used to authenticate. To record any data
 	// depending on the public key, store it inside a
 	// Permissions.Extensions entry.
+	// If the function returns ErrDenied, the connection is terminated.
 	PublicKeyCallback func(conn ConnMetadata, key PublicKey) (*Permissions, error)
 
 	// KeyboardInteractiveCallback, if non-nil, is called when
@@ -133,17 +115,12 @@ type ServerConfig struct {
 	// Challenge rounds. To avoid information leaks, the client
 	// should be presented a challenge even if the user is
 	// unknown.
+	// If the function returns ErrDenied, the connection is terminated.
 	KeyboardInteractiveCallback func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error)
 
 	// AuthLogCallback, if non-nil, is called to log all authentication
 	// attempts.
 	AuthLogCallback func(conn ConnMetadata, method string, err error)
-
-	// PreAuthConnCallback, if non-nil, is called upon receiving a new connection
-	// before any authentication has started. The provided ServerPreAuthConn
-	// can be used at any time before authentication is complete, including
-	// after this callback has returned.
-	PreAuthConnCallback func(ServerPreAuthConn)
 
 	// ServerVersion is the version identification string to announce in
 	// the public handshake.
@@ -343,6 +320,19 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	return perms, err
 }
 
+// WithBannerError is an error wrapper type that can be returned from an authentication
+// function to additionally write out a banner error message.
+type WithBannerError struct {
+	Err     error
+	Message string
+}
+
+func (e WithBannerError) Unwrap() error {
+	return e.Err
+}
+
+func (e WithBannerError) Error() string { return e.Err.Error() }
+
 func checkSourceAddress(addr net.Addr, sourceAddrs string) error {
 	if addr == nil {
 		return errors.New("ssh: no address known for client, but source-address match required")
@@ -489,12 +479,19 @@ func (p *PartialSuccessError) Error() string {
 	return "ssh: authenticated with partial success"
 }
 
-// ErrNoAuth is the error value returned if no
-// authentication method has been passed yet. This happens as a normal
-// part of the authentication loop, since the client first tries
-// 'none' authentication to discover available methods.
-// It is returned in ServerAuthError.Errors from NewServerConn.
-var ErrNoAuth = errors.New("ssh: no auth passed yet")
+var (
+	// ErrDenied can be returned from an authentication callback to inform the
+	// client that access is denied and that no further attempt will be accepted
+	// on the connection.
+	ErrDenied = errors.New("ssh: access denied")
+
+	// ErrNoAuth is the error value returned if no
+	// authentication method has been passed yet. This happens as a normal
+	// part of the authentication loop, since the client first tries
+	// 'none' authentication to discover available methods.
+	// It is returned in ServerAuthError.Errors from NewServerConn.
+	ErrNoAuth = errors.New("ssh: no auth passed yet")
+)
 
 // BannerError is an error that can be returned by authentication handlers in
 // ServerConfig to send a banner message to the client.
@@ -515,10 +512,6 @@ func (b *BannerError) Error() string {
 }
 
 func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, error) {
-	if config.PreAuthConnCallback != nil {
-		config.PreAuthConnCallback(s)
-	}
-
 	sessionID := s.transport.getSessionID()
 	var cache pubKeyCache
 	var perms *Permissions
@@ -526,7 +519,7 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 	authFailures := 0
 	noneAuthCount := 0
 	var authErrs []error
-	var calledBannerCallback bool
+	var displayedBanner bool
 	partialSuccessReturned := false
 	// Set the initial authentication callbacks from the config. They can be
 	// changed if a PartialSuccessError is returned.
@@ -573,10 +566,14 @@ userAuthLoop:
 
 		s.user = userAuthReq.User
 
-		if !calledBannerCallback && config.BannerCallback != nil {
-			calledBannerCallback = true
-			if msg := config.BannerCallback(s); msg != "" {
-				if err := s.SendAuthBanner(msg); err != nil {
+		if !displayedBanner && config.BannerCallback != nil {
+			displayedBanner = true
+			msg := config.BannerCallback(s)
+			if msg != "" {
+				bannerMsg := &userAuthBannerMsg{
+					Message: msg,
+				}
+				if err := s.transport.writePacket(Marshal(bannerMsg)); err != nil {
 					return nil, err
 				}
 			}
@@ -789,7 +786,10 @@ userAuthLoop:
 		var bannerErr *BannerError
 		if errors.As(authErr, &bannerErr) {
 			if bannerErr.Message != "" {
-				if err := s.SendAuthBanner(bannerErr.Message); err != nil {
+				bannerMsg := &userAuthBannerMsg{
+					Message: bannerErr.Message,
+				}
+				if err := s.transport.writePacket(Marshal(bannerMsg)); err != nil {
 					return nil, err
 				}
 			}
@@ -797,6 +797,22 @@ userAuthLoop:
 
 		if authErr == nil {
 			break userAuthLoop
+		}
+
+		var w WithBannerError
+		if errors.As(authErr, &w) && w.Message != "" {
+			bannerMsg := &userAuthBannerMsg{Message: w.Message}
+			if err := s.transport.writePacket(Marshal(bannerMsg)); err != nil {
+				return nil, err
+			}
+		}
+		if errors.Is(authErr, ErrDenied) {
+			var failureMsg userAuthFailureMsg
+			if err := s.transport.writePacket(Marshal(failureMsg)); err != nil {
+				return nil, err
+			}
+
+			return nil, authErr
 		}
 
 		var failureMsg userAuthFailureMsg

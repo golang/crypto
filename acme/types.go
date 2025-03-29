@@ -7,7 +7,6 @@ package acme
 import (
 	"crypto"
 	"crypto/x509"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -528,16 +527,6 @@ type Challenge struct {
 	// when this challenge was used.
 	// The type of a non-nil value is *Error.
 	Error error
-
-	// Payload is the JSON-formatted payload that the client sends
-	// to the server to indicate it is ready to respond to the challenge.
-	// When unset, it defaults to an empty JSON object: {}.
-	// For most challenges, the client must not set Payload,
-	// see https://tools.ietf.org/html/rfc8555#section-7.5.1.
-	// Payload is used only for newer challenges (such as "device-attest-01")
-	// where the client must send additional data for the server to validate
-	// the challenge.
-	Payload json.RawMessage
 }
 
 // wireChallenge is ACME JSON challenge representation.
