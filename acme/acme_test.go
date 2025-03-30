@@ -15,6 +15,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -251,6 +252,57 @@ func TestAuthorizeValid(t *testing.T) {
 	_, err := client.Authorize(context.Background(), "example.com")
 	if err != nil {
 		t.Errorf("err = %v", err)
+	}
+}
+
+func TestAuthorizeUnsupported(t *testing.T) {
+	const (
+		nonce       = "https://example.com/acme/new-nonce"
+		reg         = "https://example.com/acme/new-acct"
+		order       = "https://example.com/acme/new-order"
+		revoke      = "https://example.com/acme/revoke-cert"
+		keychange   = "https://example.com/acme/key-change"
+		metaTerms   = "https://example.com/acme/terms/2017-5-30"
+		metaWebsite = "https://www.example.com/"
+		metaCAA     = "example.com"
+	)
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Replay-Nonce", "nonce")
+		if r.Method == http.MethodHead {
+			return
+		}
+		switch r.URL.Path {
+		case "/": // Directory
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{
+                "newNonce": %q,
+                "newAccount": %q,
+                "newOrder": %q,
+                "revokeCert": %q,
+                "keyChange": %q,
+                "meta": {
+                    "termsOfService": %q,
+                    "website": %q,
+                    "caaIdentities": [%q],
+                    "externalAccountRequired": true
+                }
+            }`, nonce, reg, order, revoke, keychange, metaTerms, metaWebsite, metaCAA)
+			w.WriteHeader(http.StatusOK)
+		case "/acme/new-authz":
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer ts.Close()
+	client := &Client{Key: testKey, DirectoryURL: ts.URL}
+	dir, err := client.Discover(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir.AuthzURL != "" {
+		t.Fatalf("expected AuthzURL to be empty, got %q", dir.AuthzURL)
+	}
+	if _, err := client.Authorize(context.Background(), "example.com"); !errors.Is(err, errPreAuthorizationNotSupported) {
+		t.Errorf("expected err to indicate pre-authorization is unsupported, got %+v", err)
 	}
 }
 
