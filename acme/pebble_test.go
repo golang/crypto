@@ -69,8 +69,9 @@ func TestWithPebble(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		challSrv func(*environment) (challengeServer, string)
+		name      string
+		challSrv  func(*environment) (challengeServer, string)
+		orderOpts []acme.OrderOption
 	}{
 		{
 			name: "TLSALPN01-Issuance",
@@ -78,14 +79,23 @@ func TestWithPebble(t *testing.T) {
 				bindAddr := fmt.Sprintf(":%d", env.config.TLSPort)
 				return newChallTLSServer(bindAddr), bindAddr
 			},
+			orderOpts: []acme.OrderOption{},
 		},
-
 		{
 			name: "HTTP01-Issuance",
 			challSrv: func(env *environment) (challengeServer, string) {
 				bindAddr := fmt.Sprintf(":%d", env.config.HTTPPort)
 				return newChallHTTPServer(bindAddr), bindAddr
 			},
+			orderOpts: []acme.OrderOption{},
+		},
+		{
+			name: "HTTP01-Issuance with shortlived Profile",
+			challSrv: func(env *environment) (challengeServer, string) {
+				bindAddr := fmt.Sprintf(":%d", env.config.HTTPPort)
+				return newChallHTTPServer(bindAddr), bindAddr
+			},
+			orderOpts: []acme.OrderOption{acme.WithOrderIssuanceProfile(acme.ProfileName("default"))},
 		},
 	}
 
@@ -102,8 +112,73 @@ func TestWithPebble(t *testing.T) {
 			})
 
 			waitForServer(t, challSrvAddr)
-			testIssuance(t, &env, challSrv)
+			testIssuance(t, &env, challSrv, tt.orderOpts)
 		})
+	}
+}
+
+func TestUnsupportedProfileWithPebble(t *testing.T) {
+	// We want to use process groups w/ syscall.Kill, and the acme package
+	// is very platform-agnostic, so skip on non-Linux.
+	if runtime.GOOS != "linux" {
+		t.Skip("skipping pebble tests on non-linux OS")
+	}
+
+	if testing.Short() {
+		t.Skip("skipping pebble tests in short mode")
+	}
+	t.Parallel()
+
+	env := startPebbleEnvironment(t, nil)
+	bindAddr := fmt.Sprintf(":%d", env.config.HTTPPort)
+	challSrv, challSrvAddr := newChallHTTPServer(bindAddr), bindAddr
+	challSrv.Run()
+
+	t.Cleanup(func() {
+		if err := challSrv.Shutdown(); err != nil {
+			t.Logf("error shutting down challenge server: %+v", err)
+		}
+	})
+
+	waitForServer(t, challSrvAddr)
+
+	// Bound the total issuance process by a timeout of 60 seconds.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Create a new ACME account.
+	client := env.client
+	acct, err := client.Register(ctx, &acme.Account{}, acme.AcceptTOS)
+	if err != nil {
+		t.Fatalf("failed to register account: %v", err)
+	}
+	if acct.Status != acme.StatusValid {
+		t.Fatalf("expected new account status to be valid, got %v", acct.Status)
+	}
+	t.Logf("registered account: %s", acct.URI)
+
+	// Create a new order for some example identifiers
+	identifiers := []acme.AuthzID{
+		{
+			Type:  "dns",
+			Value: "example.com",
+		},
+		{
+			Type:  "dns",
+			Value: "www.example.com",
+		},
+		{
+			Type:  "ip",
+			Value: "127.0.0.1",
+		},
+	}
+	order, err := client.AuthorizeOrder(ctx, identifiers, acme.WithOrderIssuanceProfile("does-not-exist"))
+	if err == nil {
+		t.Fatalf("expected authorize order to return an error but got nil: identifiers = %+v; order = %+v", identifiers, order)
+	}
+	const wantErr = "does not advertise a profile with name"
+	if !strings.Contains(err.Error(), wantErr) {
+		t.Fatalf("got error %q, want it to contain %q", err, wantErr)
 	}
 }
 
@@ -306,7 +381,7 @@ func (c *challHTTPServer) Run() {
 	}()
 }
 
-func testIssuance(t *testing.T, env *environment, challSrv challengeServer) {
+func testIssuance(t *testing.T, env *environment, challSrv challengeServer, orderOpts []acme.OrderOption) {
 	t.Helper()
 
 	// Bound the total issuance process by a timeout of 60 seconds.
@@ -339,7 +414,7 @@ func testIssuance(t *testing.T, env *environment, challSrv challengeServer) {
 			Value: "127.0.0.1",
 		},
 	}
-	order, err := client.AuthorizeOrder(ctx, identifiers)
+	order, err := client.AuthorizeOrder(ctx, identifiers, orderOpts...)
 	if err != nil {
 		t.Fatalf("failed to create order for %v: %v", identifiers, err)
 	}

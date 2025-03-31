@@ -185,10 +185,11 @@ func (c *Client) Discover(ctx context.Context) (Directory, error) {
 		Nonce     string `json:"newNonce"`
 		KeyChange string `json:"keyChange"`
 		Meta      struct {
-			Terms        string   `json:"termsOfService"`
-			Website      string   `json:"website"`
-			CAA          []string `json:"caaIdentities"`
-			ExternalAcct bool     `json:"externalAccountRequired"`
+			Terms        string                 `json:"termsOfService"`
+			Website      string                 `json:"website"`
+			CAA          []string               `json:"caaIdentities"`
+			ExternalAcct bool                   `json:"externalAccountRequired"`
+			Profiles     map[ProfileName]string `json:"profiles"`
 		}
 	}
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
@@ -208,6 +209,7 @@ func (c *Client) Discover(ctx context.Context) (Directory, error) {
 		Website:                 v.Meta.Website,
 		CAA:                     v.Meta.CAA,
 		ExternalAccountRequired: v.Meta.ExternalAcct,
+		Profiles:                v.Meta.Profiles,
 	}
 	return *c.dir, nil
 }

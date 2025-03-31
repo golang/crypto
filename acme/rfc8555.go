@@ -14,6 +14,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
+	"strings"
 	"time"
 )
 
@@ -208,6 +210,7 @@ func (c *Client) AuthorizeOrder(ctx context.Context, id []AuthzID, opt ...OrderO
 		Identifiers []wireAuthzID `json:"identifiers"`
 		NotBefore   string        `json:"notBefore,omitempty"`
 		NotAfter    string        `json:"notAfter,omitempty"`
+		Profile     string        `json:"profile,omitempty"`
 	}{}
 	for _, v := range id {
 		req.Identifiers = append(req.Identifiers, wireAuthzID{
@@ -221,6 +224,19 @@ func (c *Client) AuthorizeOrder(ctx context.Context, id []AuthzID, opt ...OrderO
 			req.NotBefore = time.Time(o).Format(time.RFC3339)
 		case orderNotAfterOpt:
 			req.NotAfter = time.Time(o).Format(time.RFC3339)
+		case orderProfileOpt:
+			if len(dir.Profiles) == 0 {
+				return nil, errCADoesNotSupportProfiles
+			}
+			profileName := o.profileName()
+			if _, ok := dir.Profiles[profileName]; !ok {
+				return nil, fmt.Errorf(
+					"%w %s (supported profiles: %s)",
+					errProfileNotInSetOfSupportedProfiles,
+					profileName,
+					strings.Join(profileNames(dir.Profiles), ", "))
+			}
+			req.Profile = string(profileName)
 		default:
 			// Package's fault if we let this happen.
 			panic(fmt.Sprintf("unsupported order option type %T", o))
@@ -233,6 +249,15 @@ func (c *Client) AuthorizeOrder(ctx context.Context, id []AuthzID, opt ...OrderO
 	}
 	defer res.Body.Close()
 	return responseOrder(res)
+}
+
+func profileNames(profiles map[ProfileName]string) []string {
+	names := make([]string, 0, len(profiles))
+	for name := range profiles {
+		names = append(names, string(name))
+	}
+	slices.Sort(names)
+	return names
 }
 
 // GetOrder retrieves an order identified by the given URL.
@@ -315,6 +340,7 @@ func responseOrder(res *http.Response) (*Order, error) {
 		Authorizations []string
 		Finalize       string
 		Certificate    string
+		Profile        string
 	}
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
 		return nil, fmt.Errorf("acme: error reading order: %v", err)
@@ -328,6 +354,7 @@ func responseOrder(res *http.Response) (*Order, error) {
 		AuthzURLs:   v.Authorizations,
 		FinalizeURL: v.Finalize,
 		CertURL:     v.Certificate,
+		Profile:     ProfileName(v.Profile),
 	}
 	for _, id := range v.Identifiers {
 		o.Identifiers = append(o.Identifiers, AuthzID{Type: id.Type, Value: id.Value})
