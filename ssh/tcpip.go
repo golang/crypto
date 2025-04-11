@@ -82,7 +82,7 @@ func (c *Client) autoPortListenWorkaround(laddr *net.TCPAddr) (net.Listener, err
 			return sshListener, err
 		}
 	}
-	return nil, fmt.Errorf("ssh: listen on random port failed after %d tries: %v", tries, err)
+	return nil, fmt.Errorf("ssh: listen on random port failed after %d tries: %w", tries, err)
 }
 
 // RFC 4254 7.1
