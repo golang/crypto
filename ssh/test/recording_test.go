@@ -23,6 +23,7 @@ import (
 	"text/template"
 	"time"
 
+	"golang.org/x/crypto/sha3"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -410,6 +411,15 @@ func writeFile(path string, contents []byte) {
 	if _, err := f.Write(contents); err != nil {
 		panic(err)
 	}
+}
+
+// setDeterministicRandomSource sets a deterministic random source for the
+// provided ssh.Config. It is intended solely for use in test cases, as
+// deterministic randomness is insecure and should never be used in production
+// environments. A deterministic random source is required to enable consistent
+// testing against recorded session files.
+func setDeterministicRandomSource(config *ssh.Config) {
+	config.Rand = sha3.NewShake128()
 }
 
 func TestMain(m *testing.M) {

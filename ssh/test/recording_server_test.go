@@ -18,7 +18,6 @@ import (
 	"time"
 
 	"golang.org/x/crypto/internal/testenv"
-	"golang.org/x/crypto/sha3"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/testdata"
 )
@@ -132,6 +131,8 @@ func (test *serverTest) run(t *testing.T, write bool) {
 	var serverConn net.Conn
 	var recordingConn *recordingConn
 
+	setDeterministicRandomSource(&test.config.Config)
+
 	if write {
 		var err error
 		recordingConn, err = test.connFromCommand(t)
@@ -211,9 +212,6 @@ func (test *serverTest) run(t *testing.T, write bool) {
 
 func recordingsServerConfig() *ssh.ServerConfig {
 	config := &ssh.ServerConfig{
-		Config: ssh.Config{
-			Rand: sha3.NewShake128(),
-		},
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
 			return nil, nil
 		},

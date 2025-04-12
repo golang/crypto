@@ -21,7 +21,6 @@ import (
 	"time"
 
 	"golang.org/x/crypto/internal/testenv"
-	"golang.org/x/crypto/sha3"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/testdata"
 )
@@ -169,6 +168,8 @@ func (test *clientTest) run(t *testing.T, write bool) {
 	var clientConn net.Conn
 	var recordingConn *recordingConn
 
+	setDeterministicRandomSource(&test.config.Config)
+
 	if write {
 		// We store the username used when we record the connection so we can
 		// reuse the same username when running tests.
@@ -238,7 +239,6 @@ func recordingsClientConfig() *ssh.ClientConfig {
 	if config.KeyExchanges[0] == "mlkem768x25519-sha256" {
 		config.KeyExchanges = config.KeyExchanges[1:]
 	}
-	config.Rand = sha3.NewShake128()
 	config.Auth = []ssh.AuthMethod{
 		ssh.PublicKeys(testSigners["rsa"]),
 	}
