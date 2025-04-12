@@ -50,11 +50,11 @@ IgnoreRhosts yes
 RhostsRSAAuthentication no
 HostbasedAuthentication no
 PubkeyAcceptedKeyTypes=*
-# In recent OpenSSH versions, the 'diffie-hellman-group14-sha1'
-# algorithm is disabled by default. However, it remains part of
-# our default Key Exchange (KEX) configuration, so we explicitly
-# enable it to ensure compatibility for testing.
-KexAlgorithms +diffie-hellman-group14-sha1
+# In recent versions of OpenSSH, Diffie-Hellman key exchange algorithms
+# are disabled by default. However, they are still included in our default
+# Key Exchange (KEX) configuration. We explicitly enable them here to
+# maintain compatibility for our test cases.
+KexAlgorithms +diffie-hellman-group14-sha1,diffie-hellman-group14-sha256,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512,diffie-hellman-group-exchange-sha256
 `
 	multiAuthSshdConfigTail = `
 UsePAM yes
