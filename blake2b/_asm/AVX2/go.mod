@@ -1,10 +1,11 @@
 module blake2b/_asm/AVX2
 
 go 1.23
+toolchain go1.24.1
 
 require (
 	github.com/mmcloughlin/avo v0.6.0
-	golang.org/x/crypto v0.33.0
+	golang.org/x/crypto v0.35.0
 
 )
 
