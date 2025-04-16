@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -232,8 +233,8 @@ func (test *clientTest) run(t *testing.T, write bool) {
 
 func recordingsClientConfig() *ssh.ClientConfig {
 	config := clientConfig()
-	// Remove ML-KEM since it only works with Go 1.24.
 	config.SetDefaults()
+	// Remove ML-KEM since it only works with Go 1.24.
 	if config.KeyExchanges[0] == "mlkem768x25519-sha256" {
 		config.KeyExchanges = config.KeyExchanges[1:]
 	}
@@ -322,6 +323,9 @@ func TestBannerCallback(t *testing.T) {
 }
 
 func TestRunCommandSuccess(t *testing.T) {
+	if runtime.GOARCH == "wasm" {
+		t.Skip("skipping test, executing a command, session.Run(), is not supported on wasm")
+	}
 	test := clientTest{
 		name:   "RunCommandSuccess",
 		config: recordingsClientConfig(),
@@ -361,6 +365,9 @@ func TestHostKeyCheck(t *testing.T) {
 }
 
 func TestRunCommandStdin(t *testing.T) {
+	if runtime.GOARCH == "wasm" {
+		t.Skip("skipping test, executing a command, session.Run(), is not supported on wasm")
+	}
 	test := clientTest{
 		name:   "RunCommandStdin",
 		config: recordingsClientConfig(),
@@ -387,6 +394,9 @@ func TestRunCommandStdin(t *testing.T) {
 }
 
 func TestRunCommandStdinError(t *testing.T) {
+	if runtime.GOARCH == "wasm" {
+		t.Skip("skipping test, executing a command, session.Run(), is not supported on wasm")
+	}
 	test := clientTest{
 		name:   "RunCommandStdinError",
 		config: recordingsClientConfig(),
@@ -414,6 +424,9 @@ func TestRunCommandStdinError(t *testing.T) {
 }
 
 func TestRunCommandFailed(t *testing.T) {
+	if runtime.GOARCH == "wasm" {
+		t.Skip("skipping test, executing a command, session.Run(), is not supported on wasm")
+	}
 	test := clientTest{
 		name:   "RunCommandFailed",
 		config: recordingsClientConfig(),
@@ -437,6 +450,9 @@ func TestRunCommandFailed(t *testing.T) {
 }
 
 func TestWindowChange(t *testing.T) {
+	if runtime.GOARCH == "wasm" {
+		t.Skip("skipping test, stdin/out are not supported on wasm")
+	}
 	test := clientTest{
 		name:   "WindowChange",
 		config: recordingsClientConfig(),
