@@ -128,7 +128,7 @@ func clientConfig() *ssh.ClientConfig {
 		HostKeyCallback: hostKeyDB().Check,
 		HostKeyAlgorithms: []string{ // by default, don't allow certs as this affects the hostKeyDB checker
 			ssh.KeyAlgoECDSA256, ssh.KeyAlgoECDSA384, ssh.KeyAlgoECDSA521,
-			ssh.KeyAlgoRSA, ssh.KeyAlgoDSA,
+			ssh.KeyAlgoRSA, ssh.InsecureKeyAlgoDSA,
 			ssh.KeyAlgoED25519,
 		},
 	}

@@ -762,7 +762,7 @@ func TestHandshakePendingPacketsError(t *testing.T) {
 func TestHandshakeRekeyDefault(t *testing.T) {
 	clientConf := &ClientConfig{
 		Config: Config{
-			Ciphers: []string{"aes128-ctr"},
+			Ciphers: []string{CipherAES128CTR},
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	}
@@ -788,7 +788,7 @@ func TestHandshakeRekeyDefault(t *testing.T) {
 }
 
 func TestHandshakeAEADCipherNoMAC(t *testing.T) {
-	for _, cipher := range []string{chacha20Poly1305ID, gcm128CipherID} {
+	for _, cipher := range []string{CipherChaCha20Poly1305, CipherAES128GCM} {
 		checker := &syncChecker{
 			called: make(chan int, 1),
 		}

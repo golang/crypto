@@ -154,6 +154,75 @@ func ExampleNewServerConn() {
 	}
 }
 
+func ExampleServerConfig() {
+	// Minimal ServerConfig with SHA-1 algoritms disabled and supporting only
+	// public key authentication.
+
+	// The algorithms returned by ssh.SupportedAlgorithms() are different from
+	// the default ones and do not include algorithms that are considered
+	// insecure, such as those using SHA-1, returned by
+	// ssh.InsecureAlgorithms().
+	algorithms := ssh.SupportedAlgorithms()
+
+	// Public key authentication is done by comparing
+	// the public key of a received connection
+	// with the entries in the authorized_keys file.
+	authorizedKeysBytes, err := os.ReadFile("authorized_keys")
+	if err != nil {
+		log.Fatalf("Failed to load authorized_keys, err: %v", err)
+	}
+
+	authorizedKeysMap := map[string]bool{}
+	for len(authorizedKeysBytes) > 0 {
+		pubKey, _, _, rest, err := ssh.ParseAuthorizedKey(authorizedKeysBytes)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		authorizedKeysMap[string(pubKey.Marshal())] = true
+		authorizedKeysBytes = rest
+	}
+
+	config := &ssh.ServerConfig{
+		Config: ssh.Config{
+			KeyExchanges: algorithms.KeyExchanges,
+			Ciphers:      algorithms.Ciphers,
+			MACs:         algorithms.MACs,
+		},
+		// The configured PublicKeyAuthAlgorithms do not contain SHA-1 based
+		// signature formats, so if the client attempts to use them the
+		// authentication will fail before calling the defined callback.
+		PublicKeyAuthAlgorithms: algorithms.PublicKeyAuths,
+		PublicKeyCallback: func(c ssh.ConnMetadata, pubKey ssh.PublicKey) (*ssh.Permissions, error) {
+			if authorizedKeysMap[string(pubKey.Marshal())] {
+				return &ssh.Permissions{
+					// Record the public key used for authentication.
+					Extensions: map[string]string{
+						"pubkey-fp": ssh.FingerprintSHA256(pubKey),
+					},
+				}, nil
+			}
+			return nil, fmt.Errorf("unknown public key for %q", c.User())
+		},
+	}
+
+	privateBytes, err := os.ReadFile("id_rsa")
+	if err != nil {
+		log.Fatal("Failed to load private key: ", err)
+	}
+
+	private, err := ssh.ParsePrivateKey(privateBytes)
+	if err != nil {
+		log.Fatal("Failed to parse private key: ", err)
+	}
+	// Restrict host key algorithms to disable ssh-rsa.
+	signer, err := ssh.NewSignerWithAlgorithms(private.(ssh.AlgorithmSigner), []string{ssh.KeyAlgoRSASHA256, ssh.KeyAlgoRSASHA512})
+	if err != nil {
+		log.Fatal("Failed to create private key with restricted algorithms: ", err)
+	}
+	config.AddHostKey(signer)
+}
+
 func ExampleServerConfig_AddHostKey() {
 	// Minimal ServerConfig supporting only password authentication.
 	config := &ssh.ServerConfig{
@@ -260,6 +329,47 @@ func ExampleDial() {
 		log.Fatal("Failed to run: " + err.Error())
 	}
 	fmt.Println(b.String())
+}
+
+func ExampleClientConfig() {
+	var hostKey ssh.PublicKey
+	key, err := os.ReadFile("/home/user/.ssh/id_rsa")
+	if err != nil {
+		log.Fatalf("unable to read private key: %v", err)
+	}
+
+	// Create the Signer for this private key.
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		log.Fatalf("unable to parse private key: %v", err)
+	}
+
+	// Minimal ClientConfig with SHA-1 algoritms disabled.
+	// The algorithms returned by ssh.SupportedAlgorithms() are different from
+	// the default ones and do not include algorithms that are considered
+	// insecure, such as those using SHA-1, returned by
+	// ssh.InsecureAlgorithms().
+	algorithms := ssh.SupportedAlgorithms()
+	config := &ssh.ClientConfig{
+		Config: ssh.Config{
+			KeyExchanges: algorithms.KeyExchanges,
+			Ciphers:      algorithms.Ciphers,
+			MACs:         algorithms.MACs,
+		},
+		User: "username",
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.FixedHostKey(hostKey),
+		// We should check that hostKey algorithm is inlcuded in
+		// algorithms.HostKeys.
+		HostKeyAlgorithms: algorithms.HostKeys,
+	}
+	client, err := ssh.Dial("tcp", "yourserver.com:22", config)
+	if err != nil {
+		log.Fatal("Failed to dial: ", err)
+	}
+	defer client.Close()
 }
 
 func ExamplePublicKeys() {

@@ -98,36 +98,36 @@ func streamCipherMode(skip int, createFunc func(key, iv []byte) (cipher.Stream, 
 var cipherModes = map[string]*cipherMode{
 	// Ciphers from RFC 4344, which introduced many CTR-based ciphers. Algorithms
 	// are defined in the order specified in the RFC.
-	"aes128-ctr": {16, aes.BlockSize, streamCipherMode(0, newAESCTR)},
-	"aes192-ctr": {24, aes.BlockSize, streamCipherMode(0, newAESCTR)},
-	"aes256-ctr": {32, aes.BlockSize, streamCipherMode(0, newAESCTR)},
+	CipherAES128CTR: {16, aes.BlockSize, streamCipherMode(0, newAESCTR)},
+	CipherAES192CTR: {24, aes.BlockSize, streamCipherMode(0, newAESCTR)},
+	CipherAES256CTR: {32, aes.BlockSize, streamCipherMode(0, newAESCTR)},
 
 	// Ciphers from RFC 4345, which introduces security-improved arcfour ciphers.
 	// They are defined in the order specified in the RFC.
-	"arcfour128": {16, 0, streamCipherMode(1536, newRC4)},
-	"arcfour256": {32, 0, streamCipherMode(1536, newRC4)},
+	InsecureCipherRC4128: {16, 0, streamCipherMode(1536, newRC4)},
+	InsecureCipherRC4256: {32, 0, streamCipherMode(1536, newRC4)},
 
 	// Cipher defined in RFC 4253, which describes SSH Transport Layer Protocol.
 	// Note that this cipher is not safe, as stated in RFC 4253: "Arcfour (and
 	// RC4) has problems with weak keys, and should be used with caution."
 	// RFC 4345 introduces improved versions of Arcfour.
-	"arcfour": {16, 0, streamCipherMode(0, newRC4)},
+	InsecureCipherRC4: {16, 0, streamCipherMode(0, newRC4)},
 
 	// AEAD ciphers
-	gcm128CipherID:     {16, 12, newGCMCipher},
-	gcm256CipherID:     {32, 12, newGCMCipher},
-	chacha20Poly1305ID: {64, 0, newChaCha20Cipher},
+	CipherAES128GCM:        {16, 12, newGCMCipher},
+	CipherAES256GCM:        {32, 12, newGCMCipher},
+	CipherChaCha20Poly1305: {64, 0, newChaCha20Cipher},
 
 	// CBC mode is insecure and so is not included in the default config.
 	// (See https://www.ieee-security.org/TC/SP2013/papers/4977a526.pdf). If absolutely
 	// needed, it's possible to specify a custom Config to enable it.
 	// You should expect that an active attacker can recover plaintext if
 	// you do.
-	aes128cbcID: {16, aes.BlockSize, newAESCBCCipher},
+	InsecureCipherAES128CBC: {16, aes.BlockSize, newAESCBCCipher},
 
 	// 3des-cbc is insecure and is not included in the default
 	// config.
-	tripledescbcID: {24, des.BlockSize, newTripleDESCBCCipher},
+	InsecureCipherTripleDESCBC: {24, des.BlockSize, newTripleDESCBCCipher},
 }
 
 // prefixLen is the length of the packet prefix that contains the packet length
@@ -634,8 +634,6 @@ func (c *cbcCipher) writeCipherPacket(seqNum uint32, w io.Writer, rand io.Reader
 
 	return nil
 }
-
-const chacha20Poly1305ID = "chacha20-poly1305@openssh.com"
 
 // chacha20Poly1305Cipher implements the chacha20-poly1305@openssh.com
 // AEAD, which is described here:

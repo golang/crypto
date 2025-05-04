@@ -16,13 +16,6 @@ import (
 // wire. No message decoding is done, to minimize the impact on timing.
 const debugTransport = false
 
-const (
-	gcm128CipherID = "aes128-gcm@openssh.com"
-	gcm256CipherID = "aes256-gcm@openssh.com"
-	aes128cbcID    = "aes128-cbc"
-	tripledescbcID = "3des-cbc"
-)
-
 // packetConn represents a transport that implements packet based
 // operations.
 type packetConn interface {

@@ -297,7 +297,7 @@ func TestCertTypes(t *testing.T) {
 		{"legacyRSASigner", &legacyRSASigner{testSigners["rsa"]}, KeyAlgoRSA},
 		{"multiAlgoRSASignerSHA256", multiAlgoSignerSHA256, KeyAlgoRSASHA256},
 		{"multiAlgoRSASignerSHA512", multiAlgoSignerSHA512, KeyAlgoRSASHA512},
-		{CertAlgoDSAv01, testSigners["dsa"], ""},
+		{InsecureCertAlgoDSAv01, testSigners["dsa"], ""},
 	}
 
 	k, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)

@@ -164,7 +164,7 @@ func newClientTransport(conn keyingTransport, clientVersion, serverVersion []byt
 	if config.HostKeyAlgorithms != nil {
 		t.hostKeyAlgorithms = config.HostKeyAlgorithms
 	} else {
-		t.hostKeyAlgorithms = supportedHostKeyAlgos
+		t.hostKeyAlgorithms = defaultHostKeyAlgos
 	}
 	go t.readLoop()
 	go t.kexLoop()

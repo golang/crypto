@@ -224,8 +224,8 @@ func testOneCipher(t *testing.T, cipher string, cipherOrder []string) {
 }
 
 var deprecatedCiphers = []string{
-	"aes128-cbc", "3des-cbc",
-	"arcfour128", "arcfour256",
+	ssh.InsecureCipherAES128CBC, ssh.InsecureCipherTripleDESCBC,
+	ssh.InsecureCipherRC4128, ssh.InsecureCipherRC4256,
 }
 
 func TestCiphers(t *testing.T) {

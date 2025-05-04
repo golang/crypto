@@ -324,6 +324,9 @@ func TestMethodInvalidAlgorithm(t *testing.T) {
 }
 
 func TestClientHMAC(t *testing.T) {
+	supportedAlgos := SupportedAlgorithms()
+	insecureAlgos := InsecureAlgorithms()
+	supportedMACs := append(supportedAlgos.MACs, insecureAlgos.MACs...)
 	for _, mac := range supportedMACs {
 		config := &ClientConfig{
 			User: "testuser",
@@ -349,7 +352,7 @@ func TestClientUnsupportedCipher(t *testing.T) {
 			PublicKeys(),
 		},
 		Config: Config{
-			Ciphers: []string{"aes128-cbc"}, // not currently supported
+			Ciphers: []string{"unsupported-cipher"}, // not currently supported
 		},
 	}
 	if err := tryAuth(t, config); err == nil {
