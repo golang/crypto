@@ -88,11 +88,6 @@ func main() {
 	removePeskyUnicodeDot(internalFunctions, "../chacha20poly1305_amd64.s")
 }
 
-// Utility function to emit BYTE instruction
-func BYTE(u8 U8) {
-	Instruction(&ir.Instruction{Opcode: "BYTE", Operands: []Op{u8}})
-}
-
 func chachaQR_AVX2(A, B, C, D, T VecPhysical) {
 	VPADDD(B, A, A)
 	VPXOR(A, D, D)
@@ -373,38 +368,6 @@ func openSSETail16Store() {
 	JMP(LabelRef("openSSEFinalize"))
 }
 
-// Functions to emit AVX instructions via BYTE directive
-
-// broadcasti128 16(r8), ymm14
-func VBROADCASTI128_16_R8_YMM14() {
-	BYTE(U8(0xc4))
-	BYTE(U8(0x42))
-	BYTE(U8(0x7d))
-	BYTE(U8(0x5a))
-	BYTE(U8(0x70))
-	BYTE(U8(0x10))
-}
-
-// broadcasti128 32(r8), ymm12
-func VBROADCASTI128_32_R8_YMM12() {
-	BYTE(U8(0xc4))
-	BYTE(U8(0x42))
-	BYTE(U8(0x7d))
-	BYTE(U8(0x5a))
-	BYTE(U8(0x60))
-	BYTE(U8(0x20))
-}
-
-// broadcasti128 48(r8), ymm4
-func VBROADCASTI128_48_R8_YMM4() {
-	BYTE(U8(0xc4))
-	BYTE(U8(0xc2))
-	BYTE(U8(0x7d))
-	BYTE(U8(0x5a))
-	BYTE(U8(0x60))
-	BYTE(U8(0x30))
-}
-
 // Implements the following function signature:
 //
 //	func chacha20Poly1305Open(dst []byte, key []uint32, src []byte, ad []byte) bool
@@ -427,9 +390,9 @@ func chacha20Poly1305Open() {
 	VZEROUPPER()
 	chacha20Constants := chacha20Constants_DATA()
 	VMOVDQU(chacha20Constants, AA0)
-	VBROADCASTI128_16_R8_YMM14()
-	VBROADCASTI128_32_R8_YMM12()
-	VBROADCASTI128_48_R8_YMM4()
+	VBROADCASTI128(Mem{Base: R8}.Offset(16), BB0)
+	VBROADCASTI128(Mem{Base: R8}.Offset(32), CC0)
+	VBROADCASTI128(Mem{Base: R8}.Offset(48), DD0)
 	avx2InitMask := avx2InitMask_DATA()
 	VPADDD(avx2InitMask, DD0, DD0)
 
@@ -1853,9 +1816,9 @@ func chacha20Poly1305Seal() {
 	VZEROUPPER()
 	chacha20Constants := chacha20Constants_DATA()
 	VMOVDQU(chacha20Constants, AA0)
-	VBROADCASTI128_16_R8_YMM14()
-	VBROADCASTI128_32_R8_YMM12()
-	VBROADCASTI128_48_R8_YMM4()
+	VBROADCASTI128(Mem{Base: R8}.Offset(16), BB0)
+	VBROADCASTI128(Mem{Base: R8}.Offset(32), CC0)
+	VBROADCASTI128(Mem{Base: R8}.Offset(48), DD0)
 	avx2InitMask := avx2InitMask_DATA()
 	VPADDD(avx2InitMask, DD0, DD0)
 

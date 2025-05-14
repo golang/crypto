@@ -171,35 +171,20 @@ hashADDone:
 // Requires: AVX, AVX2, BMI2, CMOV, SSE2
 TEXT ·chacha20Poly1305Open(SB), $288-97
 	// For aligned stack access
-	MOVQ    SP, BP
-	ADDQ    $0x20, BP
-	ANDQ    $-32, BP
-	MOVQ    dst_base+0(FP), DI
-	MOVQ    key_base+24(FP), R8
-	MOVQ    src_base+48(FP), SI
-	MOVQ    src_len+56(FP), BX
-	MOVQ    ad_base+72(FP), CX
+	MOVQ           SP, BP
+	ADDQ           $0x20, BP
+	ANDQ           $-32, BP
+	MOVQ           dst_base+0(FP), DI
+	MOVQ           key_base+24(FP), R8
+	MOVQ           src_base+48(FP), SI
+	MOVQ           src_len+56(FP), BX
+	MOVQ           ad_base+72(FP), CX
 	VZEROUPPER
-	VMOVDQU ·chacha20Constants<>+0(SB), Y0
-	BYTE    $0xc4
-	BYTE    $0x42
-	BYTE    $0x7d
-	BYTE    $0x5a
-	BYTE    $0x70
-	BYTE    $0x10
-	BYTE    $0xc4
-	BYTE    $0x42
-	BYTE    $0x7d
-	BYTE    $0x5a
-	BYTE    $0x60
-	BYTE    $0x20
-	BYTE    $0xc4
-	BYTE    $0xc2
-	BYTE    $0x7d
-	BYTE    $0x5a
-	BYTE    $0x60
-	BYTE    $0x30
-	VPADDD  ·avx2InitMask<>+0(SB), Y4, Y4
+	VMOVDQU        ·chacha20Constants<>+0(SB), Y0
+	VBROADCASTI128 16(R8), Y14
+	VBROADCASTI128 32(R8), Y12
+	VBROADCASTI128 48(R8), Y4
+	VPADDD         ·avx2InitMask<>+0(SB), Y4, Y4
 
 	// Special optimization, for very short buffers
 	CMPQ BX, $0xc0
@@ -2488,35 +2473,20 @@ GLOBL ·andMask<>(SB), RODATA|NOPTR, $240
 // func chacha20Poly1305Seal(dst []byte, key []uint32, src []byte, ad []byte)
 // Requires: AVX, AVX2, BMI2, CMOV, SSE2
 TEXT ·chacha20Poly1305Seal(SB), $288-96
-	MOVQ    SP, BP
-	ADDQ    $0x20, BP
-	ANDQ    $-32, BP
-	MOVQ    dst_base+0(FP), DI
-	MOVQ    key_base+24(FP), R8
-	MOVQ    src_base+48(FP), SI
-	MOVQ    src_len+56(FP), BX
-	MOVQ    ad_base+72(FP), CX
+	MOVQ           SP, BP
+	ADDQ           $0x20, BP
+	ANDQ           $-32, BP
+	MOVQ           dst_base+0(FP), DI
+	MOVQ           key_base+24(FP), R8
+	MOVQ           src_base+48(FP), SI
+	MOVQ           src_len+56(FP), BX
+	MOVQ           ad_base+72(FP), CX
 	VZEROUPPER
-	VMOVDQU ·chacha20Constants<>+0(SB), Y0
-	BYTE    $0xc4
-	BYTE    $0x42
-	BYTE    $0x7d
-	BYTE    $0x5a
-	BYTE    $0x70
-	BYTE    $0x10
-	BYTE    $0xc4
-	BYTE    $0x42
-	BYTE    $0x7d
-	BYTE    $0x5a
-	BYTE    $0x60
-	BYTE    $0x20
-	BYTE    $0xc4
-	BYTE    $0xc2
-	BYTE    $0x7d
-	BYTE    $0x5a
-	BYTE    $0x60
-	BYTE    $0x30
-	VPADDD  ·avx2InitMask<>+0(SB), Y4, Y4
+	VMOVDQU        ·chacha20Constants<>+0(SB), Y0
+	VBROADCASTI128 16(R8), Y14
+	VBROADCASTI128 32(R8), Y12
+	VBROADCASTI128 48(R8), Y4
+	VPADDD         ·avx2InitMask<>+0(SB), Y4, Y4
 
 	// Special optimizations, for very short buffers
 	CMPQ BX, $0x000000c0
