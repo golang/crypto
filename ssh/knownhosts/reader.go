@@ -12,9 +12,9 @@ import (
 // operates on the hostname if available, i.e. if a server changes its
 // IP address, the host key check will still succeed, even though a
 // record of the new IP address is not available.
-func NewFromReader(r io.Reader) (ssh.HostKeyCallback, error) {
+func NewFromReader(readers ...io.Reader) (ssh.HostKeyCallback, error) {
 	db := newHostKeyDB()
-	if err := db.Read(r, ""); err != nil {
+	if err := db.Read(io.MultiReader(readers...), ""); err != nil {
 		return nil, err
 	}
 
