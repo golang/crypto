@@ -26,6 +26,10 @@ import (
 )
 
 func init() {
+	x509.SetFallbackRoots(newFallbackCertPool())
+}
+
+func newFallbackCertPool() *x509.CertPool {
 	p := x509.NewCertPool()
 	for _, c := range mustParse(unparsedCertificates) {
 		if len(c.constraints) == 0 {
@@ -41,7 +45,7 @@ func init() {
 			})
 		}
 	}
-	x509.SetFallbackRoots(p)
+	return p
 }
 
 type unparsedCertificate struct {
