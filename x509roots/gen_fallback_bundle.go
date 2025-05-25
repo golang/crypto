@@ -11,7 +11,6 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
-	"encoding/pem"
 	"flag"
 	"fmt"
 	"go/format"
@@ -37,6 +36,7 @@ var (
 	certDataURL  = flag.String("certdata-url", "https://hg.mozilla.org/mozilla-central/raw-file/tip/security/nss/lib/ckfw/builtins/certdata.txt", "URL to the raw certdata.txt file to parse (certdata-path overrides this, if provided)")
 	certDataPath = flag.String("certdata-path", "", "Path to the NSS certdata.txt file to parse (this overrides certdata-url, if provided)")
 	output       = flag.String("output", "fallback/bundle.go", "Path to file to write output to")
+	derOutput    = flag.String("deroutput", "fallback/bundle.der", "Path to file to write output to (DER certificate bundle)")
 )
 
 func main() {
@@ -92,8 +92,9 @@ func main() {
 		return subjI < subjJ
 	})
 
-	b := new(bytes.Buffer)
-	b.WriteString(tmpl)
+	rawCertsData := new(bytes.Buffer)
+	goSrcOut := new(bytes.Buffer)
+	goSrcOut.WriteString(tmpl)
 	for _, c := range certs {
 		var constraints []string
 		var skip bool
@@ -110,24 +111,33 @@ func main() {
 		if skip {
 			continue
 		}
-		fmt.Fprintf(b, "{\ncn: %q,\nsha256Hash: \"%x\",\npem: `%s`,\n",
+
+		off := rawCertsData.Len()
+		rawCertsData.Write(c.X509.Raw)
+
+		fmt.Fprintf(goSrcOut, "{\ncn: %q,\nsha256Hash: \"%x\",\ncertStartOff: %v,\ncertLength: %v,\n",
 			c.X509.Subject.String(),
 			sha256.Sum256(c.X509.Raw),
-			string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: c.X509.Raw})),
+			off,
+			len(c.X509.Raw),
 		)
 		for _, constraint := range constraints {
-			fmt.Fprintln(b, constraint)
+			fmt.Fprintln(goSrcOut, constraint)
 		}
-		fmt.Fprintln(b, "},")
+		fmt.Fprintln(goSrcOut, "},")
 	}
-	fmt.Fprintln(b, "}")
+	fmt.Fprintln(goSrcOut, "}")
 
-	formatted, err := format.Source(b.Bytes())
+	formatted, err := format.Source(goSrcOut.Bytes())
 	if err != nil {
 		log.Fatalf("failed to format source: %s", err)
 	}
 
 	if err := os.WriteFile(*output, formatted, 0644); err != nil {
+		log.Fatalf("failed to write to %q: %s", *output, err)
+	}
+
+	if err := os.WriteFile(*derOutput, rawCertsData.Bytes(), 0644); err != nil {
 		log.Fatalf("failed to write to %q: %s", *output, err)
 	}
 }

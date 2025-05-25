@@ -20,10 +20,13 @@ package fallback
 
 import (
 	"crypto/x509"
-	"encoding/pem"
+	_ "embed"
 	"fmt"
 	"time"
 )
+
+//go:embed bundle.der
+var rawCerts []byte
 
 func init() {
 	x509.SetFallbackRoots(newFallbackCertPool())
@@ -49,9 +52,10 @@ func newFallbackCertPool() *x509.CertPool {
 }
 
 type unparsedCertificate struct {
-	cn         string
-	sha256Hash string
-	pem        string
+	cn           string
+	sha256Hash   string
+	certStartOff int
+	certLength   int
 
 	// possible constraints
 	distrustAfter string
@@ -63,19 +67,9 @@ type parsedCertificate struct {
 }
 
 func mustParse(unparsedCerts []unparsedCertificate) []parsedCertificate {
-	var b []parsedCertificate
+	b := make([]parsedCertificate, 0, len(unparsedCerts))
 	for _, unparsed := range unparsedCerts {
-		block, rest := pem.Decode([]byte(unparsed.pem))
-		if block == nil {
-			panic(fmt.Sprintf("unexpected nil PEM block for %q", unparsed.cn))
-		}
-		if len(rest) != 0 {
-			panic(fmt.Sprintf("unexpected trailing data in PEM for %q", unparsed.cn))
-		}
-		if block.Type != "CERTIFICATE" {
-			panic(fmt.Sprintf("unexpected PEM block type for %q: %s", unparsed.cn, block.Type))
-		}
-		cert, err := x509.ParseCertificate(block.Bytes)
+		cert, err := x509.ParseCertificate(rawCerts[unparsed.certStartOff : unparsed.certStartOff+unparsed.certLength])
 		if err != nil {
 			panic(err)
 		}
