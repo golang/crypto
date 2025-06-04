@@ -404,3 +404,32 @@ func TestCertSignWithMultiAlgorithmSigner(t *testing.T) {
 		})
 	}
 }
+
+func TestCertSignWithCertificate(t *testing.T) {
+	cert := &Certificate{
+		Key:         testPublicKeys["rsa"],
+		ValidBefore: CertTimeInfinity,
+		CertType:    UserCert,
+	}
+	if err := cert.SignCert(rand.Reader, testSigners["ecdsa"]); err != nil {
+		t.Fatalf("SignCert: %v", err)
+	}
+	signer, err := NewSignerWithAlgorithms(testSigners["rsa"].(AlgorithmSigner), []string{KeyAlgoRSASHA256})
+	if err != nil {
+		t.Fatal(err)
+	}
+	certSigner, err := NewCertSigner(cert, signer)
+	if err != nil {
+		t.Fatalf("NewCertSigner: %v", err)
+	}
+
+	cert1 := &Certificate{
+		Key:         testPublicKeys["ecdsa"],
+		ValidBefore: CertTimeInfinity,
+		CertType:    UserCert,
+	}
+
+	if err := cert1.SignCert(rand.Reader, certSigner); err == nil {
+		t.Fatal("successfully signed a certificate using another certificate, it is expected to fail")
+	}
+}

@@ -447,11 +447,18 @@ func (c *CertChecker) CheckCert(principal string, cert *Certificate) error {
 // SignCert signs the certificate with an authority, setting the Nonce,
 // SignatureKey, and Signature fields. If the authority implements the
 // MultiAlgorithmSigner interface the first algorithm in the list is used. This
-// is useful if you want to sign with a specific algorithm.
+// is useful if you want to sign with a specific algorithm. As specified in
+// [SSH-CERTS], Section 2.1.1, authority can't be a [Certificate].
 func (c *Certificate) SignCert(rand io.Reader, authority Signer) error {
 	c.Nonce = make([]byte, 32)
 	if _, err := io.ReadFull(rand, c.Nonce); err != nil {
 		return err
+	}
+	// The Type() function is intended to return only certificate key types, but
+	// we use certKeyAlgoNames anyway for safety, to match [Certificate.Type].
+	if _, ok := certKeyAlgoNames[authority.PublicKey().Type()]; ok {
+		return fmt.Errorf("ssh: certificates cannot be used as authority (public key type %q)",
+			authority.PublicKey().Type())
 	}
 	c.SignatureKey = authority.PublicKey()
 
