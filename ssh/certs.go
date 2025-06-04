@@ -233,7 +233,11 @@ func parseCert(in []byte, privAlgo string) (*Certificate, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	// The Type() function is intended to return only certificate key types, but
+	// we use certKeyAlgoNames anyway for safety, to match [Certificate.Type].
+	if _, ok := certKeyAlgoNames[k.Type()]; ok {
+		return nil, fmt.Errorf("ssh: the signature key type %q is invalid for certificates", k.Type())
+	}
 	c.SignatureKey = k
 	c.Signature, rest, ok = parseSignatureBody(g.Signature)
 	if !ok || len(rest) > 0 {
@@ -301,16 +305,13 @@ type CertChecker struct {
 	SupportedCriticalOptions []string
 
 	// IsUserAuthority should return true if the key is recognized as an
-	// authority for the given user certificate. This allows for
-	// certificates to be signed by other certificates. This must be set
-	// if this CertChecker will be checking user certificates.
+	// authority for user certificate. This must be set if this CertChecker
+	// will be checking user certificates.
 	IsUserAuthority func(auth PublicKey) bool
 
 	// IsHostAuthority should report whether the key is recognized as
-	// an authority for this host. This allows for certificates to be
-	// signed by other keys, and for those other keys to only be valid
-	// signers for particular hostnames. This must be set if this
-	// CertChecker will be checking host certificates.
+	// an authority for this host. This must be set if this CertChecker
+	// will be checking host certificates.
 	IsHostAuthority func(auth PublicKey, address string) bool
 
 	// Clock is used for verifying time stamps. If nil, time.Now

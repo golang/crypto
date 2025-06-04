@@ -810,3 +810,30 @@ func TestCryptoPublicKey(t *testing.T) {
 		}
 	}
 }
+
+func TestParseCertWithCertSignatureKey(t *testing.T) {
+	certBytes := []byte(`-----BEGIN SSH CERTIFICATE-----
+AAAAIHNzaC1lZDI1NTE5LWNlcnQtdjAxQG9wZW5zc2guY29tAAAAIPSp27hvNSB0
+IotJnVhjC4zxNgNS8BHlUCxD0VJi4D/eAAAAIIJMi1e5qfx+IFuKD/p/Ssqcb3os
+CpOw/4wBs1pQ53zwAAAAAAAAAAEAAAACAAAAAAAAABMAAAAPZm9vLmV4YW1wbGUu
+Y29tAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAT0AAAAgc3NoLWVkMjU1
+MTktY2VydC12MDFAb3BlbnNzaC5jb20AAAAg+sNYhCO35mQT1UBMpmMk8ey+culd
+IU8vBlPEl4B07swAAAAggiv+RLnboS4znGCVl/n1jDg2uD0h15tW4s/04eS2mLQA
+AAAAAAAAAQAAAAIAAAAAAAAAEwAAAA9mb28uZXhhbXBsZS5jb20AAAAAAAAAAAAA
+AAAAAAAAAAAAAAAAAAAAAAAAAAAAMwAAAAtzc2gtZWQyNTUxOQAAACCV2wETgLKL
+Kt0bRl3YUnd/ZYSlq0xJMbn4Jj3cdPWykQAAAFMAAAALc3NoLWVkMjU1MTkAAABA
+WOdbRGEzyRAhiIK227CLUQD5caXYMV8FvSIB7toEE2M/8HnWdG9H3Rsg/v3unruQ
+JrQldnuPJNe7KOP2+zvUDgAAAFMAAAALc3NoLWVkMjU1MTkAAABAm3bIPp85ZpIe
+D+izJcUqlcAOri7HO8bULFNHT6LVegvB06xQ5TLwMlrxWUF4cafl1tSe8JQck4a6
+cLYUOHfQDw==
+-----END SSH CERTIFICATE-----
+	`)
+	block, _ := pem.Decode(certBytes)
+	if block == nil {
+		t.Fatal("invalid test certificate")
+	}
+
+	if _, err := ParsePublicKey(block.Bytes); err == nil {
+		t.Fatal("parsing an SSH certificate using another certificate as signature key succeeded; expected failure")
+	}
+}
