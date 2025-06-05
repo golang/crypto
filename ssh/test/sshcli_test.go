@@ -119,6 +119,14 @@ func TestSSHCLIKeyExchanges(t *testing.T) {
 	keyExchanges := append(ssh.SupportedAlgorithms().KeyExchanges, ssh.InsecureAlgorithms().KeyExchanges...)
 	for _, kex := range keyExchanges {
 		t.Run(kex, func(t *testing.T) {
+			cmd := testenv.Command(t, sshCLI, "-Q", "kex")
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("%s failed to check if the KEX is supported, error: %v, command output %q", kex, err, string(out))
+			}
+			if !bytes.Contains(out, []byte(kex)) {
+				t.Skipf("KEX %q is not supported in the installed ssh CLI", kex)
+			}
 			config := &ssh.ServerConfig{
 				Config: ssh.Config{
 					KeyExchanges: []string{kex},
@@ -144,9 +152,9 @@ func TestSSHCLIKeyExchanges(t *testing.T) {
 				t.Fatalf("unable to get server port: %v", err)
 			}
 
-			cmd := testenv.Command(t, sshCLI, "-vvv", "-i", keyPrivPath, "-o", "StrictHostKeyChecking=no",
+			cmd = testenv.Command(t, sshCLI, "-vvv", "-i", keyPrivPath, "-o", "StrictHostKeyChecking=no",
 				"-o", fmt.Sprintf("KexAlgorithms=%s", kex), "-p", port, "testpubkey@127.0.0.1", "true")
-			out, err := cmd.CombinedOutput()
+			out, err = cmd.CombinedOutput()
 			if err != nil {
 				t.Fatalf("%s failed, error: %v, command output %q", kex, err, string(out))
 			}
