@@ -104,6 +104,9 @@ func deriveKey(mode int, password, salt, secret, data []byte, time, memory uint3
 	if threads < 1 {
 		panic("argon2: parallelism degree too low")
 	}
+	if keyLen == 0 {
+		return []byte{}
+	}
 	h0 := initHash(password, salt, secret, data, time, memory, uint32(threads), keyLen, mode)
 
 	memory = memory / (syncPoints * uint32(threads)) * (syncPoints * uint32(threads))
