@@ -426,6 +426,14 @@ type Authorization struct {
 	//
 	// This field is unused in RFC 8555.
 	Combinations [][]int
+
+	// RetryAfter specifies how long the client should wait before polling the
+	// authorization resource again, if indicated by the server.
+	// This corresponds to the optional Retry-After HTTP header included in a
+	// 200 (OK) response when the authorization is still StatusPending.
+	//
+	// See RFC 8555 Section 7.5.1.
+	RetryAfter time.Duration
 }
 
 // AuthzID is an identifier that an account is authorized to represent.
@@ -471,7 +479,7 @@ type wireAuthz struct {
 	Error        *wireError
 }
 
-func (z *wireAuthz) authorization(uri string) *Authorization {
+func (z *wireAuthz) authorization(uri string, retryAfter time.Duration) *Authorization {
 	a := &Authorization{
 		URI:          uri,
 		Status:       z.Status,
@@ -480,6 +488,7 @@ func (z *wireAuthz) authorization(uri string) *Authorization {
 		Wildcard:     z.Wildcard,
 		Challenges:   make([]*Challenge, len(z.Challenges)),
 		Combinations: z.Combinations, // shallow copy
+		RetryAfter:   retryAfter,
 	}
 	for i, v := range z.Challenges {
 		a.Challenges[i] = v.challenge()

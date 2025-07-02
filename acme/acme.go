@@ -381,7 +381,7 @@ func (c *Client) authorize(ctx context.Context, typ, val string) (*Authorization
 	if v.Status != StatusPending && v.Status != StatusValid {
 		return nil, fmt.Errorf("acme: unexpected status: %s", v.Status)
 	}
-	return v.authorization(res.Header.Get("Location")), nil
+	return v.authorization(res.Header.Get("Location"), 0), nil
 }
 
 // GetAuthorization retrieves an authorization identified by the given URL.
@@ -402,7 +402,8 @@ func (c *Client) GetAuthorization(ctx context.Context, url string) (*Authorizati
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
 		return nil, fmt.Errorf("acme: invalid response: %v", err)
 	}
-	return v.authorization(url), nil
+	d := retryAfter(res.Header.Get("Retry-After"))
+	return v.authorization(url, d), nil
 }
 
 // RevokeAuthorization relinquishes an existing authorization identified
@@ -460,7 +461,7 @@ func (c *Client) WaitAuthorization(ctx context.Context, url string) (*Authorizat
 		case err != nil:
 			// Skip and retry.
 		case raw.Status == StatusValid:
-			return raw.authorization(url), nil
+			return raw.authorization(url, 0), nil
 		case raw.Status == StatusInvalid:
 			return nil, raw.error(url)
 		}
