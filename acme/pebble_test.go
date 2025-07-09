@@ -776,14 +776,28 @@ func prepareBinaries(t *testing.T, pebbleDir string) string {
 func spawnServerProcess(t *testing.T, dir string, cmd string, args ...string) {
 	t.Helper()
 
+	var stdout, stderr bytes.Buffer
+
 	cmdInstance := exec.Command("./"+cmd, args...)
 	cmdInstance.Dir = dir
-	cmdInstance.Stdout = os.Stdout
-	cmdInstance.Stderr = os.Stderr
+	cmdInstance.Stdout = &stdout
+	cmdInstance.Stderr = &stderr
+
 	if err := cmdInstance.Start(); err != nil {
 		t.Fatalf("failed to start %s: %v", cmd, err)
 	}
+
 	t.Cleanup(func() {
 		cmdInstance.Process.Kill()
+
+		if t.Failed() || testing.Verbose() {
+			t.Logf("=== %s output ===", cmd)
+			if stdout.Len() > 0 {
+				t.Logf("stdout:\n%s", strings.TrimSpace(stdout.String()))
+			}
+			if stderr.Len() > 0 {
+				t.Logf("stderr:\n%s", strings.TrimSpace(stderr.String()))
+			}
+		}
 	})
 }
