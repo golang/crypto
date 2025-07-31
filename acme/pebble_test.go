@@ -692,14 +692,14 @@ func startPebbleEnvironment(t *testing.T, config *environmentConfig) environment
 func waitForServer(t *testing.T, addr string) {
 	t.Helper()
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 20; i++ {
 		if conn, err := net.Dial("tcp", addr); err == nil {
 			conn.Close()
 			return
 		}
 		time.Sleep(time.Duration(i*100) * time.Millisecond)
 	}
-	t.Fatalf("failed to connect to %q after 10 tries", addr)
+	t.Fatalf("failed to connect to %q after 20 tries", addr)
 }
 
 // fetchModule fetches the module at the given version and returns the directory
