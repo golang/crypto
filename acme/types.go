@@ -366,6 +366,13 @@ type Order struct {
 
 	// The error that occurred while processing the order as received from a CA, if any.
 	Error *Error
+
+	// RetryAfter specifies how long the client should wait before polling the order again,
+	// based on the Retry-After header provided by the server while the order is in the
+	// StatusProcessing state.
+	//
+	// See RFC 8555 Section 7.4.
+	RetryAfter time.Duration
 }
 
 // OrderOption allows customizing Client.AuthorizeOrder call.
@@ -426,6 +433,14 @@ type Authorization struct {
 	//
 	// This field is unused in RFC 8555.
 	Combinations [][]int
+
+	// RetryAfter specifies how long the client should wait before polling the
+	// authorization resource again, if indicated by the server.
+	// This corresponds to the optional Retry-After HTTP header included in a
+	// 200 (OK) response when the authorization is still StatusPending.
+	//
+	// See RFC 8555 Section 7.5.1.
+	RetryAfter time.Duration
 }
 
 // AuthzID is an identifier that an account is authorized to represent.
@@ -471,7 +486,7 @@ type wireAuthz struct {
 	Error        *wireError
 }
 
-func (z *wireAuthz) authorization(uri string) *Authorization {
+func (z *wireAuthz) authorization(uri string, retryAfter time.Duration) *Authorization {
 	a := &Authorization{
 		URI:          uri,
 		Status:       z.Status,
@@ -480,9 +495,10 @@ func (z *wireAuthz) authorization(uri string) *Authorization {
 		Wildcard:     z.Wildcard,
 		Challenges:   make([]*Challenge, len(z.Challenges)),
 		Combinations: z.Combinations, // shallow copy
+		RetryAfter:   retryAfter,
 	}
 	for i, v := range z.Challenges {
-		a.Challenges[i] = v.challenge()
+		a.Challenges[i] = v.challenge(0)
 	}
 	return a
 }
@@ -542,6 +558,13 @@ type Challenge struct {
 	// where the client must send additional data for the server to validate
 	// the challenge.
 	Payload json.RawMessage
+
+	// RetryAfter specifies how long the client should wait before polling the
+	// challenge again, based on the Retry-After header provided by the server
+	// while the challenge is in the StatusProcessing state.
+	//
+	// See RFC 8555 Section 8.2.
+	RetryAfter time.Duration
 }
 
 // wireChallenge is ACME JSON challenge representation.
@@ -555,12 +578,13 @@ type wireChallenge struct {
 	Error     *wireError
 }
 
-func (c *wireChallenge) challenge() *Challenge {
+func (c *wireChallenge) challenge(retryAfter time.Duration) *Challenge {
 	v := &Challenge{
-		URI:    c.URL,
-		Type:   c.Type,
-		Token:  c.Token,
-		Status: c.Status,
+		URI:        c.URL,
+		Type:       c.Type,
+		Token:      c.Token,
+		Status:     c.Status,
+		RetryAfter: retryAfter,
 	}
 	if v.URI == "" {
 		v.URI = c.URI // c.URL was empty; use legacy
