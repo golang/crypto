@@ -789,6 +789,7 @@ func spawnServerProcess(t *testing.T, dir string, cmd string, args ...string) {
 
 	t.Cleanup(func() {
 		cmdInstance.Process.Kill()
+		cmdInstance.Wait()
 
 		if t.Failed() || testing.Verbose() {
 			t.Logf("=== %s output ===", cmd)
