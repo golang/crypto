@@ -89,6 +89,11 @@ func parsePubKey(in []byte, algo string) (pubKey PublicKey, rest []byte, err err
 		}
 		return cert, nil, nil
 	}
+	if keyFormat := keyFormatForAlgorithm(algo); keyFormat != "" {
+		return nil, nil, fmt.Errorf("ssh: signature algorithm %q isn't a key format; key is malformed and should be re-encoded with type %q",
+			algo, keyFormat)
+	}
+
 	return nil, nil, fmt.Errorf("ssh: unknown key algorithm: %v", algo)
 }
 
@@ -191,9 +196,10 @@ func ParseKnownHosts(in []byte) (marker string, hosts []string, pubKey PublicKey
 	return "", nil, nil, "", nil, io.EOF
 }
 
-// ParseAuthorizedKey parses a public key from an authorized_keys
-// file used in OpenSSH according to the sshd(8) manual page.
+// ParseAuthorizedKey parses a public key from an authorized_keys file used in
+// OpenSSH according to the sshd(8) manual page. Invalid lines are ignored.
 func ParseAuthorizedKey(in []byte) (out PublicKey, comment string, options []string, rest []byte, err error) {
+	var lastErr error
 	for len(in) > 0 {
 		end := bytes.IndexByte(in, '\n')
 		if end != -1 {
@@ -222,6 +228,8 @@ func ParseAuthorizedKey(in []byte) (out PublicKey, comment string, options []str
 
 		if out, comment, err = parseAuthorizedKey(in[i:]); err == nil {
 			return out, comment, options, rest, nil
+		} else {
+			lastErr = err
 		}
 
 		// No key type recognised. Maybe there's an options field at
@@ -264,10 +272,16 @@ func ParseAuthorizedKey(in []byte) (out PublicKey, comment string, options []str
 		if out, comment, err = parseAuthorizedKey(in[i:]); err == nil {
 			options = candidateOptions
 			return out, comment, options, rest, nil
+		} else {
+			lastErr = err
 		}
 
 		in = rest
 		continue
+	}
+
+	if lastErr != nil {
+		return nil, "", nil, nil, fmt.Errorf("ssh: no key found; last parsing error for ignored line: %w", lastErr)
 	}
 
 	return nil, "", nil, nil, errors.New("ssh: no key found")

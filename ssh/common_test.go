@@ -5,7 +5,9 @@
 package ssh
 
 import (
+	"maps"
 	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -172,5 +174,23 @@ func TestFindAgreedAlgorithms(t *testing.T) {
 				t.Errorf("server: got algs %#v, want %#v", clientAlgs, &c.wantClient)
 			}
 		})
+	}
+}
+
+func TestKeyFormatAlgorithms(t *testing.T) {
+	supportedAlgos := SupportedAlgorithms()
+	insecureAlgos := InsecureAlgorithms()
+	algoritms := append(supportedAlgos.PublicKeyAuths, insecureAlgos.PublicKeyAuths...)
+	algoritms = append(algoritms, slices.Collect(maps.Keys(certKeyAlgoNames))...)
+
+	for _, algo := range algoritms {
+		keyFormat := keyFormatForAlgorithm(algo)
+		if keyFormat == "" {
+			t.Errorf("got empty key format for algorithm %q", algo)
+		}
+		if !slices.Contains(algorithmsForKeyFormat(keyFormat), algo) {
+			t.Errorf("algorithms for key format %q, does not contain %q", keyFormat, algo)
+		}
+
 	}
 }

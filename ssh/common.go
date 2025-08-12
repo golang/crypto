@@ -312,6 +312,35 @@ func algorithmsForKeyFormat(keyFormat string) []string {
 	}
 }
 
+// keyFormatForAlgorithm returns the key format corresponding to the given
+// signature algorithm. It returns an empty string if the signature algorithm is
+// invalid or unsupported.
+func keyFormatForAlgorithm(sigAlgo string) string {
+	switch sigAlgo {
+	case KeyAlgoRSA, KeyAlgoRSASHA256, KeyAlgoRSASHA512:
+		return KeyAlgoRSA
+	case CertAlgoRSAv01, CertAlgoRSASHA256v01, CertAlgoRSASHA512v01:
+		return CertAlgoRSAv01
+	case KeyAlgoED25519,
+		KeyAlgoSKED25519,
+		KeyAlgoSKECDSA256,
+		KeyAlgoECDSA256,
+		KeyAlgoECDSA384,
+		KeyAlgoECDSA521,
+		InsecureKeyAlgoDSA,
+		InsecureCertAlgoDSAv01,
+		CertAlgoECDSA256v01,
+		CertAlgoECDSA384v01,
+		CertAlgoECDSA521v01,
+		CertAlgoSKECDSA256v01,
+		CertAlgoED25519v01,
+		CertAlgoSKED25519v01:
+		return sigAlgo
+	default:
+		return ""
+	}
+}
+
 // isRSA returns whether algo is a supported RSA algorithm, including certificate
 // algorithms.
 func isRSA(algo string) bool {
