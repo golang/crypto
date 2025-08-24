@@ -438,6 +438,7 @@ func init() {
 	kexAlgoMap[keyExchangeCurve25519LibSSH] = &curve25519sha256{}
 	kexAlgoMap[InsecureKeyExchangeDHGEXSHA1] = &dhGEXSHA{hashFunc: crypto.SHA1}
 	kexAlgoMap[KeyExchangeDHGEXSHA256] = &dhGEXSHA{hashFunc: crypto.SHA256}
+	kexAlgoMap[KeyExchangeMLKEM768X25519] = &mlkem768WithCurve25519sha256{}
 }
 
 // curve25519sha256 implements the curve25519-sha256 (formerly known as
