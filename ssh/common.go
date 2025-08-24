@@ -6,6 +6,7 @@ package ssh
 
 import (
 	"crypto"
+	"crypto/fips140"
 	"crypto/rand"
 	"fmt"
 	"io"
@@ -256,6 +257,40 @@ type Algorithms struct {
 	PublicKeyAuths []string
 }
 
+func init() {
+	if fips140.Enabled() {
+		defaultHostKeyAlgos = slices.DeleteFunc(defaultHostKeyAlgos, func(algo string) bool {
+			_, err := hashFunc(underlyingAlgo(algo))
+			return err != nil
+		})
+		defaultPubKeyAuthAlgos = slices.DeleteFunc(defaultPubKeyAuthAlgos, func(algo string) bool {
+			_, err := hashFunc(underlyingAlgo(algo))
+			return err != nil
+		})
+	}
+}
+
+func hashFunc(format string) (crypto.Hash, error) {
+	switch format {
+	case KeyAlgoRSASHA256, KeyAlgoECDSA256, KeyAlgoSKED25519, KeyAlgoSKECDSA256:
+		return crypto.SHA256, nil
+	case KeyAlgoECDSA384:
+		return crypto.SHA384, nil
+	case KeyAlgoRSASHA512, KeyAlgoECDSA521:
+		return crypto.SHA512, nil
+	case KeyAlgoED25519:
+		// KeyAlgoED25519 doesn't pre-hash.
+		return 0, nil
+	case KeyAlgoRSA, InsecureKeyAlgoDSA:
+		if fips140.Enabled() {
+			return 0, fmt.Errorf("ssh: hash algorithm for format %q not allowed in FIPS 140 mode", format)
+		}
+		return crypto.SHA1, nil
+	default:
+		return 0, fmt.Errorf("ssh: hash algorithm for format %q not mapped", format)
+	}
+}
+
 // SupportedAlgorithms returns algorithms currently implemented by this package,
 // excluding those with security issues, which are returned by
 // InsecureAlgorithms. The algorithms listed here are in preference order.
@@ -282,21 +317,6 @@ func InsecureAlgorithms() Algorithms {
 }
 
 var supportedCompressions = []string{compressionNone}
-
-// hashFuncs keeps the mapping of supported signature algorithms to their
-// respective hashes needed for signing and verification.
-var hashFuncs = map[string]crypto.Hash{
-	KeyAlgoRSA:         crypto.SHA1,
-	KeyAlgoRSASHA256:   crypto.SHA256,
-	KeyAlgoRSASHA512:   crypto.SHA512,
-	InsecureKeyAlgoDSA: crypto.SHA1,
-	KeyAlgoECDSA256:    crypto.SHA256,
-	KeyAlgoECDSA384:    crypto.SHA384,
-	KeyAlgoECDSA521:    crypto.SHA512,
-	// KeyAlgoED25519 doesn't pre-hash.
-	KeyAlgoSKECDSA256: crypto.SHA256,
-	KeyAlgoSKED25519:  crypto.SHA256,
-}
 
 // algorithmsForKeyFormat returns the supported signature algorithms for a given
 // public key format (PublicKey.Type), in order of preference. See RFC 8332,

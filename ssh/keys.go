@@ -504,7 +504,10 @@ func (r *rsaPublicKey) Verify(data []byte, sig *Signature) error {
 	if !slices.Contains(supportedAlgos, sig.Format) {
 		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, r.Type())
 	}
-	hash := hashFuncs[sig.Format]
+	hash, err := hashFunc(sig.Format)
+	if err != nil {
+		return err
+	}
 	h := hash.New()
 	h.Write(data)
 	digest := h.Sum(nil)
@@ -621,7 +624,11 @@ func (k *dsaPublicKey) Verify(data []byte, sig *Signature) error {
 	if sig.Format != k.Type() {
 		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, k.Type())
 	}
-	h := hashFuncs[sig.Format].New()
+	hash, err := hashFunc(sig.Format)
+	if err != nil {
+		return err
+	}
+	h := hash.New()
 	h.Write(data)
 	digest := h.Sum(nil)
 
@@ -666,7 +673,11 @@ func (k *dsaPrivateKey) SignWithAlgorithm(rand io.Reader, data []byte, algorithm
 		return nil, fmt.Errorf("ssh: unsupported signature algorithm %s", algorithm)
 	}
 
-	h := hashFuncs[k.PublicKey().Type()].New()
+	hash, err := hashFunc(k.PublicKey().Type())
+	if err != nil {
+		return nil, err
+	}
+	h := hash.New()
 	h.Write(data)
 	digest := h.Sum(nil)
 	r, s, err := dsa.Sign(rand, k.PrivateKey, digest)
@@ -816,8 +827,11 @@ func (k *ecdsaPublicKey) Verify(data []byte, sig *Signature) error {
 	if sig.Format != k.Type() {
 		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, k.Type())
 	}
-
-	h := hashFuncs[sig.Format].New()
+	hash, err := hashFunc(sig.Format)
+	if err != nil {
+		return err
+	}
+	h := hash.New()
 	h.Write(data)
 	digest := h.Sum(nil)
 
@@ -920,8 +934,11 @@ func (k *skECDSAPublicKey) Verify(data []byte, sig *Signature) error {
 	if sig.Format != k.Type() {
 		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, k.Type())
 	}
-
-	h := hashFuncs[sig.Format].New()
+	hash, err := hashFunc(sig.Format)
+	if err != nil {
+		return err
+	}
+	h := hash.New()
 	h.Write([]byte(k.application))
 	appDigest := h.Sum(nil)
 
@@ -1024,7 +1041,11 @@ func (k *skEd25519PublicKey) Verify(data []byte, sig *Signature) error {
 		return fmt.Errorf("invalid size %d for Ed25519 public key", l)
 	}
 
-	h := hashFuncs[sig.Format].New()
+	hash, err := hashFunc(sig.Format)
+	if err != nil {
+		return err
+	}
+	h := hash.New()
 	h.Write([]byte(k.application))
 	appDigest := h.Sum(nil)
 
@@ -1131,7 +1152,10 @@ func (s *wrappedSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm
 		return nil, fmt.Errorf("ssh: unsupported signature algorithm %q for key format %q", algorithm, s.pubKey.Type())
 	}
 
-	hashFunc := hashFuncs[algorithm]
+	hashFunc, err := hashFunc(algorithm)
+	if err != nil {
+		return nil, err
+	}
 	var digest []byte
 	if hashFunc != 0 {
 		h := hashFunc.New()
