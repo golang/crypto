@@ -17,14 +17,8 @@ import (
 // ForwardToAgent or ForwardToRemote should be called to route
 // the authentication requests.
 func RequestAgentForwarding(session *ssh.Session) error {
-	ok, err := session.SendRequest("auth-agent-req@openssh.com", true, nil)
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return errors.New("forwarding request denied")
-	}
-	return nil
+	_, err := session.SendRequest("auth-agent-req@openssh.com", false, nil)
+	return err
 }
 
 // ForwardToAgent routes authentication requests to the given keyring.
