@@ -7,6 +7,7 @@ package agent
 import (
 	"bytes"
 	"crypto/rand"
+	"encoding/binary"
 	"errors"
 	"io"
 	"net"
@@ -344,6 +345,53 @@ func TestServerResponseTooLarge(t *testing.T) {
 	}
 	if err.Error() != "agent: client error: response too large" {
 		t.Fatal("Did not get expected error result")
+	}
+}
+
+func TestInvalidResponses(t *testing.T) {
+	a, b, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	done := make(chan struct{})
+	defer func() { <-done }()
+
+	defer a.Close()
+	defer b.Close()
+
+	agent := NewClient(a)
+	go func() {
+		defer close(done)
+
+		resp := []byte{agentSuccess}
+		msg := make([]byte, 4+len(resp))
+		binary.BigEndian.PutUint32(msg[:4], uint32(len(resp)))
+		copy(msg[4:], resp)
+
+		if _, err := b.Write(msg); err != nil {
+			t.Errorf("unexpected error sending agent reply: %v", err)
+			b.Close()
+			return
+		}
+
+		if _, err := b.Write(msg); err != nil {
+			t.Errorf("unexpected error sending agent reply: %v", err)
+			b.Close()
+		}
+	}()
+	_, err = agent.List()
+	if err == nil {
+		t.Fatal("error expected")
+	}
+	if !strings.Contains(err.Error(), "failed to list keys, unexpected message type") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_, err = agent.Sign(testPublicKeys["rsa"], []byte("message"))
+	if err == nil {
+		t.Fatal("error expected")
+	}
+	if !strings.Contains(err.Error(), "failed to sign challenge, unexpected message type") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
