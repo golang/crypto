@@ -2,25 +2,16 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-/*
-Package auth authenticates a message using a secret key.
-
-The Sum function, viewed as a function of the message for a uniform random
-key, is designed to meet the standard notion of unforgeability. This means
-that an attacker cannot find authenticators for any messages not authenticated
-by the sender, even if the attacker has adaptively influenced the messages
-authenticated by the sender. For a formal definition see, e.g., Section 2.4
-of Bellare, Kilian, and Rogaway, "The security of the cipher block chaining
-message authentication code," Journal of Computer and System Sciences 61 (2000),
-362–399; http://www-cse.ucsd.edu/~mihir/papers/cbc.html.
-
-auth does not make any promises regarding "strong" unforgeability; perhaps
-one valid authenticator can be converted into another valid authenticator for
-the same message. NaCl also does not make any promises regarding "truncated
-unforgeability."
-
-This package is interoperable with NaCl: https://nacl.cr.yp.to/auth.html.
-*/
+// Package auth authenticates a message using a secret key.
+//
+// This package is interoperable with [NaCl].
+//
+// The auth package is essentially a wrapper for HMAC-SHA-512 (implemented by
+// crypto/hmac and crypto/sha512), truncated to 32 bytes. It is [frozen] and is
+// not accepting new features.
+//
+// [NaCl]: https://nacl.cr.yp.to/auth.html
+// [frozen]: https://go.dev/wiki/Frozen
 package auth
 
 import (
