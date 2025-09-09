@@ -200,121 +200,138 @@ func TestOCSPRequest(t *testing.T) {
 }
 
 func TestOCSPResponse(t *testing.T) {
-	leafCert, _ := hex.DecodeString(leafCertHex)
-	leaf, err := x509.ParseCertificate(leafCert)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	issuerCert, _ := hex.DecodeString(issuerCertHex)
-	issuer, err := x509.ParseCertificate(issuerCert)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	responderCert, _ := hex.DecodeString(responderCertHex)
-	responder, err := x509.ParseCertificate(responderCert)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	responderPrivateKeyDER, _ := hex.DecodeString(responderPrivateKeyHex)
-	responderPrivateKey, err := x509.ParsePKCS1PrivateKey(responderPrivateKeyDER)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	extensionBytes, _ := hex.DecodeString(ocspExtensionValueHex)
-	extensions := []pkix.Extension{
-		{
-			Id:       ocspExtensionOID,
-			Critical: false,
-			Value:    extensionBytes,
-		},
-	}
-
-	thisUpdate := time.Date(2010, 7, 7, 15, 1, 5, 0, time.UTC)
-	nextUpdate := time.Date(2010, 7, 7, 18, 35, 17, 0, time.UTC)
-	template := Response{
-		Status:           Revoked,
-		SerialNumber:     leaf.SerialNumber,
-		ThisUpdate:       thisUpdate,
-		NextUpdate:       nextUpdate,
-		RevokedAt:        thisUpdate,
-		RevocationReason: KeyCompromise,
-		Certificate:      responder,
-		ExtraExtensions:  extensions,
-	}
-
-	template.IssuerHash = crypto.MD5
-	_, err = CreateResponse(issuer, responder, template, responderPrivateKey)
-	if err == nil {
-		t.Fatal("CreateResponse didn't fail with non-valid template.IssuerHash value crypto.MD5")
-	}
-
 	testCases := []struct {
-		name       string
-		issuerHash crypto.Hash
+		name                   string
+		responderCertHex       string
+		responderPrivateKeyHex string
 	}{
-		{"Zero value", 0},
-		{"crypto.SHA1", crypto.SHA1},
-		{"crypto.SHA256", crypto.SHA256},
-		{"crypto.SHA384", crypto.SHA384},
-		{"crypto.SHA512", crypto.SHA512},
+		{"RSA", rsaResponderCertHex, rsaResponderPrivateKeyHex},
+		{"ECDSA", ecdsaResponderCertHex, ecdsaResponderPrivateKeyHex},
+		{"Ed25519", ed25519ResponderCertHex, ed25519ResponderPrivateKeyHex},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			template.IssuerHash = tc.issuerHash
-			responseBytes, err := CreateResponse(issuer, responder, template, responderPrivateKey)
+			leafCert, _ := hex.DecodeString(leafCertHex)
+			leaf, err := x509.ParseCertificate(leafCert)
 			if err != nil {
-				t.Fatalf("CreateResponse failed: %s", err)
+				t.Fatal(err)
 			}
 
-			resp, err := ParseResponse(responseBytes, nil)
+			issuerCert, _ := hex.DecodeString(issuerCertHex)
+			issuer, err := x509.ParseCertificate(issuerCert)
 			if err != nil {
-				t.Fatalf("ParseResponse failed: %s", err)
+				t.Fatal(err)
 			}
 
-			if !reflect.DeepEqual(resp.ThisUpdate, template.ThisUpdate) {
-				t.Errorf("resp.ThisUpdate: got %v, want %v", resp.ThisUpdate, template.ThisUpdate)
+			responderCert, _ := hex.DecodeString(tc.responderCertHex)
+			responder, err := x509.ParseCertificate(responderCert)
+			if err != nil {
+				t.Fatal(err)
 			}
 
-			if !reflect.DeepEqual(resp.NextUpdate, template.NextUpdate) {
-				t.Errorf("resp.NextUpdate: got %v, want %v", resp.NextUpdate, template.NextUpdate)
+			responderPrivateKeyDER, _ := hex.DecodeString(tc.responderPrivateKeyHex)
+			_responderPrivateKey, err := x509.ParsePKCS8PrivateKey(responderPrivateKeyDER)
+			if err != nil {
+				t.Fatal(err)
+			}
+			responderPrivateKey, ok := _responderPrivateKey.(crypto.Signer)
+			if !ok {
+				t.Fatal("responderPrivateKey is not a crypto.Signer")
 			}
 
-			if !reflect.DeepEqual(resp.RevokedAt, template.RevokedAt) {
-				t.Errorf("resp.RevokedAt: got %v, want %v", resp.RevokedAt, template.RevokedAt)
+			extensionBytes, _ := hex.DecodeString(ocspExtensionValueHex)
+			extensions := []pkix.Extension{
+				{
+					Id:       ocspExtensionOID,
+					Critical: false,
+					Value:    extensionBytes,
+				},
 			}
 
-			if !reflect.DeepEqual(resp.Extensions, template.ExtraExtensions) {
-				t.Errorf("resp.Extensions: got %v, want %v", resp.Extensions, template.ExtraExtensions)
+			thisUpdate := time.Date(2010, 7, 7, 15, 1, 5, 0, time.UTC)
+			nextUpdate := time.Date(2010, 7, 7, 18, 35, 17, 0, time.UTC)
+			template := Response{
+				Status:           Revoked,
+				SerialNumber:     leaf.SerialNumber,
+				ThisUpdate:       thisUpdate,
+				NextUpdate:       nextUpdate,
+				RevokedAt:        thisUpdate,
+				RevocationReason: KeyCompromise,
+				Certificate:      responder,
+				ExtraExtensions:  extensions,
 			}
 
-			delay := time.Since(resp.ProducedAt)
-			if delay < -time.Hour || delay > time.Hour {
-				t.Errorf("resp.ProducedAt: got %s, want close to current time (%s)", resp.ProducedAt, time.Now())
+			template.IssuerHash = crypto.MD5
+			_, err = CreateResponse(issuer, responder, template, responderPrivateKey)
+			if err == nil {
+				t.Fatal("CreateResponse didn't fail with non-valid template.IssuerHash value crypto.MD5")
 			}
 
-			if resp.Status != template.Status {
-				t.Errorf("resp.Status: got %d, want %d", resp.Status, template.Status)
+			hashTestCases := []struct {
+				name       string
+				issuerHash crypto.Hash
+			}{
+				{"Zero value", 0},
+				{"crypto.SHA1", crypto.SHA1},
+				{"crypto.SHA256", crypto.SHA256},
+				{"crypto.SHA384", crypto.SHA384},
+				{"crypto.SHA512", crypto.SHA512},
 			}
+			for _, htc := range hashTestCases {
+				t.Run(htc.name, func(t *testing.T) {
+					template.IssuerHash = htc.issuerHash
+					responseBytes, err := CreateResponse(issuer, responder, template, responderPrivateKey)
+					if err != nil {
+						t.Fatalf("CreateResponse failed: %s", err)
+					}
 
-			if resp.SerialNumber.Cmp(template.SerialNumber) != 0 {
-				t.Errorf("resp.SerialNumber: got %x, want %x", resp.SerialNumber, template.SerialNumber)
-			}
+					resp, err := ParseResponse(responseBytes, nil)
+					if err != nil {
+						t.Fatalf("ParseResponse failed: %s", err)
+					}
 
-			if resp.RevocationReason != template.RevocationReason {
-				t.Errorf("resp.RevocationReason: got %d, want %d", resp.RevocationReason, template.RevocationReason)
-			}
+					if !reflect.DeepEqual(resp.ThisUpdate, template.ThisUpdate) {
+						t.Errorf("resp.ThisUpdate: got %v, want %v", resp.ThisUpdate, template.ThisUpdate)
+					}
 
-			expectedHash := tc.issuerHash
-			if tc.issuerHash == 0 {
-				expectedHash = crypto.SHA1
-			}
+					if !reflect.DeepEqual(resp.NextUpdate, template.NextUpdate) {
+						t.Errorf("resp.NextUpdate: got %v, want %v", resp.NextUpdate, template.NextUpdate)
+					}
 
-			if resp.IssuerHash != expectedHash {
-				t.Errorf("resp.IssuerHash: got %d, want %d", resp.IssuerHash, expectedHash)
+					if !reflect.DeepEqual(resp.RevokedAt, template.RevokedAt) {
+						t.Errorf("resp.RevokedAt: got %v, want %v", resp.RevokedAt, template.RevokedAt)
+					}
+
+					if !reflect.DeepEqual(resp.Extensions, template.ExtraExtensions) {
+						t.Errorf("resp.Extensions: got %v, want %v", resp.Extensions, template.ExtraExtensions)
+					}
+
+					delay := time.Since(resp.ProducedAt)
+					if delay < -time.Hour || delay > time.Hour {
+						t.Errorf("resp.ProducedAt: got %s, want close to current time (%s)", resp.ProducedAt, time.Now())
+					}
+
+					if resp.Status != template.Status {
+						t.Errorf("resp.Status: got %d, want %d", resp.Status, template.Status)
+					}
+
+					if resp.SerialNumber.Cmp(template.SerialNumber) != 0 {
+						t.Errorf("resp.SerialNumber: got %x, want %x", resp.SerialNumber, template.SerialNumber)
+					}
+
+					if resp.RevocationReason != template.RevocationReason {
+						t.Errorf("resp.RevocationReason: got %d, want %d", resp.RevocationReason, template.RevocationReason)
+					}
+
+					expectedHash := htc.issuerHash
+					if htc.issuerHash == 0 {
+						expectedHash = crypto.SHA1
+					}
+
+					if resp.IssuerHash != expectedHash {
+						t.Errorf("resp.IssuerHash: got %d, want %d", resp.IssuerHash, expectedHash)
+					}
+				})
 			}
 		})
 	}
@@ -683,42 +700,42 @@ const issuerCertHex = "30820383308202eca003020102021046fcebbab4d02f0f926098233f9
 // Key and certificate for the OCSP responder were not taken from the Thawte
 // responder, since CreateResponse requires that we have the private key.
 // Instead, they were generated randomly.
-const responderPrivateKeyHex = "308204a40201000282010100e8155f2d3e6f2e8d14c62a788bd462f9f844e7a6977c83ef" +
-	"1099f0f6616ec5265b56f356e62c5400f0b06a2e7945a82752c636df32a895152d6074df" +
-	"1701dc6ccfbcbec75a70bd2b55ae2be7e6cad3b5fd4cd5b7790ab401a436d3f5f346074f" +
-	"fde8a99d5b723350f0a112076614b12ef79c78991b119453445acf2416ab0046b540db14" +
-	"c9fc0f27b8989ad0f63aa4b8aefc91aa8a72160c36307c60fec78a93d3fddf4259902aa7" +
-	"7e7332971c7d285b6a04f648993c6922a3e9da9adf5f81508c3228791843e5d49f24db2f" +
-	"1290bafd97e655b1049a199f652cd603c4fafa330c390b0da78fbbc67e8fa021cbd74eb9" +
-	"6222b12ace31a77dcf920334dc94581b02030100010282010100bcf0b93d7238bda329a8" +
-	"72e7149f61bcb37c154330ccb3f42a85c9002c2e2bdea039d77d8581cd19bed94078794e" +
-	"56293d601547fc4bf6a2f9002fe5772b92b21b254403b403585e3130cc99ccf08f0ef81a" +
-	"575b38f597ba4660448b54f44bfbb97072b5a2bf043bfeca828cf7741d13698e3f38162b" +
-	"679faa646b82abd9a72c5c7d722c5fc577a76d2c2daac588accad18516d1bbad10b0dfa2" +
-	"05cfe246b59e28608a43942e1b71b0c80498075121de5b900d727c31c42c78cf1db5c0aa" +
-	"5b491e10ea4ed5c0962aaf2ae025dd81fa4ce490d9d6b4a4465411d8e542fc88617e5695" +
-	"1aa4fc8ea166f2b4d0eb89ef17f2b206bd5f1014bf8fe0e71fe62f2cccf102818100f2dc" +
-	"ddf878d553286daad68bac4070a82ffec3dc4666a2750f47879eec913f91836f1d976b60" +
-	"daf9356e078446dafab5bd2e489e5d64f8572ba24a4ba4f3729b5e106c4dd831cc2497a7" +
-	"e6c7507df05cb64aeb1bbc81c1e340d58b5964cf39cff84ea30c29ec5d3f005ee1362698" +
-	"07395037955955655292c3e85f6187fa1f9502818100f4a33c102630840705f8c778a47b" +
-	"87e8da31e68809af981ac5e5999cf1551685d761cdf0d6520361b99aebd5777a940fa64d" +
-	"327c09fa63746fbb3247ec73a86edf115f1fe5c83598db803881ade71c33c6e956118345" +
-	"497b98b5e07bb5be75971465ec78f2f9467e1b74956ca9d4c7c3e314e742a72d8b33889c" +
-	"6c093a466cef0281801d3df0d02124766dd0be98349b19eb36a508c4e679e793ba0a8bef" +
-	"4d786888c1e9947078b1ea28938716677b4ad8c5052af12eb73ac194915264a913709a0b" +
-	"7b9f98d4a18edd781a13d49899f91c20dbd8eb2e61d991ba19b5cdc08893f5cb9d39e5a6" +
-	"0629ea16d426244673b1b3ee72bd30e41fac8395acac40077403de5efd028180050731dd" +
-	"d71b1a2b96c8d538ba90bb6b62c8b1c74c03aae9a9f59d21a7a82b0d572ef06fa9c807bf" +
-	"c373d6b30d809c7871df96510c577421d9860c7383fda0919ece19996b3ca13562159193" +
-	"c0c246471e287f975e8e57034e5136aaf44254e2650def3d51292474c515b1588969112e" +
-	"0a85cc77073e9d64d2c2fc497844284b02818100d71d63eabf416cf677401ebf965f8314" +
-	"120b568a57dd3bd9116c629c40dc0c6948bab3a13cc544c31c7da40e76132ef5dd3f7534" +
-	"45a635930c74326ae3df0edd1bfb1523e3aa259873ac7cf1ac31151ec8f37b528c275622" +
-	"48f99b8bed59fd4da2576aa6ee20d93a684900bf907e80c66d6e2261ae15e55284b4ed9d" +
-	"6bdaa059"
+const rsaResponderPrivateKeyHex = "308204be020100300d06092a864886f70d0101010500048204a8308204a4020100028201" +
+	"0100e8155f2d3e6f2e8d14c62a788bd462f9f844e7a6977c83ef1099f0f6616ec5265b56" +
+	"f356e62c5400f0b06a2e7945a82752c636df32a895152d6074df1701dc6ccfbcbec75a70" +
+	"bd2b55ae2be7e6cad3b5fd4cd5b7790ab401a436d3f5f346074ffde8a99d5b723350f0a1" +
+	"12076614b12ef79c78991b119453445acf2416ab0046b540db14c9fc0f27b8989ad0f63a" +
+	"a4b8aefc91aa8a72160c36307c60fec78a93d3fddf4259902aa77e7332971c7d285b6a04" +
+	"f648993c6922a3e9da9adf5f81508c3228791843e5d49f24db2f1290bafd97e655b1049a" +
+	"199f652cd603c4fafa330c390b0da78fbbc67e8fa021cbd74eb96222b12ace31a77dcf92" +
+	"0334dc94581b02030100010282010100bcf0b93d7238bda329a872e7149f61bcb37c1543" +
+	"30ccb3f42a85c9002c2e2bdea039d77d8581cd19bed94078794e56293d601547fc4bf6a2" +
+	"f9002fe5772b92b21b254403b403585e3130cc99ccf08f0ef81a575b38f597ba4660448b" +
+	"54f44bfbb97072b5a2bf043bfeca828cf7741d13698e3f38162b679faa646b82abd9a72c" +
+	"5c7d722c5fc577a76d2c2daac588accad18516d1bbad10b0dfa205cfe246b59e28608a43" +
+	"942e1b71b0c80498075121de5b900d727c31c42c78cf1db5c0aa5b491e10ea4ed5c0962a" +
+	"af2ae025dd81fa4ce490d9d6b4a4465411d8e542fc88617e56951aa4fc8ea166f2b4d0eb" +
+	"89ef17f2b206bd5f1014bf8fe0e71fe62f2cccf102818100f2dcddf878d553286daad68b" +
+	"ac4070a82ffec3dc4666a2750f47879eec913f91836f1d976b60daf9356e078446dafab5" +
+	"bd2e489e5d64f8572ba24a4ba4f3729b5e106c4dd831cc2497a7e6c7507df05cb64aeb1b" +
+	"bc81c1e340d58b5964cf39cff84ea30c29ec5d3f005ee136269807395037955955655292" +
+	"c3e85f6187fa1f9502818100f4a33c102630840705f8c778a47b87e8da31e68809af981a" +
+	"c5e5999cf1551685d761cdf0d6520361b99aebd5777a940fa64d327c09fa63746fbb3247" +
+	"ec73a86edf115f1fe5c83598db803881ade71c33c6e956118345497b98b5e07bb5be7597" +
+	"1465ec78f2f9467e1b74956ca9d4c7c3e314e742a72d8b33889c6c093a466cef0281801d" +
+	"3df0d02124766dd0be98349b19eb36a508c4e679e793ba0a8bef4d786888c1e9947078b1" +
+	"ea28938716677b4ad8c5052af12eb73ac194915264a913709a0b7b9f98d4a18edd781a13" +
+	"d49899f91c20dbd8eb2e61d991ba19b5cdc08893f5cb9d39e5a60629ea16d426244673b1" +
+	"b3ee72bd30e41fac8395acac40077403de5efd028180050731ddd71b1a2b96c8d538ba90" +
+	"bb6b62c8b1c74c03aae9a9f59d21a7a82b0d572ef06fa9c807bfc373d6b30d809c7871df" +
+	"96510c577421d9860c7383fda0919ece19996b3ca13562159193c0c246471e287f975e8e" +
+	"57034e5136aaf44254e2650def3d51292474c515b1588969112e0a85cc77073e9d64d2c2" +
+	"fc497844284b02818100d71d63eabf416cf677401ebf965f8314120b568a57dd3bd9116c" +
+	"629c40dc0c6948bab3a13cc544c31c7da40e76132ef5dd3f753445a635930c74326ae3df" +
+	"0edd1bfb1523e3aa259873ac7cf1ac31151ec8f37b528c27562248f99b8bed59fd4da257" +
+	"6aa6ee20d93a684900bf907e80c66d6e2261ae15e55284b4ed9d6bdaa059"
 
-const responderCertHex = "308202e2308201caa003020102020101300d06092a864886f70d01010b05003019311730" +
+const rsaResponderCertHex = "308202e2308201caa003020102020101300d06092a864886f70d01010b05003019311730" +
 	"150603550403130e4f43535020526573706f6e646572301e170d31353031333031353530" +
 	"33335a170d3136303133303135353033335a3019311730150603550403130e4f43535020" +
 	"526573706f6e64657230820122300d06092a864886f70d01010105000382010f00308201" +
@@ -739,5 +756,35 @@ const responderCertHex = "308202e2308201caa003020102020101300d06092a864886f70d01
 	"9e2005d5939bfc031589ca143e6e8ab83f40ee08cc20a6b4a95a318352c28d18528dcaf9" +
 	"66705de17afa19d6e8ae91ddf33179d16ebb6ac2c69cae8373d408ebf8c55308be6c04d9" +
 	"3a25439a94299a65a709756c7a3e568be049d5c38839"
+
+const ecdsaResponderPrivateKeyHex = "308187020100301306072a8648ce3d020106082a8648ce3d030107046d306b0201010420" +
+	"5dd8e9178c5b128fba83d5c81e49cef542ab6842e1cd18b770c9f3614b8d7438a1440342" +
+	"0004a52207efe819d77b9d328b78755d601a7855ffab373d44c9062dd28f31a1d633e5b7" +
+	"3756df93d80bb900fbaebcadccce9433b0fe8addee516d948e17896f455b"
+
+const ecdsaResponderCertHex = "308201793082011ea003020102020101300a06082a8648ce3d0403023019311730150603" +
+	"550403130e4f43535020526573706f6e646572301e170d3135303133303135353033335a" +
+	"170d3136303133303135353033335a3019311730150603550403130e4f43535020526573" +
+	"706f6e6465723059301306072a8648ce3d020106082a8648ce3d03010703420004a52207" +
+	"efe819d77b9d328b78755d601a7855ffab373d44c9062dd28f31a1d633e5b73756df93d8" +
+	"0bb900fbaebcadccce9433b0fe8addee516d948e17896f455ba3573055300e0603551d0f" +
+	"0101ff0404030201a230130603551d25040c300a06082b06010505070309300f0603551d" +
+	"130101ff040530030101ff301d0603551d0e04160414421320f1eacd914ec0389858b60e" +
+	"9fa7e049564b300a06082a8648ce3d0403020349003046022100d7885be1521aaf8df531" +
+	"58249159b39f7012396ee16a3d757b3673cf8a6823db022100d20933c864e91775b93614" +
+	"c48e86691f0b00bea01301e4c30da2a0afcff2eed3"
+
+const ed25519ResponderPrivateKeyHex = "302e020100300506032b657004220420ccbc03926a70ed37b0cda03f019cc03510c9a66a" +
+	"47595cd8fe752c1b0be82df3"
+
+const ed25519ResponderCertHex = "308201373081eaa003020102020101300506032b65703019311730150603550403130e4f" +
+	"43535020526573706f6e646572301e170d3135303133303135353033335a170d31363031" +
+	"33303135353033335a3019311730150603550403130e4f43535020526573706f6e646572" +
+	"302a300506032b6570032100772a18db327e1b0c4b45c4e77a6c9e4fac2fb9ce8aebfa9f" +
+	"246d64f390236276a3573055300e0603551d0f0101ff0404030201a230130603551d2504" +
+	"0c300a06082b06010505070309300f0603551d130101ff040530030101ff301d0603551d" +
+	"0e041604146868b9858eaeccb65ad2b3b19fc966d3cc843028300506032b657003410076" +
+	"6fdf217788bebb35996ca39b2770a7ca2f2f3f26b274ce3ab91f1005b89b20cd59182690" +
+	"3616e03a1b9755d8266938740c9e851f52f2ede6873f9ce705ea04"
 
 const errorResponseHex = "30030a0101"
