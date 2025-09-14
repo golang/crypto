@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"slices"
 	"strings"
 
 	"golang.org/x/crypto/ssh/internal/bcrypt_pbkdf"
@@ -409,11 +410,11 @@ func NewSignerWithAlgorithms(signer AlgorithmSigner, algorithms []string) (Multi
 	}
 
 	for _, algo := range algorithms {
-		if !contains(supportedAlgos, algo) {
+		if !slices.Contains(supportedAlgos, algo) {
 			return nil, fmt.Errorf("ssh: algorithm %q is not supported for key type %q",
 				algo, signer.PublicKey().Type())
 		}
-		if !contains(signerAlgos, algo) {
+		if !slices.Contains(signerAlgos, algo) {
 			return nil, fmt.Errorf("ssh: algorithm %q is restricted for the provided signer", algo)
 		}
 	}
@@ -500,7 +501,7 @@ func (r *rsaPublicKey) Marshal() []byte {
 
 func (r *rsaPublicKey) Verify(data []byte, sig *Signature) error {
 	supportedAlgos := algorithmsForKeyFormat(r.Type())
-	if !contains(supportedAlgos, sig.Format) {
+	if !slices.Contains(supportedAlgos, sig.Format) {
 		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, r.Type())
 	}
 	hash := hashFuncs[sig.Format]
@@ -1126,7 +1127,7 @@ func (s *wrappedSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm
 		algorithm = s.pubKey.Type()
 	}
 
-	if !contains(s.Algorithms(), algorithm) {
+	if !slices.Contains(s.Algorithms(), algorithm) {
 		return nil, fmt.Errorf("ssh: unsupported signature algorithm %q for key format %q", algorithm, s.pubKey.Type())
 	}
 

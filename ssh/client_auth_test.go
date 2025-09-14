@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -1214,7 +1215,7 @@ func (cb configurablePublicKeyCallback) auth(session []byte, user string, c pack
 	if err != nil {
 		return authFailure, nil, err
 	}
-	if success == authSuccess || !contains(methods, cb.method()) {
+	if success == authSuccess || !slices.Contains(methods, cb.method()) {
 		return success, methods, err
 	}
 

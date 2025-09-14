@@ -345,7 +345,7 @@ func keyFormatForAlgorithm(sigAlgo string) string {
 // algorithms.
 func isRSA(algo string) bool {
 	algos := algorithmsForKeyFormat(KeyAlgoRSA)
-	return contains(algos, underlyingAlgo(algo))
+	return slices.Contains(algos, underlyingAlgo(algo))
 }
 
 func isRSACert(algo string) bool {
@@ -544,7 +544,7 @@ func (c *Config) SetDefaults() {
 		if kexAlgoMap[k] != nil {
 			// Ignore the KEX if we have no kexAlgoMap definition.
 			kexs = append(kexs, k)
-			if k == KeyExchangeCurve25519 && !contains(c.KeyExchanges, keyExchangeCurve25519LibSSH) {
+			if k == KeyExchangeCurve25519 && !slices.Contains(c.KeyExchanges, keyExchangeCurve25519LibSSH) {
 				kexs = append(kexs, keyExchangeCurve25519LibSSH)
 			}
 		}
