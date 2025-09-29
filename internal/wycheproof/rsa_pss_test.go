@@ -141,7 +141,7 @@ func TestRsaPss(t *testing.T) {
 			}
 			// Run all the tests twice: the first time with the salt length
 			// as PSSSaltLengthAuto, and the second time with the salt length
-			// explictily set to tg.SLen.
+			// explicitly set to tg.SLen.
 			for i := 0; i < 2; i++ {
 				for _, sig := range tg.Tests {
 					h.Reset()

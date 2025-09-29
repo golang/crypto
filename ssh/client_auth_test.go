@@ -1136,7 +1136,7 @@ func TestPickSignatureAlgorithm(t *testing.T) {
 				t.Fatalf("error generating cert signer: %v", err)
 			}
 			// The signer supports the public key algorithm and the
-			// public key format is a certificate type so the cerificate
+			// public key format is a certificate type so the certificate
 			// algorithm matching the key format must be returned
 			_, algo, err = pickSignatureAlgorithm(certSigner, c.extensions)
 			if err != nil {

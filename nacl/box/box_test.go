@@ -114,7 +114,7 @@ func TestSealOpenAnonymous(t *testing.T) {
 		t.Fatal("expected out to be unchanged")
 	}
 	if !bytes.HasPrefix(box, orig) {
-		t.Fatal("expected out to be coppied to returned slice")
+		t.Fatal("expected out to be copied to returned slice")
 	}
 	_, ok = OpenAnonymous(nil, box[len(out):], publicKey, privateKey)
 	if !ok {

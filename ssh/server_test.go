@@ -724,7 +724,7 @@ func TestVerifiedPublicCallbackPartialSuccessBadUsage(t *testing.T) {
 
 	_, _, _, err = NewClientConn(c2, "", &clientConf)
 	if err == nil {
-		t.Fatal("authentication suceeded with PartialSuccess returned from PublicKeyCallback and  VerifiedPublicKeyCallback defined")
+		t.Fatal("authentication succeeded with PartialSuccess returned from PublicKeyCallback and  VerifiedPublicKeyCallback defined")
 	}
 }
 
@@ -803,7 +803,7 @@ func TestVerifiedPublicKeyCallbackOnly(t *testing.T) {
 
 	_, _, _, err = NewClientConn(c2, "", &clientConf)
 	if err == nil {
-		t.Fatal("authentication suceeded with only VerifiedPublicKeyCallback defined")
+		t.Fatal("authentication succeeded with only VerifiedPublicKeyCallback defined")
 	}
 	<-done
 }

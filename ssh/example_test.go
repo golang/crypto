@@ -155,7 +155,7 @@ func ExampleNewServerConn() {
 }
 
 func ExampleServerConfig() {
-	// Minimal ServerConfig with SHA-1 algoritms disabled and supporting only
+	// Minimal ServerConfig with SHA-1 algorithms disabled and supporting only
 	// public key authentication.
 
 	// The algorithms returned by ssh.SupportedAlgorithms() are different from
@@ -344,7 +344,7 @@ func ExampleClientConfig() {
 		log.Fatalf("unable to parse private key: %v", err)
 	}
 
-	// Minimal ClientConfig with SHA-1 algoritms disabled.
+	// Minimal ClientConfig with SHA-1 algorithms disabled.
 	// The algorithms returned by ssh.SupportedAlgorithms() are different from
 	// the default ones and do not include algorithms that are considered
 	// insecure, such as those using SHA-1, returned by
@@ -361,7 +361,7 @@ func ExampleClientConfig() {
 			ssh.PublicKeys(signer),
 		},
 		HostKeyCallback: ssh.FixedHostKey(hostKey),
-		// We should check that hostKey algorithm is inlcuded in
+		// We should check that hostKey algorithm is included in
 		// algorithms.HostKeys.
 		HostKeyAlgorithms: algorithms.HostKeys,
 	}

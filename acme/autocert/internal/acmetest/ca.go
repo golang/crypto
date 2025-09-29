@@ -145,7 +145,7 @@ func (ca *CAServer) URL() string {
 	return ca.url
 }
 
-// Roots returns a pool cointaining the CA root.
+// Roots returns a pool containing the CA root.
 func (ca *CAServer) Roots() *x509.CertPool {
 	if ca.url == "" {
 		panic("Roots called before Start")

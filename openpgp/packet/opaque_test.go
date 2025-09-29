@@ -51,7 +51,7 @@ func TestOpaqueParseReason(t *testing.T) {
 	const expectedBad = 3
 	// Test post-conditions, make sure we actually parsed packets as expected.
 	if badPackets != expectedBad {
-		t.Errorf("unexpected # unparseable packets: %d (want %d)", badPackets, expectedBad)
+		t.Errorf("unexpected # unparsable packets: %d (want %d)", badPackets, expectedBad)
 	}
 	if uid == nil {
 		t.Errorf("failed to find expected UID in unsupported keyring")
