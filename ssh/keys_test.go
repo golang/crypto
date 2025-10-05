@@ -277,7 +277,7 @@ func TestParseEncryptedPrivateKeysWithUnsupportedCiphers(t *testing.T) {
 			_, err := ParsePrivateKeyWithPassphrase(tt.PEMBytes, []byte(tt.EncryptionKey))
 			var e *UnsupportedCipherError
 			if !errors.As(err, &e) {
-				t.Errorf("got error %v, want PassphraseMissingError", err)
+				t.Errorf("got error %v, want UnsupportedCipherError", err)
 			}
 
 			if e.BadCipher != tt.Cipher {
