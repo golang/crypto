@@ -271,6 +271,22 @@ func TestParseEncryptedPrivateKeysWithPassphrase(t *testing.T) {
 	}
 }
 
+func TestParseEncryptedPrivateKeysWithUnsupportedCiphers(t *testing.T) {
+	for _, tt := range testdata.PEMEncryptedKeysForUnsupportedCiphers {
+		t.Run(tt.Name, func(t *testing.T) {
+			_, err := ParsePrivateKeyWithPassphrase(tt.PEMBytes, []byte(tt.EncryptionKey))
+			var e *UnsupportedCipherError
+			if !errors.As(err, &e) {
+				t.Errorf("got error %v, want PassphraseMissingError", err)
+			}
+
+			if e.BadCipher != tt.Cipher {
+				t.Errorf("got badcipher %q, wanted %q", e.BadCipher, tt.Cipher)
+			}
+		})
+	}
+}
+
 func TestParseEncryptedPrivateKeysWithIncorrectPassphrase(t *testing.T) {
 	pem := testdata.PEMEncryptedKeys[0].PEMBytes
 	for i := 0; i < 4096; i++ {
