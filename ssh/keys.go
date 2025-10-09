@@ -1271,12 +1271,12 @@ func (*PassphraseMissingError) Error() string {
 	return "ssh: this private key is passphrase protected"
 }
 
-type UnsupportedCipherError struct {
+type unsupportedCipherError struct {
 	BadCipher        string
 	SupportedCiphers []string
 }
 
-func (e *UnsupportedCipherError) Error() string {
+func (e *unsupportedCipherError) Error() string {
 	return fmt.Sprintf("ssh: unknown cipher %q, only supports one of %q", e.BadCipher, strings.Join(e.SupportedCiphers, ","))
 }
 
@@ -1438,7 +1438,7 @@ func passphraseProtectedOpenSSHKey(passphrase []byte) openSSHDecryptFunc {
 			cbc := cipher.NewCBCDecrypter(c, iv)
 			cbc.CryptBlocks(privKeyBlock, privKeyBlock)
 		default:
-			return nil, &UnsupportedCipherError{
+			return nil, &unsupportedCipherError{
 				BadCipher:        cipherName,
 				SupportedCiphers: []string{"aes256-ctr", "aes256-cbc"},
 			}

@@ -275,7 +275,7 @@ func TestParseEncryptedPrivateKeysWithUnsupportedCiphers(t *testing.T) {
 	for _, tt := range testdata.PEMEncryptedKeysForUnsupportedCiphers {
 		t.Run(tt.Name, func(t *testing.T) {
 			_, err := ParsePrivateKeyWithPassphrase(tt.PEMBytes, []byte(tt.EncryptionKey))
-			var e *UnsupportedCipherError
+			var e *unsupportedCipherError
 			if !errors.As(err, &e) {
 				t.Errorf("got error %v, want UnsupportedCipherError", err)
 			}
