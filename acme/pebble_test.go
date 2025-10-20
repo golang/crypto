@@ -757,7 +757,7 @@ func prepareBinaries(t *testing.T, pebbleDir string) string {
 
 	// We don't want to build in the module cache dir, which might not be
 	// writable or to pollute the user's clone with binaries if pebbleLocalDir
-	//is used.
+	// is used.
 	binDir := t.TempDir()
 
 	build := func(cmd string) {

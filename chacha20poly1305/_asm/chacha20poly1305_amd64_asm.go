@@ -641,7 +641,7 @@ func hashADDone() {
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-// Implements the following function fignature:
+// Implements the following function signature:
 //
 //	func chacha20Poly1305Open(dst []byte, key []uint32, src []byte, ad []byte) bool
 func chacha20Poly1305Open() {
@@ -2967,7 +2967,7 @@ func openAVX2Tail512HashEnd() {
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 
-// Implements the following function fignature:
+// Implements the following function signature:
 //
 //	func chacha20Poly1305Seal(dst []byte, key []uint32, src, ad []byte)
 func chacha20Poly1305Seal() {
