@@ -436,6 +436,42 @@ func TestOCSPDecodeMultiResponseWithoutMatchingCert(t *testing.T) {
 	}
 }
 
+func TestOCSPResponseWithIntermediate(t *testing.T) {
+	intBlock, _ := pem.Decode([]byte(ocspResponseWithIssuerIssuerPem))
+	intCert, err := x509.ParseCertificate(intBlock.Bytes)
+	if err != nil {
+		t.Errorf("failed to parse issuer certificate: %v", err)
+	}
+
+	ocspBlock, _ := pem.Decode([]byte(ocspResponseWithIssuerPem))
+	resp, err := ParseResponse(ocspBlock.Bytes, intCert)
+	if err != nil {
+		t.Errorf("expected nil error when parsing OCSP response with embedded issuer equal to passed issuer; got: %v", err)
+	}
+	if resp.Certificate == nil || !bytes.Equal(resp.Certificate.Raw, intCert.Raw) {
+		t.Errorf("expected response to contain embedded certificate pointing to issuer")
+	}
+
+	resp, err = ParseResponse(ocspBlock.Bytes, nil)
+	if err != nil {
+		t.Errorf("expected nil error when parsing OCSP response with embedded issuer with nil passed issuer; got: %v", err)
+	}
+	if resp.Certificate == nil || !bytes.Equal(resp.Certificate.Raw, intCert.Raw) {
+		t.Errorf("expected response to contain embedded certificate pointing to issuer")
+	}
+
+	rootBlock, _ := pem.Decode([]byte(GTSRoot))
+	rootCert, err := x509.ParseCertificate(rootBlock.Bytes)
+	if err != nil {
+		t.Errorf("failed to parse root certificate: %v", err)
+	}
+
+	_, err = ParseResponse(ocspBlock.Bytes, rootCert)
+	if err == nil {
+		t.Errorf("expected error when parsing OCSP request with embedded issuer and unrelated issuer passed; got nil")
+	}
+}
+
 // This OCSP response was taken from GTS's public OCSP responder.
 // To recreate:
 //   $ openssl s_client -tls1 -showcerts -servername golang.org -connect golang.org:443
@@ -739,5 +775,62 @@ const responderCertHex = "308202e2308201caa003020102020101300d06092a864886f70d01
 	"9e2005d5939bfc031589ca143e6e8ab83f40ee08cc20a6b4a95a318352c28d18528dcaf9" +
 	"66705de17afa19d6e8ae91ddf33179d16ebb6ac2c69cae8373d408ebf8c55308be6c04d9" +
 	"3a25439a94299a65a709756c7a3e568be049d5c38839"
+
+// The below OCSP response and issuer certificate are from
+// https://go.dev/play/p/Nr-VKOD_fxH; the OCSP response contains
+// an embedded copy of the below issuer certificate.
+const ocspResponseWithIssuerPem = "-----BEGIN OCSP RESPONSE-----\n" +
+	"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\n" +
+	"vBfNItA0VDnFokkM4cWpWcfc\n" +
+	"-----END OCSP RESPONSE-----"
+
+const ocspResponseWithIssuerIssuerPem = "-----BEGIN CERTIFICATE-----\n" +
+	"MIID2DCCAsCgAwIBAgIUf7WaMa5TA055bfvks8x+tlxTXM4wDQYJKoZIhvcNAQEL\n" +
+	"BQAwFjEUMBIGA1UEAxMLZXhhbXBsZS5jb20wHhcNMjMwNDE0MTgzMTM0WhcNMjMw\n" +
+	"NTE2MTgzMjA0WjAtMSswKQYDVQQDEyJleGFtcGxlLmNvbSBJbnRlcm1lZGlhdGUg\n" +
+	"QXV0aG9yaXR5MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAnVnOguKa\n" +
+	"w5I8awYoLqr1zzRbCmNo1qckdtnse4W5AMvlw8IwELtnd451GVSkh5W7wGyZcDoW\n" +
+	"fY4kgMKLbA7KaFMzZzoUe1xQUfx03FgD15Hl9enyR5keuxu2yd+ZG9q+T+rxceUe\n" +
+	"5qpEKhH5PYUq3I9ylQi/8KLcmPvrS5SAA+1xa/km46m7ZKvcBNcD8FUnOZ0HsW45\n" +
+	"Q9u0/NggYuOA+QXkA/uTf2KFoc/jMj4CnMeVFJNxH5KdpeLRJ2IfbSVXCa9aNsKs\n" +
+	"CUQp5T6WPD1LofIGZgiiL8Pq4hBBRr6KQ/J9vXUTsY7gx7NpKssPKaeFJJGMMY2o\n" +
+	"8McosjSPd6fV+QIDAQABo4IBBTCCAQEwDgYDVR0PAQH/BAQDAgEGMA8GA1UdEwEB\n" +
+	"/wQFMAMBAf8wHQYDVR0OBBYEFDgUwTbYbLNZVVEBmVuwCUHXSNDZMB8GA1UdIwQY\n" +
+	"MBaAFMjIfL6MO1SNAWWYP+3CZXbXllaRMGoGCCsGAQUFBwEBBF4wXDAtBggrBgEF\n" +
+	"BQcwAYYhaHR0cDovL2xvY2FsaG9zdDo4MzAwL3YxL3BraS9vY3NwMCsGCCsGAQUF\n" +
+	"BzAChh9odHRwOi8vbG9jYWxob3N0OjgzMDAvdjEvcGtpL2NhMDIGA1UdHwQrMCkw\n" +
+	"J6AloCOGIWh0dHA6Ly9sb2NhbGhvc3Q6ODMwMC92MS9wa2kvY3JsczANBgkqhkiG\n" +
+	"9w0BAQsFAAOCAQEAbBdScULwEhxZdMzyTEbHABykV44Dq5JtTfSeAzKYQt5VmekU\n" +
+	"R0Ly2Qe631AMff3lRflAinL8eHpXWSc8aeX3uSuTkdVboeubp55ata5DculqhoS/\n" +
+	"GjLlGeTRhQCkUzjRF+bShosQMviTOMV9IiFNzmYZXxseCfsTMi1sv8UYhwC6mgib\n" +
+	"EhjPA2nzWsDenu92QkH054O2wnosMgleGIL0hQV0P87NJ2fTxZ+aKwx6mTj0tbPb\n" +
+	"04VRqlmCVIAEb1n49414QBgK8vSLo1Jj2Vng7bV/I+7uIeDtv1Cen2AiAwhm0LAO\n" +
+	"AcJvrQqoC2fCULwXzSLQNFQ5xaJJDOHFqVnH3A==\n" +
+	"-----END CERTIFICATE-----"
 
 const errorResponseHex = "30030a0101"
