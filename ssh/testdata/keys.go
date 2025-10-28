@@ -216,12 +216,15 @@ var SSHCertificates = map[string][]byte{
 `),
 }
 
-var PEMEncryptedKeys = []struct {
+type PEMEncryptedKey struct {
 	Name              string
 	EncryptionKey     string
 	IncludesPublicKey bool
+	Cipher            string
 	PEMBytes          []byte
-}{
+}
+
+var PEMEncryptedKeys = []PEMEncryptedKey{
 	0: {
 		Name:          "rsa-encrypted",
 		EncryptionKey: "r54-G0pher_t3st$",
@@ -305,6 +308,54 @@ NwxUMNpbfmp/dxgU4ZNkC3ydgcugAAAAoJ3J/oA7+iqVOz0CIUUk9ufdP1VP4jDf2um+0s
 Sgs7x6Gpyjq67Ps7wLRdSmxr/G5b+Z8dRGFYS/wUCQEe3whwuImvLyPwWjXLzkAyMzc01f
 ywBGSrHnvP82ppenc2HuTI+E05Xc02i6JVyI1ShiekQL5twoqtR6pEBZnD17UonIx7cRzZ
 gbDGyT3bXMQtagvCwoW+/oMTKXiZP5jCJpEO8=
+-----END OPENSSH PRIVATE KEY-----
+`),
+	},
+}
+
+var PEMEncryptedKeysForUnsupportedCiphers = []PEMEncryptedKey{
+	0: {
+		Name:              "ed25519-encrypted-chacha20-poly1305",
+		EncryptionKey:     "password",
+		IncludesPublicKey: true,
+		Cipher:            "chacha20-poly1305@openssh.com",
+		PEMBytes: []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAAHWNoYWNoYTIwLXBvbHkxMzA1QG9wZW5zc2guY29tAAAABm
+JjcnlwdAAAABgAAAAQdPyPIjXDRAVHskY0yp9SWwAAAGQAAAABAAAAMwAAAAtzc2gtZWQy
+NTUxOQAAACBi6qXITEUrmNce/c2lfozxALlKH3o/6sll8G7wzl1lvQAAAJDNlW1sEkvnK0
+8EecF1vHdPk85yClbh3KkHv09mbGAX/Gk6cJpYEGgJSkO7OEF4kG9DVGGd17+TZbTnM4LD
+vYAJZExx2XLgJFEtHCVmJjYzwxx7yC7+s6u/XjrSlZS60RHunOPKyq+C+s48sejXvmX+t5
+0ZoVCI8aftT0ycis3gvLU9sCwJ2UnF6kAV226Z4g2aLkuJbgCDTEcYCRD64K1r
+-----END OPENSSH PRIVATE KEY-----
+`),
+	},
+	1: {
+		Name:              "ed25519-encrypted-aes128-gcm",
+		EncryptionKey:     "password",
+		IncludesPublicKey: true,
+		Cipher:            "aes128-gcm@openssh.com",
+		PEMBytes: []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAAFmFlczEyOC1nY21Ab3BlbnNzaC5jb20AAAAGYmNyeXB0AA
+AAGAAAABBeMJIOqiyFwNCvDv6f8tQeAAAAZAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAA
+IGYpUcb3tGp9kF6pppcUdq3EPMr85BaSUdhiXGbhS5YNAAAAkNBtMEu0UlLgToThuQc+4m
+/o0DfFIERu0sspQivn5RJHCtulVKfU9BMiEnF0+LOMOABMlYesgLOtoMxwm4ZCSWH54kZk
+vaFyyvvxY+RLDuWNQZCryffIA4+iLCUQR1EdxMDiJweKnGJuD64a+9xTJt47A3Vq4SYzji
+EuVmM0FqS8lbT2ynYSe3va0Qyw13jEO5qbtCuyG+C5GejL7kX4Z64=
+-----END OPENSSH PRIVATE KEY-----
+`),
+	},
+	2: {
+		Name:              "ed25519-encrypted-aes256-gcm",
+		EncryptionKey:     "password",
+		IncludesPublicKey: true,
+		Cipher:            "aes256-gcm@openssh.com",
+		PEMBytes: []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAAFmFlczI1Ni1nY21Ab3BlbnNzaC5jb20AAAAGYmNyeXB0AA
+AAGAAAABBR1p3vH2Wr/HPL+q20L2rjAAAAZAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAA
+IM3tT1xrAuOHcrBdoLRo/ojWZsAw2lHfF5hJgFEOts5MAAAAkH/YGrDhDw8u+F8e4P+84B
+tAzvp55Lf1Yl7y34BrVmqlWqw/7boqahOp6iYJHNpcuanzc5T6s7Z3wSSYodbY1uvFOfbj
+rtP6rIHQIY5J2C40WOYJN8IkZlkwDXwZY0qoE9699ZYmWdwsXRZ7QDhjd2W8ziyZBsttiB
+kv2ceuJMLT04TrKc2+RUkj4CQYnz7p8EkgZlUozx8wBSxKFGnkP7k=
 -----END OPENSSH PRIVATE KEY-----
 `),
 	},
