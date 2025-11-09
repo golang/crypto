@@ -17,27 +17,60 @@ import (
 
 func TestRenewalNext(t *testing.T) {
 	now := time.Now()
-	man := &Manager{
-		RenewBefore: 7 * 24 * time.Hour,
-		nowFunc:     func() time.Time { return now },
-	}
-	defer man.stopRenew()
+	nowFn := func() time.Time { return now }
 	tt := []struct {
-		expiry   time.Time
-		min, max time.Duration
+		name        string
+		renewBefore time.Duration // arg to Manager
+		// leaf cert validity
+		notBefore time.Time
+		validFor  time.Duration
+		// wait time
+		waitMin, waitMax time.Duration
 	}{
-		{now.Add(90 * 24 * time.Hour), 83*24*time.Hour - renewJitter, 83 * 24 * time.Hour},
-		{now.Add(time.Hour), 0, 1},
-		{now, 0, 1},
-		{now.Add(-time.Hour), 0, 1},
+		{"default renewal, 1h cert, valid",
+			0, now, time.Hour, 40 * time.Minute, 50 * time.Minute},
+		{"default renewal, 1h cert, should renew",
+			0, now.Add(-50 * time.Minute), time.Hour, 0, 0},
+		{"default renewal, 1h cert, expired",
+			0, now.Add(-400 * 24 * time.Hour), time.Hour, 0, 0},
+		{"default renewal, 6d cert, valid",
+			0, now, 6 * 24 * time.Hour, 4 * 24 * time.Hour, (4*24 + 1) * time.Hour},
+		{"default renewal, 6d cert, should renew",
+			0, now.Add(-5 * 24 * time.Hour), 6 * 24 * time.Hour, 0, 0},
+		{"default renewal, 6d cert, expired",
+			0, now.Add(-400 * 24 * time.Hour), 6 * 24 * time.Hour, 0, 0},
+		{"default renewal, 90d cert, valid",
+			0, now, 90 * 24 * time.Hour, 60 * 24 * time.Hour, (60*24 + 1) * time.Hour},
+		{"default renewal, 90d cert, should renew",
+			0, now.Add(-70 * 24 * time.Hour), 90 * 24 * time.Hour, 0, 0},
+		{"default renewal, 90d cert, expired",
+			0, now.Add(-400 * 24 * time.Hour), 90 * 24 * time.Hour, 0, 0},
+		{"default renewal, 398d cert, valid",
+			0, now, 398 * 24 * time.Hour, (368 * 24) * time.Hour, (368*24 + 1) * time.Hour},
+		{"default renewal, 398d cert, should renew",
+			0, now.Add(-378 * 24 * time.Hour), 398 * 24 * time.Hour, 0, 0},
+		{"default renewal, 398d cert, expired",
+			0, now.Add(-400 * 24 * time.Hour), 398 * 24 * time.Hour, 0, 0},
+		{"7d renewal, 90d cert, valid",
+			7 * 24 * time.Hour, now, 90 * 24 * time.Hour, 83 * 24 * time.Hour, (83*24 + 1) * time.Hour},
+		{"7d renewal, 90d cert, should not renew",
+			7 * 24 * time.Hour, now.Add(-70 * 24 * time.Hour), 90 * 24 * time.Hour, 13 * 24 * time.Hour, (13*24 + 1) * time.Hour},
+		{"7d renewal, 90d cert, should renew",
+			7 * 24 * time.Hour, now.Add(-85 * 24 * time.Hour), 90 * 24 * time.Hour, 0, 0},
+		{"7d renewal, 90d cert, expired",
+			7 * 24 * time.Hour, now.Add(-400 * 24 * time.Hour), 90 * 24 * time.Hour, 0, 0},
 	}
 
-	dr := &domainRenewal{m: man}
-	for i, test := range tt {
-		next := dr.next(test.expiry)
-		if next < test.min || test.max < next {
-			t.Errorf("%d: next = %v; want between %v and %v", i, next, test.min, test.max)
-		}
+	for _, test := range tt {
+		t.Run(test.name, func(t *testing.T) {
+			dr := &domainRenewal{m: &Manager{RenewBefore: test.renewBefore, nowFunc: nowFn}}
+			defer dr.m.stopRenew()
+
+			next := dr.next(test.notBefore, test.notBefore.Add(test.validFor))
+			if next < test.waitMin || next > test.waitMax {
+				t.Errorf("expected wait time: %v <= %v <= %v", test.waitMin, next, test.waitMax)
+			}
+		})
 	}
 }
 
@@ -239,7 +272,7 @@ func TestRenewFromCacheAlreadyRenewed(t *testing.T) {
 	}
 
 	// trigger renew
-	man.startRenew(exampleCertKey, s.key, s.leaf.NotAfter)
+	man.startRenew(exampleCertKey, s.key, s.leaf.NotBefore, s.leaf.NotAfter)
 	<-renewed
 	func() {
 		man.renewalMu.Lock()
