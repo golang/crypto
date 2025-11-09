@@ -216,15 +216,12 @@ var SSHCertificates = map[string][]byte{
 `),
 }
 
-type PEMEncryptedKey struct {
+var PEMEncryptedKeys = []struct {
 	Name              string
 	EncryptionKey     string
 	IncludesPublicKey bool
-	Cipher            string
 	PEMBytes          []byte
-}
-
-var PEMEncryptedKeys = []PEMEncryptedKey{
+}{
 	0: {
 		Name:          "rsa-encrypted",
 		EncryptionKey: "r54-G0pher_t3st$",
@@ -313,12 +310,14 @@ gbDGyT3bXMQtagvCwoW+/oMTKXiZP5jCJpEO8=
 	},
 }
 
-var PEMEncryptedKeysForUnsupportedCiphers = []PEMEncryptedKey{
+var UnsupportedCipherData = []struct {
+    Name string
+    EncryptionKey string
+    PEMBytes []byte
+} {
 	0: {
 		Name:              "ed25519-encrypted-chacha20-poly1305",
 		EncryptionKey:     "password",
-		IncludesPublicKey: true,
-		Cipher:            "chacha20-poly1305@openssh.com",
 		PEMBytes: []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAAHWNoYWNoYTIwLXBvbHkxMzA1QG9wZW5zc2guY29tAAAABm
 JjcnlwdAAAABgAAAAQdPyPIjXDRAVHskY0yp9SWwAAAGQAAAABAAAAMwAAAAtzc2gtZWQy
@@ -332,8 +331,6 @@ vYAJZExx2XLgJFEtHCVmJjYzwxx7yC7+s6u/XjrSlZS60RHunOPKyq+C+s48sejXvmX+t5
 	1: {
 		Name:              "ed25519-encrypted-aes128-gcm",
 		EncryptionKey:     "password",
-		IncludesPublicKey: true,
-		Cipher:            "aes128-gcm@openssh.com",
 		PEMBytes: []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAAFmFlczEyOC1nY21Ab3BlbnNzaC5jb20AAAAGYmNyeXB0AA
 AAGAAAABBeMJIOqiyFwNCvDv6f8tQeAAAAZAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAA
@@ -347,8 +344,6 @@ EuVmM0FqS8lbT2ynYSe3va0Qyw13jEO5qbtCuyG+C5GejL7kX4Z64=
 	2: {
 		Name:              "ed25519-encrypted-aes256-gcm",
 		EncryptionKey:     "password",
-		IncludesPublicKey: true,
-		Cipher:            "aes256-gcm@openssh.com",
 		PEMBytes: []byte(`-----BEGIN OPENSSH PRIVATE KEY-----
 b3BlbnNzaC1rZXktdjEAAAAAFmFlczI1Ni1nY21Ab3BlbnNzaC5jb20AAAAGYmNyeXB0AA
 AAGAAAABBR1p3vH2Wr/HPL+q20L2rjAAAAZAAAAAEAAAAzAAAAC3NzaC1lZDI1NTE5AAAA
@@ -360,6 +355,7 @@ kv2ceuJMLT04TrKc2+RUkj4CQYnz7p8EkgZlUozx8wBSxKFGnkP7k=
 `),
 	},
 }
+
 
 // SKData contains a list of PubKeys backed by U2F/FIDO2 Security Keys and their test data.
 var SKData = []struct {

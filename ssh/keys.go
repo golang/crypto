@@ -1271,15 +1271,6 @@ func (*PassphraseMissingError) Error() string {
 	return "ssh: this private key is passphrase protected"
 }
 
-type unsupportedCipherError struct {
-	BadCipher        string
-	SupportedCiphers []string
-}
-
-func (e *unsupportedCipherError) Error() string {
-	return fmt.Sprintf("ssh: unknown cipher %q, only supports one of %q", e.BadCipher, strings.Join(e.SupportedCiphers, ","))
-}
-
 // ParseRawPrivateKey returns a private key from a PEM encoded private key. It supports
 // RSA, DSA, ECDSA, and Ed25519 private keys in PKCS#1, PKCS#8, OpenSSL, and OpenSSH
 // formats. If the private key is encrypted, it will return a PassphraseMissingError.
@@ -1438,10 +1429,7 @@ func passphraseProtectedOpenSSHKey(passphrase []byte) openSSHDecryptFunc {
 			cbc := cipher.NewCBCDecrypter(c, iv)
 			cbc.CryptBlocks(privKeyBlock, privKeyBlock)
 		default:
-			return nil, &unsupportedCipherError{
-				BadCipher:        cipherName,
-				SupportedCiphers: []string{"aes256-ctr", "aes256-cbc"},
-			}
+			return nil, fmt.Errorf("ssh: unknown cipher %q, only supports %q or %q", cipherName, "aes256-ctr", "aes256-cbc")
 		}
 
 		return privKeyBlock, nil
@@ -1502,7 +1490,7 @@ type openSSHEncryptedPrivateKey struct {
 	NumKeys      uint32
 	PubKey       []byte
 	PrivKeyBlock []byte
-	Rest         []byte `ssh:"rest"`
+    Rest         []byte `ssh:"rest"`
 }
 
 type openSSHPrivateKey struct {

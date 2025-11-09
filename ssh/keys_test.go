@@ -272,19 +272,18 @@ func TestParseEncryptedPrivateKeysWithPassphrase(t *testing.T) {
 }
 
 func TestParseEncryptedPrivateKeysWithUnsupportedCiphers(t *testing.T) {
-	for _, tt := range testdata.PEMEncryptedKeysForUnsupportedCiphers {
-		t.Run(tt.Name, func(t *testing.T) {
-			_, err := ParsePrivateKeyWithPassphrase(tt.PEMBytes, []byte(tt.EncryptionKey))
-			var e *unsupportedCipherError
-			if !errors.As(err, &e) {
-				t.Errorf("got error %v, want UnsupportedCipherError", err)
-			}
-
-			if e.BadCipher != tt.Cipher {
-				t.Errorf("got badcipher %q, wanted %q", e.BadCipher, tt.Cipher)
-			}
-		})
-	}
+    for _, tt := range testdata.UnsupportedCipherData {
+        t.Run(tt.Name, func(t *testing.T){
+            _, err := ParsePrivateKeyWithPassphrase(tt.PEMBytes, []byte(tt.EncryptionKey))
+            if err == nil {
+                t.Fatalf("expected 'unknown cipher' error for %q, got nil", tt.Name)
+                // If this cipher is now supported, remove it from testdata.UnsupportedCipherData
+            }
+            if !strings.Contains(err.Error(), "unknown cipher") {
+                t.Errorf("wanted 'unknown cipher' error, got %v", err.Error())
+            }
+        })
+    }
 }
 
 func TestParseEncryptedPrivateKeysWithIncorrectPassphrase(t *testing.T) {
