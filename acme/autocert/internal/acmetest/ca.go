@@ -239,7 +239,8 @@ type discovery struct {
 }
 
 type discoveryMeta struct {
-	ExternalAccountRequired bool `json:"externalAccountRequired,omitempty"`
+	Terms                   string `json:"termsOfService,omitempty"`
+	ExternalAccountRequired bool   `json:"externalAccountRequired,omitempty"`
 }
 
 type challenge struct {
@@ -281,6 +282,7 @@ func (ca *CAServer) handle(w http.ResponseWriter, r *http.Request) {
 			NewAccount: ca.serverURL("/new-account"),
 			NewOrder:   ca.serverURL("/new-order"),
 			Meta: discoveryMeta{
+				Terms:                   ca.serverURL("/terms"),
 				ExternalAccountRequired: ca.eabRequired,
 			},
 		}

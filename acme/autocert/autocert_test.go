@@ -201,7 +201,7 @@ func TestGetCertificate(t *testing.T) {
 			prepare: func(t *testing.T, man *Manager, s *acmetest.CAServer) {
 				man.Prompt = nil
 			},
-			expectError: "Manager.Prompt not set",
+			expectError: "missing Manager.Prompt",
 		},
 		{
 			name:   "trailingDot",
