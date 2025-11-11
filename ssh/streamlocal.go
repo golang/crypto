@@ -100,10 +100,7 @@ func (l *unixListener) Close() error {
 	m := streamLocalChannelForwardMsg{
 		l.socketPath,
 	}
-	ok, _, err := l.conn.SendRequest("cancel-streamlocal-forward@openssh.com", true, Marshal(&m))
-	if err == nil && !ok {
-		err = errors.New("ssh: cancel-streamlocal-forward@openssh.com failed")
-	}
+	_, _, err := l.conn.SendRequest("cancel-streamlocal-forward@openssh.com", false, Marshal(&m))
 	return err
 }
 
