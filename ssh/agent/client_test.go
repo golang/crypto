@@ -40,7 +40,11 @@ func startOpenSSHAgent(t *testing.T) (client ExtendedAgent, socket string, clean
 	}
 
 	cmd := exec.Command(bin, "-s")
-	cmd.Env = []string{} // Do not let the user's environment influence ssh-agent behavior.
+	cmd.Env = []string{
+		// ssh-agent creates ~/.ssh and ~/.ssh/agent;
+		// ensure a writeable home directory.
+		"HOME=" + t.TempDir(),
+	} // Do not let the user's environment influence ssh-agent behavior.
 	cmd.Stderr = new(bytes.Buffer)
 	out, err := cmd.Output()
 	if err != nil {
