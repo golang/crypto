@@ -89,6 +89,26 @@ type ExtendedAgent interface {
 	Extension(extensionType string, contents []byte) ([]byte, error)
 }
 
+type AddedSmartcardKey struct {
+	PIN                  string
+	ReaderID             string
+	LifetimeSecs         uint32
+	ConfirmBeforeUse     bool
+	ConstraintExtensions []ConstraintExtension
+}
+
+type RemovedSmartcardKey struct {
+	PIN      string
+	ReaderID string
+}
+
+type SmartcardAgent interface {
+	Agent
+
+	AddSmartcard(key AddedSmartcardKey) error
+	RemoveSmartcard(key RemovedSmartcardKey) error
+}
+
 // ConstraintExtension describes an optional constraint defined by users.
 type ConstraintExtension struct {
 	// ExtensionName consist of a UTF-8 string suffixed by the
