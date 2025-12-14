@@ -131,11 +131,17 @@ func (r RejectionReason) String() string {
 	return fmt.Sprintf("unknown reason %d", int(r))
 }
 
-func min(a uint32, b int) uint32 {
-	if a < uint32(b) {
-		return a
+// minPayloadSize returns min(limit, length) clamped to a uint32. It is used
+// to compute the size of the next channel data packet from the remaining
+// payload. The comparison is done in int64 because length is an int — on
+// 64-bit systems len(data) can exceed 2^32, and a direct uint32(length)
+// cast would silently truncate to 0 at every multiple of 2^32, causing
+// WriteExtended's loop to spin without making progress.
+func minPayloadSize(limit uint32, length int) uint32 {
+	if int64(length) > int64(limit) {
+		return limit
 	}
-	return uint32(b)
+	return uint32(length)
 }
 
 type channelDirection uint8
@@ -251,7 +257,7 @@ func (ch *channel) WriteExtended(data []byte, extendedCode uint32) (n int, err e
 	ch.writeMu.Unlock()
 
 	for len(data) > 0 {
-		space := min(ch.maxRemotePayload, len(data))
+		space := minPayloadSize(ch.maxRemotePayload, len(data))
 		if space, err = ch.remoteWin.reserve(space); err != nil {
 			return n, err
 		}
