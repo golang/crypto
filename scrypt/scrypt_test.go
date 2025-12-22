@@ -133,6 +133,10 @@ var bad = []testVector{
 	{"p", "s", 1, 1, 1, nil},                    // N == 1
 	{"p", "s", 7, 8, 1, nil},                    // N is not power of 2
 	{"p", "s", 16, maxInt / 2, maxInt / 2, nil}, // p * r too large
+	{"p", "s", 2, 0, 1, nil},                    // r too small
+	{"p", "s", 2, 1, 0, nil},                    // p too small
+	{"p", "s", 2, -1, 1, nil},                   // r is negative
+	{"p", "s", 2, 1, -1, nil},                   // p is negative
 }
 
 func TestKey(t *testing.T) {
