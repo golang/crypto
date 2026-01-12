@@ -1,10 +1,10 @@
 module salsa20/salsa/_asm
 
-go 1.23
+go 1.24.0
 
 require (
 	github.com/mmcloughlin/avo v0.6.0
-	golang.org/x/crypto v0.33.0
+	golang.org/x/crypto v0.45.0
 )
 
 require (
