@@ -881,3 +881,257 @@ func TestDebug(t *testing.T) {
 		t.Error("transport debug switched on")
 	}
 }
+
+func TestMuxUnexpectedGlobalResponsesDiscarded(t *testing.T) {
+	clientPipe, serverPipe := memPipe()
+	client := newMux(clientPipe)
+	defer serverPipe.Close()
+	defer client.Close()
+
+	done := make(chan error, 1)
+	go func() {
+		// Send multiple unexpected global responses, this should not block the
+		// globalResponses channel.
+		for i := range 5 {
+			err := serverPipe.writePacket(Marshal(globalRequestSuccessMsg{
+				Data: []byte{byte(i)},
+			}))
+			if err != nil {
+				done <- fmt.Errorf("send success msg %d: %w", i, err)
+				return
+			}
+		}
+		for i := range 5 {
+			err := serverPipe.writePacket(Marshal(globalRequestFailureMsg{
+				Data: []byte{byte(i)},
+			}))
+			if err != nil {
+				done <- fmt.Errorf("send failure msg %d: %w", i, err)
+				return
+			}
+		}
+
+		// Now send a global request and wait for the response. This
+		// verifies the mux is still processing packets.
+		err := serverPipe.writePacket(Marshal(globalRequestMsg{
+			Type:      "keepalive@golang.org",
+			WantReply: true,
+			Data:      nil,
+		}))
+		if err != nil {
+			done <- fmt.Errorf("send global request: %w", err)
+			return
+		}
+
+		packet, err := serverPipe.readPacket()
+		if err != nil {
+			done <- fmt.Errorf("read packet: %w", err)
+			return
+		}
+		decoded, err := decode(packet)
+		if err != nil {
+			done <- fmt.Errorf("decode: %w", err)
+			return
+		}
+		switch decoded.(type) {
+		case *globalRequestSuccessMsg, *globalRequestFailureMsg:
+			// Expected response
+		default:
+			done <- fmt.Errorf("unexpected packet type: %T", decoded)
+			return
+		}
+		done <- nil
+	}()
+
+	// Handle the incoming request from the server and reply
+	req, ok := <-client.incomingRequests
+	if !ok {
+		t.Fatal("incomingRequests channel closed unexpectedly")
+	}
+	if req.Type != "keepalive@golang.org" {
+		t.Fatalf("unexpected request type: %s", req.Type)
+	}
+	if err := req.Reply(true, nil); err != nil {
+		t.Fatalf("Reply: %v", err)
+	}
+
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestMuxConcurrentGlobalRequests(t *testing.T) {
+	clientMux, serverMux := muxPair()
+	defer serverMux.Close()
+	defer clientMux.Close()
+
+	const numRequests = 50
+
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		for r := range serverMux.incomingRequests {
+			if r.WantReply {
+				replyData := append([]byte("reply:"), r.Payload...)
+				r.Reply(true, replyData)
+			}
+		}
+	}()
+
+	var clientWg sync.WaitGroup
+	clientWg.Add(numRequests)
+
+	errCh := make(chan error, numRequests)
+
+	for i := range numRequests {
+		go func(id int) {
+			defer clientWg.Done()
+
+			payloadStr := fmt.Sprintf("req-%d", id)
+			payload := []byte(payloadStr)
+
+			// This call blocks until the globalSentMu is acquired.
+			// The mutex ensures that even with many concurrent attempts,
+			// the "drain" and "send" logic happens atomically per request.
+			ok, data, err := clientMux.SendRequest("echo", true, payload)
+			if err != nil {
+				errCh <- fmt.Errorf("req %d error: %v", id, err)
+				return
+			}
+			if !ok {
+				errCh <- fmt.Errorf("req %d failed (want success)", id)
+				return
+			}
+
+			expected := "reply:" + payloadStr
+			if string(data) != expected {
+				errCh <- fmt.Errorf("req %d mismatch: got %q, want %q", id, string(data), expected)
+			}
+		}(i)
+	}
+
+	clientWg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	clientMux.Close()
+	<-serverDone
+}
+
+func TestMuxGlobalResponseDroppedWhenIdle(t *testing.T) {
+	clientPipe, serverPipe := memPipe()
+	clientMux := newMux(clientPipe)
+	defer serverPipe.Close()
+	defer clientMux.Close()
+
+	errCh := make(chan error, 1)
+	go func() {
+		// Send a spurious response while no SendRequest is pending.
+		if err := serverPipe.writePacket(Marshal(globalRequestSuccessMsg{
+			Data: []byte("spurious"),
+		})); err != nil {
+			errCh <- fmt.Errorf("send spurious: %w", err)
+			return
+		}
+		// Follow with a global request; once the client observes this on
+		// incomingRequests, the mux loop has necessarily processed (and
+		// dropped) the prior spurious response.
+		if err := serverPipe.writePacket(Marshal(globalRequestMsg{
+			Type:      "sync@example.com",
+			WantReply: false,
+		})); err != nil {
+			errCh <- fmt.Errorf("send sync request: %w", err)
+			return
+		}
+		errCh <- nil
+	}()
+
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+
+	req, ok := <-clientMux.incomingRequests
+	if !ok {
+		t.Fatal("incomingRequests closed unexpectedly")
+	}
+	if req.Type != "sync@example.com" {
+		t.Fatalf("unexpected sync request type %q", req.Type)
+	}
+
+	// The spurious response preceded the sync request, so by now the mux
+	// loop has processed it. The pending-gate must have caused it to be
+	// dropped rather than buffered.
+	if n := len(clientMux.globalResponses); n != 0 {
+		t.Fatalf("globalResponses buffer should be empty after idle drop, has %d entries", n)
+	}
+}
+
+func TestMuxStaleResponseDrained(t *testing.T) {
+	// Simulate a stale response sitting in globalResponses (e.g. a response
+	// that slipped in through the pending-gate on a prior SendRequest that
+	// exited without consuming it). The drain step in the next SendRequest
+	// must discard it so the caller receives the correct reply.
+	clientMux, serverMux := muxPair()
+	defer serverMux.Close()
+	defer clientMux.Close()
+
+	clientMux.globalResponses <- &globalRequestSuccessMsg{Data: []byte("stale")}
+
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		for req := range serverMux.incomingRequests {
+			if req.WantReply {
+				req.Reply(true, append([]byte("reply:"), req.Payload...))
+			}
+		}
+	}()
+
+	ok, data, err := clientMux.SendRequest("test", true, []byte("hello"))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected success response")
+	}
+	if string(data) != "reply:hello" {
+		t.Fatalf("got %q, want %q (drain did not remove stale response)", data, "reply:hello")
+	}
+
+	clientMux.Close()
+	<-serverDone
+}
+
+func TestMuxGlobalResponseAcceptedWhilePending(t *testing.T) {
+	// Positive control: when a SendRequest is actually pending, the
+	// response must be delivered (the gate is open).
+	clientMux, serverMux := muxPair()
+	defer serverMux.Close()
+	defer clientMux.Close()
+
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		for req := range serverMux.incomingRequests {
+			if req.WantReply {
+				req.Reply(true, []byte("pong"))
+			}
+		}
+	}()
+
+	ok, data, err := clientMux.SendRequest("ping", true, nil)
+	if err != nil {
+		t.Fatalf("SendRequest: %v", err)
+	}
+	if !ok || string(data) != "pong" {
+		t.Fatalf("unexpected response: ok=%v data=%q", ok, data)
+	}
+
+	clientMux.Close()
+	<-serverDone
+}
