@@ -348,6 +348,9 @@ func (c *CertChecker) CheckHostKey(addr string, remote net.Addr, key PublicKey) 
 	if cert.CertType != HostCert {
 		return fmt.Errorf("ssh: certificate presented as a host key has type %d", cert.CertType)
 	}
+	if c.IsHostAuthority == nil {
+		return errors.New("ssh: cannot verify certificate, IsHostAuthority not set")
+	}
 	if !c.IsHostAuthority(cert.SignatureKey, addr) {
 		return fmt.Errorf("ssh: no authorities for hostname: %v", addr)
 	}
@@ -374,6 +377,9 @@ func (c *CertChecker) Authenticate(conn ConnMetadata, pubKey PublicKey) (*Permis
 
 	if cert.CertType != UserCert {
 		return nil, fmt.Errorf("ssh: cert has type %d", cert.CertType)
+	}
+	if c.IsUserAuthority == nil {
+		return nil, errors.New("ssh: cannot verify certificate, IsUserAuthority not set")
 	}
 	if !c.IsUserAuthority(cert.SignatureKey) {
 		return nil, fmt.Errorf("ssh: certificate signed by unrecognized authority")
