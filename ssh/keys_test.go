@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"reflect"
 	"strings"
 	"testing"
@@ -367,6 +368,72 @@ func TestMarshalParsePublicKey(t *testing.T) {
 	}
 	if !reflect.DeepEqual(actPub, pub) {
 		t.Errorf("got %v, expected %v", actPub, pub)
+	}
+}
+
+func TestParseDSAHugeQ(t *testing.T) {
+	P := new(big.Int).Lsh(big.NewInt(1), 1023)
+	Q := new(big.Int).Lsh(big.NewInt(1), 20000) // very large
+	// G and Y: Dummy values, just needs to be < P to pass that specific check
+	G := big.NewInt(2)
+	Y := big.NewInt(5)
+
+	rawKey := struct {
+		P, Q, G, Y *big.Int
+	}{
+		P: P,
+		Q: Q,
+		G: G,
+		Y: Y,
+	}
+
+	inputBytes := Marshal(&rawKey)
+
+	_, _, err := parseDSA(inputBytes)
+	if err == nil {
+		t.Fatal("parseDSA accepted a DSA key with large Q")
+	}
+
+	expectedError := "ssh: unsupported DSA sub-prime size"
+	if !strings.Contains(err.Error(), expectedError) {
+		t.Errorf("unexpected error message: got %q, want substring %q", err.Error(), expectedError)
+	}
+}
+
+func TestParseDSAYOutOfRange(t *testing.T) {
+	// Valid 1024/160 parameters (values don't need to be a real DSA group,
+	// they only need to pass the checkDSAParams bit-length checks and the
+	// G < P / G > 0 checks).
+	P := new(big.Int).Lsh(big.NewInt(1), 1023)
+	P.SetBit(P, 0, 1) // make P odd so it can pass as a prime candidate shape
+	Q := new(big.Int).Lsh(big.NewInt(1), 159)
+	Q.SetBit(Q, 0, 1)
+	G := big.NewInt(2)
+
+	for _, tc := range []struct {
+		name string
+		Y    *big.Int
+	}{
+		{"Y_zero", big.NewInt(0)},
+		{"Y_negative", big.NewInt(-1)},
+		{"Y_equals_P", new(big.Int).Set(P)},
+		{"Y_greater_than_P", new(big.Int).Add(P, big.NewInt(1))},
+		{"Y_much_greater_than_P", new(big.Int).Lsh(big.NewInt(1), 20000)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rawKey := struct {
+				P, Q, G, Y *big.Int
+			}{P: P, Q: Q, G: G, Y: tc.Y}
+
+			_, _, err := parseDSA(Marshal(&rawKey))
+			if err == nil {
+				t.Fatalf("parseDSA accepted a DSA key with Y=%s (P=%s)", tc.Y, P)
+			}
+			expectedError := "DSA public value Y out of range"
+			if !strings.Contains(err.Error(), expectedError) {
+				t.Errorf("unexpected error message: got %q, want substring %q", err.Error(), expectedError)
+			}
+		})
 	}
 }
 

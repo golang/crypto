@@ -580,6 +580,24 @@ func checkDSAParams(param *dsa.Parameters) error {
 		return fmt.Errorf("ssh: unsupported DSA key size %d", l)
 	}
 
+	// FIPS 186-2 specifies that Q must be exactly 160 bits. We must enforce
+	// this to prevent DoS attacks where an attacker sends a huge Q which makes
+	// verification slow.
+	if l := param.Q.BitLen(); l != 160 {
+		return fmt.Errorf("ssh: unsupported DSA sub-prime size %d", l)
+	}
+
+	// The generator G is an element of the group, so it must be strictly less
+	// than the modulus P.
+	if param.G.Cmp(param.P) >= 0 {
+		return errors.New("ssh: DSA generator larger than modulus")
+	}
+
+	// G must be positive.
+	if param.G.Sign() <= 0 {
+		return errors.New("ssh: DSA generator must be positive")
+	}
+
 	return nil
 }
 
@@ -600,6 +618,14 @@ func parseDSA(in []byte) (out PublicKey, rest []byte, err error) {
 	}
 	if err := checkDSAParams(&param); err != nil {
 		return nil, nil, err
+	}
+
+	// The public value Y must be a non-zero element of the group, i.e.
+	// strictly between 0 and P. crypto/dsa.Verify does not range-check Y,
+	// so we reject out-of-range values here to prevent a maliciously
+	// oversized Y from slowing verification.
+	if w.Y.Sign() <= 0 || w.Y.Cmp(w.P) >= 0 {
+		return nil, nil, errors.New("ssh: DSA public value Y out of range")
 	}
 
 	key := &dsaPublicKey{
