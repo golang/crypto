@@ -594,3 +594,63 @@ func TestAgentExtensions(t *testing.T) {
 		t.Fatal("should have gotten agent extension failure")
 	}
 }
+
+// capturingAgent records the AddedKey observed on the server side of the
+// agent protocol. It forwards to a keyring with constraint fields stripped,
+// so the keyring's own rejection of unsupported constraints does not
+// interfere with what this test is measuring: the client-side wire
+// serialization of ConstraintExtensions.
+type capturingAgent struct {
+	Agent
+	lastAdd AddedKey
+}
+
+func newCapturingAgent() *capturingAgent {
+	return &capturingAgent{Agent: NewKeyring()}
+}
+
+func (a *capturingAgent) Add(key AddedKey) error {
+	a.lastAdd = key
+	stripped := key
+	stripped.ConstraintExtensions = nil
+	stripped.ConfirmBeforeUse = false
+	return a.Agent.Add(stripped)
+}
+
+// TestAddConstraintExtensionsWireFormat verifies that client.Add serializes
+// ConstraintExtensions into the SSH_AGENTC_ADD_IDENTITY payload and the
+// server deserializes them back into the AddedKey delivered to the backend.
+// Regressions in the client marshal loop (missing, swapped fields, wrong
+// framing) would be invisible to a keyring-based rejection test, which
+// signals only "extensions were present", not "the right ones arrived".
+func TestAddConstraintExtensionsWireFormat(t *testing.T) {
+	capturing := newCapturingAgent()
+	client, cleanup := startAgent(t, capturing)
+	defer cleanup()
+
+	constraints := []ConstraintExtension{
+		{ExtensionName: "ext-one@example.com", ExtensionDetails: []byte("details-one")},
+		{ExtensionName: "ext-two@example.com", ExtensionDetails: []byte("\x00\x01\x02\xff")},
+	}
+
+	if err := client.Add(AddedKey{
+		PrivateKey:           testPrivateKeys["rsa"],
+		Comment:              "wire-format-test",
+		ConstraintExtensions: constraints,
+	}); err != nil {
+		t.Fatalf("client.Add: %v", err)
+	}
+
+	got := capturing.lastAdd.ConstraintExtensions
+	if len(got) != len(constraints) {
+		t.Fatalf("server received %d extensions, want %d", len(got), len(constraints))
+	}
+	for i, want := range constraints {
+		if got[i].ExtensionName != want.ExtensionName {
+			t.Errorf("extension[%d] name: got %q, want %q", i, got[i].ExtensionName, want.ExtensionName)
+		}
+		if !bytes.Equal(got[i].ExtensionDetails, want.ExtensionDetails) {
+			t.Errorf("extension[%d] details: got %x, want %x", i, got[i].ExtensionDetails, want.ExtensionDetails)
+		}
+	}
+}
