@@ -205,6 +205,7 @@ func (c *Client) AuthorizeOrder(ctx context.Context, id []AuthzID, opt ...OrderO
 		Identifiers []wireAuthzID `json:"identifiers"`
 		NotBefore   string        `json:"notBefore,omitempty"`
 		NotAfter    string        `json:"notAfter,omitempty"`
+		Profile     string        `json:"profile,omitempty"`
 	}{}
 	for _, v := range id {
 		req.Identifiers = append(req.Identifiers, wireAuthzID{
@@ -218,6 +219,11 @@ func (c *Client) AuthorizeOrder(ctx context.Context, id []AuthzID, opt ...OrderO
 			req.NotBefore = time.Time(o).Format(time.RFC3339)
 		case orderNotAfterOpt:
 			req.NotAfter = time.Time(o).Format(time.RFC3339)
+		case orderProfileOpt:
+			req.Profile = string(o)
+			if !c.validProfile(req.Profile) {
+				return nil, fmt.Errorf("invalid acme profile: %s", req.Profile)
+			}
 		default:
 			// Package's fault if we let this happen.
 			panic(fmt.Sprintf("unsupported order option type %T", o))
@@ -305,6 +311,7 @@ func responseOrder(res *http.Response) (*Order, error) {
 		Authorizations []string
 		Finalize       string
 		Certificate    string
+		Profile        string
 	}
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
 		return nil, fmt.Errorf("acme: error reading order: %v", err)
@@ -318,6 +325,7 @@ func responseOrder(res *http.Response) (*Order, error) {
 		AuthzURLs:   v.Authorizations,
 		FinalizeURL: v.Finalize,
 		CertURL:     v.Certificate,
+		Profile:     v.Profile,
 	}
 	for _, id := range v.Identifiers {
 		o.Identifiers = append(o.Identifiers, AuthzID{Type: id.Type, Value: id.Value})
