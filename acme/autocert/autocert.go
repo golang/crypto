@@ -26,6 +26,7 @@ import (
 	mathrand "math/rand"
 	"net"
 	"net/http"
+	"net/netip"
 	"path"
 	"strings"
 	"sync"
@@ -1065,8 +1066,11 @@ func (s *certState) tlscert() (*tls.Certificate, error) {
 func certRequest(key crypto.Signer, name string, ext []pkix.Extension) ([]byte, error) {
 	req := &x509.CertificateRequest{
 		Subject:         pkix.Name{CommonName: name},
-		DNSNames:        []string{name},
 		ExtraExtensions: ext,
+	}
+	// add name to DNSNames if name is not an IP address
+	if _, err := netip.ParseAddr(name); err != nil {
+		req.DNSNames = []string{name}
 	}
 	return x509.CreateCertificateRequest(rand.Reader, req, key)
 }
