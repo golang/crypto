@@ -469,6 +469,12 @@ func parseRSA(in []byte) (out PublicKey, rest []byte, err error) {
 		return nil, nil, err
 	}
 
+	// 8192 bits is also the maximum RSA key size accepted by crypto/tls for
+	// signature verification:
+	// https://github.com/golang/go/blob/69801b25/src/crypto/tls/handshake_client.go#L1096
+	if w.N.BitLen() > 8192 {
+		return nil, nil, errors.New("ssh: rsa modulus too large")
+	}
 	if w.E.BitLen() > 24 {
 		return nil, nil, errors.New("ssh: exponent too large")
 	}
