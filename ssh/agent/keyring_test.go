@@ -120,3 +120,27 @@ func TestAddDuplicateKey(t *testing.T) {
 		t.Fatal("key with the updated comment not found")
 	}
 }
+
+func TestAddKeyWithConstraints(t *testing.T) {
+	// Verifies the keyring refuses keys carrying constraint extensions it
+	// cannot enforce.
+	agent, cleanup := startKeyringAgent(t)
+	defer cleanup()
+
+	constraints := []ConstraintExtension{
+		{
+			ExtensionName:    "extension1",
+			ExtensionDetails: []byte("details1"),
+		},
+	}
+
+	key := testPrivateKeys["rsa"]
+
+	err := agent.Add(AddedKey{
+		PrivateKey:           key,
+		ConstraintExtensions: constraints,
+	})
+	if err == nil {
+		t.Fatal("adding a key with unsupported constraints succeeded")
+	}
+}
