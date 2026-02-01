@@ -808,6 +808,60 @@ func TestVerifiedPublicKeyCallbackOnly(t *testing.T) {
 	<-done
 }
 
+func TestPartialSuccessWithNonNilPerms(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				// Intentionally return non-nil Permissions along with a
+				// PartialSuccessError. Since permissions are reset between
+				// authentication steps, this constitutes invalid library usage
+				// and the server is expected to reject the connection.
+				return &Permissions{Extensions: map[string]string{"permit-port-forwarding": ""}}, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+							if string(password) == clientPassword {
+								return nil, nil
+							}
+							return nil, nil
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+			Password(clientPassword),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err == nil {
+		t.Fatal("authentication succeeded unexpectedly; server should have rejected non-nil Permissions combined with PartialSuccessError")
+	}
+}
+
 type markerConn struct {
 	closed uint32
 	used   uint32

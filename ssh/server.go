@@ -242,8 +242,10 @@ func (c *pubKeyCache) add(candidate cachedPubKey) {
 type ServerConn struct {
 	Conn
 
-	// If the succeeding authentication callback returned a
-	// non-nil Permissions pointer, it is stored here.
+	// If the succeeding authentication callback returned a non-nil Permissions
+	// pointer, it is stored here. These are the permissions from the final,
+	// successful authentication method. Permissions returned by callbacks that
+	// return PartialSuccessError are not preserved and must be nil.
 	Permissions *Permissions
 }
 
@@ -824,6 +826,13 @@ userAuthLoop:
 		var failureMsg userAuthFailureMsg
 
 		if partialSuccess, ok := authErr.(*PartialSuccessError); ok {
+			// Permissions are not preserved between authentication steps. To
+			// avoid confusion about the final state of the connection, we
+			// disallow returning non-nil Permissions combined with
+			// PartialSuccessError.
+			if perms != nil {
+				return nil, errors.New("ssh: permissions must be nil when returning PartialSuccessError")
+			}
 			// After a partial success error we don't allow changing the user
 			// name and execute the NoClientAuthCallback.
 			partialSuccessReturned = true
