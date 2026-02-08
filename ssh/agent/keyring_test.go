@@ -144,3 +144,18 @@ func TestAddKeyWithConstraints(t *testing.T) {
 		t.Fatal("adding a key with unsupported constraints succeeded")
 	}
 }
+
+func TestAddKeyWithConfirmBeforeUse(t *testing.T) {
+	agent, cleanup := startKeyringAgent(t)
+	defer cleanup()
+
+	key := testPrivateKeys["rsa"]
+
+	err := agent.Add(AddedKey{
+		PrivateKey:       key,
+		ConfirmBeforeUse: true,
+	})
+	if err == nil {
+		t.Fatal("adding a key with confirm before use constraint succeeded")
+	}
+}
