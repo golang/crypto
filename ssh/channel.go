@@ -22,6 +22,16 @@ const (
 	// We follow OpenSSH here.
 	channelWindowSize = 64 * channelMaxPacket
 )
+type CloseReason int
+
+const (
+	// server send close
+	SEND_SERVER_CLOSE CloseReason = iota
+	// recv channel close
+	RECV_CHANNEL_CLOSE
+	// recv channel EOF
+	RECV_CHANNEL_EOF
+)
 
 // NewChannel represents an incoming request to a channel. It must either be
 // accepted for use by calling Accept, or rejected by calling Reject.
@@ -76,6 +86,12 @@ type Channel interface {
 	// safely be read and written from a different goroutine than
 	// Read and Write respectively.
 	Stderr() io.ReadWriter
+
+	// RegisterCloseReasonSignal registers a channel to receive 
+	// close reason signal from server or client. The channel 
+	// must handel singal ,or it will block a goroutine.
+	// During the time no channel is registered signals are ignored.
+	RegisterCloseReasonSignal(ch chan CloseReason)
 }
 
 // Request is a request sent outside of the normal stream of
@@ -203,6 +219,16 @@ type channel struct {
 	// packetPool has a buffer for each extended channel ID to
 	// save allocations during writes.
 	packetPool map[uint32][]byte
+
+	closeSignalChan chan CloseReason
+}
+// send close reason to channel if channel registered.
+// use this with go ch.sendCloseReason or it may block
+// the request.
+func (ch *channel) sendCloseReason(reason CloseReason) {
+	if ch.closeSignalChan != nil {
+		ch.closeSignalChan <- reason
+	}
 }
 
 // writePacket sends a packet. If the packet is a channel close, it updates
@@ -415,12 +441,14 @@ func (ch *channel) handlePacket(packet []byte) error {
 		ch.sendMessage(channelCloseMsg{PeersID: ch.remoteId})
 		ch.mux.chanList.remove(ch.localId)
 		ch.close()
+		go ch.sendCloseReason(RECV_CHANNEL_CLOSE)
 		return nil
 	case msgChannelEOF:
 		// RFC 4254 is mute on how EOF affects dataExt messages but
 		// it is logical to signal EOF at the same time.
 		ch.extPending.eof()
 		ch.pending.eof()
+		go ch.sendCloseReason(RECV_CHANNEL_EOF)
 		return nil
 	}
 
@@ -552,6 +580,7 @@ func (ch *channel) CloseWrite() error {
 		return errUndecided
 	}
 	ch.sentEOF = true
+	go ch.sendCloseReason(SEND_SERVER_CLOSE)
 	return ch.sendMessage(channelEOFMsg{
 		PeersID: ch.remoteId})
 }
@@ -560,7 +589,7 @@ func (ch *channel) Close() error {
 	if !ch.decided {
 		return errUndecided
 	}
-
+	go ch.sendCloseReason(SEND_SERVER_CLOSE)
 	return ch.sendMessage(channelCloseMsg{
 		PeersID: ch.remoteId})
 }
@@ -577,7 +606,9 @@ func (ch *channel) Extended(code uint32) io.ReadWriter {
 func (ch *channel) Stderr() io.ReadWriter {
 	return ch.Extended(1)
 }
-
+func (ch *channel) RegisterCloseReasonSignal(c chan CloseReason) {
+	ch.closeSignalChan = c
+}
 func (ch *channel) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
 	if !ch.decided {
 		return false, errUndecided
