@@ -311,6 +311,9 @@ type Directory struct {
 	// ExternalAccountRequired indicates that the CA requires for all account-related
 	// requests to include external account binding information.
 	ExternalAccountRequired bool
+
+	// Profiles the certificate profiles which are supported by the ACME server
+	Profiles map[string]string
 }
 
 // Order represents a client's request for a certificate.
@@ -344,6 +347,13 @@ type Order struct {
 
 	// NotAfter is the requested value of the notAfter field in the certificate.
 	NotAfter time.Time
+
+	// Profile the certificate profile to use with the order (optional)
+	// available profiles are defined by the ACME server and listed in the
+	// ACME server's directory response.
+	//
+	// RFC: https://datatracker.ietf.org/doc/draft-aaron-acme-profiles/
+	Profile string
 
 	// AuthzURLs represents authorizations to complete before a certificate
 	// for identifiers specified in the order can be issued.
@@ -386,6 +396,11 @@ func WithOrderNotAfter(t time.Time) OrderOption {
 	return orderNotAfterOpt(t)
 }
 
+// WithOrderProfile sets tthe order's Profile field.
+func WithOrderProfile(p string) OrderOption {
+	return orderProfileOpt(p)
+}
+
 type orderNotBeforeOpt time.Time
 
 func (orderNotBeforeOpt) privateOrderOpt() {}
@@ -393,6 +408,10 @@ func (orderNotBeforeOpt) privateOrderOpt() {}
 type orderNotAfterOpt time.Time
 
 func (orderNotAfterOpt) privateOrderOpt() {}
+
+type orderProfileOpt string
+
+func (orderProfileOpt) privateOrderOpt() {}
 
 // Authorization encodes an authorization response.
 type Authorization struct {

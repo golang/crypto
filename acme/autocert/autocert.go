@@ -176,6 +176,14 @@ type Manager struct {
 	// See RFC 8555, Section 7.3.4 for more details.
 	ExternalAccountBinding *acme.ExternalAccountBinding
 
+	// Profile optional name of certificate profile to use when creating a new order
+	//
+	// available profiles are defined by the ACME server and listed in the
+	// ACME server's directory response.
+	//
+	// See RFC: https://datatracker.ietf.org/doc/draft-aaron-acme-profiles/
+	Profile string
+
 	clientMu sync.Mutex
 	client   *acme.Client // initialized by acmeClient method
 
@@ -693,9 +701,16 @@ func (m *Manager) verifyRFC(ctx context.Context, client *acme.Client, domain str
 	// it will most likely not work on another order's authorization either.
 	challengeTypes := m.supportedChallengeTypes()
 	nextTyp := 0 // challengeTypes index
+	authOpts := []acme.OrderOption{acme.WithOrderProfile(m.Profile)}
 AuthorizeOrderLoop:
 	for {
-		o, err := client.AuthorizeOrder(ctx, acme.DomainIDs(domain))
+		var ids []acme.AuthzID
+		if ip := net.ParseIP(domain); ip != nil {
+			ids = acme.IPIDs(domain)
+		} else {
+			ids = acme.DomainIDs(domain)
+		}
+		o, err := client.AuthorizeOrder(ctx, ids, authOpts...)
 		if err != nil {
 			return nil, err
 		}
@@ -1060,9 +1075,14 @@ func (s *certState) tlscert() (*tls.Certificate, error) {
 // certRequest generates a CSR for the given common name.
 func certRequest(key crypto.Signer, name string, ext []pkix.Extension) ([]byte, error) {
 	req := &x509.CertificateRequest{
-		Subject:         pkix.Name{CommonName: name},
-		DNSNames:        []string{name},
+		Subject:         pkix.Name{},
 		ExtraExtensions: ext,
+	}
+	if ip := net.ParseIP(name); ip != nil {
+		req.IPAddresses = []net.IP{ip}
+	} else {
+		req.DNSNames = []string{name}
+		req.Subject.CommonName = name
 	}
 	return x509.CreateCertificateRequest(rand.Reader, req, key)
 }
