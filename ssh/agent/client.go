@@ -245,7 +245,7 @@ type Key struct {
 }
 
 func clientErr(err error) error {
-	return fmt.Errorf("agent: client error: %v", err)
+	return fmt.Errorf("agent: client error: %w", err)
 }
 
 // String returns the storage form of an agent key with the format, base64
@@ -274,7 +274,7 @@ func (k *Key) Marshal() []byte {
 func (k *Key) Verify(data []byte, sig *ssh.Signature) error {
 	pubKey, err := ssh.ParsePublicKey(k.Blob)
 	if err != nil {
-		return fmt.Errorf("agent: bad public key: %v", err)
+		return fmt.Errorf("agent: bad public key: %w", err)
 	}
 	return pubKey.Verify(data, sig)
 }
