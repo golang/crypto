@@ -321,15 +321,47 @@ func TestOCSPResponse(t *testing.T) {
 }
 
 func TestErrorResponse(t *testing.T) {
-	responseBytes, _ := hex.DecodeString(errorResponseHex)
-	_, err := ParseResponse(responseBytes, nil)
-
-	respErr, ok := err.(ResponseError)
-	if !ok {
-		t.Fatalf("expected ResponseError from ParseResponse but got %#v", err)
+	testCases := []struct {
+		r ResponseStatus
+		h string
+	}{
+		{
+			r: Malformed,
+			h: "30030a0101",
+		},
+		{
+			r: InternalError,
+			h: "30030a0102",
+		},
+		{
+			r: TryLater,
+			h: "30030a0103",
+		},
+		{
+			r: SignatureRequired,
+			h: "30030a0105",
+		},
+		{
+			r: Unauthorized,
+			h: "30030a0106",
+		},
 	}
-	if respErr.Status != Malformed {
-		t.Fatalf("expected Malformed status from ParseResponse but got %d", respErr.Status)
+
+	for _, tc := range testCases {
+		t.Run(tc.h, func(t *testing.T) {
+			responseBytes, _ := hex.DecodeString(tc.h)
+			_, err := ParseResponse(responseBytes, nil)
+
+			respErr, ok := err.(ResponseError)
+			if !ok {
+				t.Fatalf("expected ResponseError from ParseResponse but got %#v", err)
+			}
+			if respErr.Status == 4 {
+				t.Fatalf("Status code %#v is unused in OCSP.", respErr.Status)
+			} else if tc.r != respErr.Status {
+				t.Fatalf("expected %#v status from ParseResponse but got %d", tc.r, respErr.Status)
+			}
+		})
 	}
 }
 
@@ -544,7 +576,7 @@ const ocspResponseWithoutCertHex = "308201d40a0100a08201cd308201c906092b06010505
 	"5a35fca2e054dfa8"
 
 // PKIX nonce extension
-var ocspExtensionOID = asn1.ObjectIdentifier{1, 3, 6, 1, 5, 5, 7, 48, 1, 2}
+var ocspExtensionOID = asn1.ObjectIdentifier([]int{1, 3, 6, 1, 5, 5, 7, 48, 1, 2})
 var ocspExtensionValueHex = "0403000000"
 
 const ocspResponseWithCriticalExtensionHex = "308204fe0a0100a08204f7308204f306092b0601050507300101048204e4308204e03081" +
@@ -739,5 +771,3 @@ const responderCertHex = "308202e2308201caa003020102020101300d06092a864886f70d01
 	"9e2005d5939bfc031589ca143e6e8ab83f40ee08cc20a6b4a95a318352c28d18528dcaf9" +
 	"66705de17afa19d6e8ae91ddf33179d16ebb6ac2c69cae8373d408ebf8c55308be6c04d9" +
 	"3a25439a94299a65a709756c7a3e568be049d5c38839"
-
-const errorResponseHex = "30030a0101"
