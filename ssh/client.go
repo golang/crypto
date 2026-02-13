@@ -88,6 +88,21 @@ func NewClientConn(c net.Conn, addr string, config *ClientConfig) (Conn, <-chan 
 	return conn, conn.mux.incomingChannels, conn.mux.incomingRequests, nil
 }
 
+// NewControlClientConn establishes an SSH connection over an OpenSSH
+// ControlMaster socket c in proxy mode. The Request and NewChannel channels
+// must be serviced or the connection will hang.
+func NewControlClientConn(c net.Conn) (Conn, <-chan NewChannel, <-chan *Request, error) {
+	conn := &connection{
+		sshConn: sshConn{conn: c},
+	}
+	var err error
+	if conn.transport, err = handshakeControlProxy(c); err != nil {
+		return nil, nil, nil, fmt.Errorf("ssh: control proxy handshake failed; %v", err)
+	}
+	conn.mux = newMux(conn.transport)
+	return conn, conn.mux.incomingChannels, conn.mux.incomingRequests, nil
+}
+
 // clientHandshake performs the client side key exchange. See RFC 4253 Section
 // 7.
 func (c *connection) clientHandshake(dialAddress string, config *ClientConfig) error {
