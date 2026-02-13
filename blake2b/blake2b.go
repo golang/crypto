@@ -98,20 +98,10 @@ func New256(key []byte) (hash.Hash, error) { return newDigest(Size256, key) }
 // and BinaryUnmarshaler for state (de)serialization as documented by hash.Hash.
 func New(size int, key []byte) (hash.Hash, error) { return newDigest(size, key) }
 
-func newDigest(hashSize int, key []byte) (*digest, error) {
-	if hashSize < 1 || hashSize > Size {
-		return nil, errHashSize
-	}
-	if len(key) > Size {
-		return nil, errKeySize
-	}
-	d := &digest{
-		size:   hashSize,
-		keyLen: len(key),
-	}
-	copy(d.key[:], key)
-	d.Reset()
-	return d, nil
+func newDigest(hashSize int, key []byte) (*Digest, error) {
+	d := new(Digest)
+	err := d.Init(hashSize, key)
+	return d, err
 }
 
 func checkSum(sum *[Size]byte, hashSize int, data []byte) {
@@ -143,7 +133,8 @@ func checkSum(sum *[Size]byte, hashSize int, data []byte) {
 	}
 }
 
-type digest struct {
+// Digest implements the BLAKE2b hash algorithm.
+type Digest struct {
 	h      [8]uint64
 	c      [2]uint64
 	size   int
@@ -159,7 +150,8 @@ const (
 	marshaledSize = len(magic) + 8*8 + 2*8 + 1 + BlockSize + 1
 )
 
-func (d *digest) MarshalBinary() ([]byte, error) {
+// MarshalBinary implements binary.Marshaler.
+func (d *Digest) MarshalBinary() ([]byte, error) {
 	if d.keyLen != 0 {
 		return nil, errors.New("crypto/blake2b: cannot marshal MACs")
 	}
@@ -177,7 +169,8 @@ func (d *digest) MarshalBinary() ([]byte, error) {
 	return b, nil
 }
 
-func (d *digest) UnmarshalBinary(b []byte) error {
+// UnmarshalBinary implements binary.Unmarshaler.
+func (d *Digest) UnmarshalBinary(b []byte) error {
 	if len(b) < len(magic) || string(b[:len(magic)]) != magic {
 		return errors.New("crypto/blake2b: invalid hash state identifier")
 	}
@@ -198,11 +191,30 @@ func (d *digest) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
-func (d *digest) BlockSize() int { return BlockSize }
+// Init initializes d with the specified parameters. For a description of the
+// parameters and possible errors, see New.
+func (d *Digest) Init(size int, key []byte) error {
+	if size < 1 || size > Size {
+		return errHashSize
+	}
+	if len(key) > Size {
+		return errKeySize
+	}
+	d.size = size
+	d.keyLen = len(key)
+	copy(d.key[:], key)
+	d.Reset()
+	return nil
+}
 
-func (d *digest) Size() int { return d.size }
+// BlockSize implements hash.Hash.
+func (d *Digest) BlockSize() int { return BlockSize }
 
-func (d *digest) Reset() {
+// Size implements hash.Hash.
+func (d *Digest) Size() int { return d.size }
+
+// Reset implements hash.Hash.
+func (d *Digest) Reset() {
 	d.h = iv
 	d.h[0] ^= uint64(d.size) | (uint64(d.keyLen) << 8) | (1 << 16) | (1 << 24)
 	d.offset, d.c[0], d.c[1] = 0, 0, 0
@@ -212,7 +224,8 @@ func (d *digest) Reset() {
 	}
 }
 
-func (d *digest) Write(p []byte) (n int, err error) {
+// Write implements hash.Hash.
+func (d *Digest) Write(p []byte) (n int, err error) {
 	n = len(p)
 
 	if d.offset > 0 {
@@ -243,13 +256,14 @@ func (d *digest) Write(p []byte) (n int, err error) {
 	return
 }
 
-func (d *digest) Sum(sum []byte) []byte {
+// Sum implements hash.Hash.
+func (d *Digest) Sum(sum []byte) []byte {
 	var hash [Size]byte
 	d.finalize(&hash)
 	return append(sum, hash[:d.size]...)
 }
 
-func (d *digest) finalize(hash *[Size]byte) {
+func (d *Digest) finalize(hash *[Size]byte) {
 	var block [BlockSize]byte
 	copy(block[:], d.block[:d.offset])
 	remaining := uint64(BlockSize - d.offset)
