@@ -138,6 +138,13 @@ type Manager struct {
 	// 1/3 of the certificate lifetime.
 	RenewBefore time.Duration
 
+	// RequestedCertificateValidity optionally specifies the validity of the requested
+	// certificates from the CA. This may not be honored by all CAs. Ensure that this
+	// and RenewBefore make sense in both cases (honored and not honored).
+	//
+	// The CA default value is used if this is not set.
+	RequestedCertificateValidity time.Duration
+
 	// Client is used to perform low-level operations, such as account registration
 	// and requesting new certificates.
 	//
@@ -695,7 +702,14 @@ func (m *Manager) verifyRFC(ctx context.Context, client *acme.Client, domain str
 	nextTyp := 0 // challengeTypes index
 AuthorizeOrderLoop:
 	for {
-		o, err := client.AuthorizeOrder(ctx, acme.DomainIDs(domain))
+		// Send the notAfter option to the CA
+		var orderOpts []acme.OrderOption
+		if m.RequestedCertificateValidity != 0 {
+			orderOpts = append(orderOpts, acme.WithOrderNotAfter(
+				time.Now().UTC().Add(m.RequestedCertificateValidity)))
+		}
+
+		o, err := client.AuthorizeOrder(ctx, acme.DomainIDs(domain), orderOpts...)
 		if err != nil {
 			return nil, err
 		}
