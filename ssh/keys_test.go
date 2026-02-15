@@ -12,6 +12,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/hex"
@@ -838,6 +839,296 @@ func TestSKKeys(t *testing.T) {
 		if err := pk.Verify(dataBuf, sig); err == nil {
 			t.Errorf("%s with corrupted signature: PublicKey.Verify(%v, %v) passed unexpectedly", d.Name, dataBuf, sig)
 		}
+	}
+}
+
+// skTestHarness builds SK-formatted signatures over a fixed payload
+// using a caller-supplied signing function, letting tests vary the UP
+// flag byte without duplicating the wire-format scaffolding.
+type skTestHarness struct {
+	format      string
+	application string
+	data        []byte
+	// sign takes the SHA-256 digest of the marshalled SK blob and
+	// returns the value to embed in Signature.Blob. For ECDSA keys the
+	// helper feeds the digest to ecdsa.Sign; for ed25519 the helper
+	// feeds the raw marshalled blob to ed25519.Sign.
+	signDigest func(digest []byte) []byte
+	signBlob   func(blob []byte) []byte
+}
+
+func (h skTestHarness) sign(t *testing.T, flags byte) *Signature {
+	t.Helper()
+	hsh := sha256.New()
+	hsh.Write([]byte(h.application))
+	appDigest := hsh.Sum(nil)
+
+	hsh.Reset()
+	hsh.Write(h.data)
+	dataDigest := hsh.Sum(nil)
+
+	var counter uint32 = 1
+	blob := struct {
+		ApplicationDigest []byte `ssh:"rest"`
+		Flags             byte
+		Counter           uint32
+		MessageDigest     []byte `ssh:"rest"`
+	}{appDigest, flags, counter, dataDigest}
+	marshalled := Marshal(blob)
+
+	var sigBlob []byte
+	if h.signDigest != nil {
+		hsh.Reset()
+		hsh.Write(marshalled)
+		sigBlob = h.signDigest(hsh.Sum(nil))
+	} else {
+		sigBlob = h.signBlob(marshalled)
+	}
+
+	return &Signature{
+		Format: h.format,
+		Blob:   sigBlob,
+		Rest: Marshal(struct {
+			Flags   byte
+			Counter uint32
+		}{flags, counter}),
+	}
+}
+
+func TestSKUserPresence(t *testing.T) {
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	h := skTestHarness{
+		format:      "sk-ecdsa-sha2-nistp256@openssh.com",
+		application: "ssh:",
+		data:        []byte("test data"),
+		signDigest: func(digest []byte) []byte {
+			r, s, err := ecdsa.Sign(rand.Reader, ecKey, digest)
+			if err != nil {
+				t.Fatal(err)
+			}
+			return Marshal(struct{ R, S *big.Int }{r, s})
+		},
+	}
+
+	pk := &skECDSAPublicKey{
+		application: h.application,
+		PublicKey:   ecKey.PublicKey,
+	}
+
+	// Valid signature with UP=1 should pass.
+	if err := pk.Verify(h.data, h.sign(t, flagUserPresence)); err != nil {
+		t.Errorf("Verify failed with UP=1: %v", err)
+	}
+
+	// Valid signature with UP=0 should fail with the user-presence sentinel.
+	sigNoUP := h.sign(t, 0)
+	if err := pk.Verify(h.data, sigNoUP); !errors.Is(err, errSKMissingUserPresence) {
+		t.Errorf("expected errSKMissingUserPresence, got: %v", err)
+	}
+
+	// UV set but UP clear must still fail: we only waive UP, never UV-only.
+	if err := pk.Verify(h.data, h.sign(t, 0x04)); !errors.Is(err, errSKMissingUserPresence) {
+		t.Errorf("UV-only (flags=0x04): expected errSKMissingUserPresence, got: %v", err)
+	}
+
+	// With noTouchRequired, UP=0 passes; UP=1+UV=1 also passes.
+	pk.noTouchRequired = true
+	if err := pk.Verify(h.data, sigNoUP); err != nil {
+		t.Errorf("Verify with noTouchRequired failed: %v", err)
+	}
+	if err := pk.Verify(h.data, h.sign(t, flagUserPresence|0x04)); err != nil {
+		t.Errorf("Verify UP|UV with noTouchRequired failed: %v", err)
+	}
+}
+
+func TestSKKeyWithoutUP(t *testing.T) {
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	skEC := &skECDSAPublicKey{PublicKey: ecKey.PublicKey}
+	skED := &skEd25519PublicKey{PublicKey: edPub}
+	certEC := &Certificate{Key: &skECDSAPublicKey{PublicKey: ecKey.PublicKey}}
+	certED := &Certificate{Key: &skEd25519PublicKey{PublicKey: edPub}}
+	rsaKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rsaPub, err := NewPublicKey(&rsaKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	certRSA := &Certificate{Key: rsaPub}
+
+	// SK raw keys: return a clone with the flag set, original untouched.
+	gotEC := skKeyWithoutUP(skEC)
+	if gotEC == skEC {
+		t.Error("skECDSAPublicKey: expected a clone, got the original pointer")
+	}
+	if !gotEC.(*skECDSAPublicKey).noTouchRequired {
+		t.Error("skECDSAPublicKey clone: noTouchRequired not set")
+	}
+	if skEC.noTouchRequired {
+		t.Error("skECDSAPublicKey: original mutated")
+	}
+
+	gotED := skKeyWithoutUP(skED)
+	if gotED == skED {
+		t.Error("skEd25519PublicKey: expected a clone, got the original pointer")
+	}
+	if !gotED.(*skEd25519PublicKey).noTouchRequired {
+		t.Error("skEd25519PublicKey clone: noTouchRequired not set")
+	}
+	if skED.noTouchRequired {
+		t.Error("skEd25519PublicKey: original mutated")
+	}
+
+	// Certificate wrapping SK: return a clone of the cert with a cloned
+	// SK key inside. Neither the original cert nor the original inner
+	// key must be mutated.
+	originalInnerEC := certEC.Key
+	gotCertEC := skKeyWithoutUP(certEC)
+	if gotCertEC == certEC {
+		t.Error("*Certificate(SK ecdsa): expected a clone, got the original pointer")
+	}
+	if got := gotCertEC.(*Certificate).Key.(*skECDSAPublicKey); !got.noTouchRequired {
+		t.Error("*Certificate(SK ecdsa): inner clone missing noTouchRequired")
+	}
+	if certEC.Key != originalInnerEC {
+		t.Error("*Certificate(SK ecdsa): original cert's Key pointer mutated")
+	}
+	if originalInnerEC.(*skECDSAPublicKey).noTouchRequired {
+		t.Error("*Certificate(SK ecdsa): original inner key mutated")
+	}
+
+	gotCertED := skKeyWithoutUP(certED)
+	if gotCertED == certED {
+		t.Error("*Certificate(SK ed25519): expected a clone, got the original pointer")
+	}
+	if got := gotCertED.(*Certificate).Key.(*skEd25519PublicKey); !got.noTouchRequired {
+		t.Error("*Certificate(SK ed25519): inner clone missing noTouchRequired")
+	}
+
+	// Non-SK key inside a cert: return original unchanged (nothing to clone).
+	if got := skKeyWithoutUP(certRSA); got != certRSA {
+		t.Error("*Certificate(RSA): expected the original pointer back")
+	}
+
+	// Plain non-SK key: return original unchanged.
+	if got := skKeyWithoutUP(rsaPub); got != rsaPub {
+		t.Error("rsaPublicKey: expected the original pointer back")
+	}
+
+	// Pathological: *Certificate whose Key is itself a *Certificate.
+	// The SSH cert format forbids this and parseCert rejects it, but
+	// a Go caller can still construct such a value. skKeyWithoutUP
+	// must not recurse into it (or panic); it returns the input
+	// unchanged. This also defends against a hypothetical cycle built
+	// from hand-constructed Certificate pointers.
+	nestedCert := &Certificate{Key: &Certificate{Key: skEC}}
+	if got := skKeyWithoutUP(nestedCert); got != nestedCert {
+		t.Error("*Certificate wrapping *Certificate: expected the original pointer back")
+	}
+	selfCycle := &Certificate{}
+	selfCycle.Key = selfCycle
+	if got := skKeyWithoutUP(selfCycle); got != selfCycle {
+		t.Error("self-referential *Certificate: expected the original pointer back")
+	}
+}
+
+func TestNoTouchAllowed(t *testing.T) {
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sk := &skECDSAPublicKey{PublicKey: ecKey.PublicKey}
+	certNoExt := &Certificate{Key: sk}
+	certOptOut := &Certificate{
+		Key:         sk,
+		Permissions: Permissions{Extensions: map[string]string{"no-touch-required": ""}},
+	}
+	// Non-empty value: OpenSSH writes "" but any value must be accepted
+	// because the check is presence-only.
+	certOptOutNonEmpty := &Certificate{
+		Key:         sk,
+		Permissions: Permissions{Extensions: map[string]string{"no-touch-required": "yes"}},
+	}
+	// no-touch-required belongs in Extensions, never CriticalOptions.
+	// Putting it in CriticalOptions must NOT be treated as opt-out.
+	certCritOnly := &Certificate{
+		Key:         sk,
+		Permissions: Permissions{CriticalOptions: map[string]string{"no-touch-required": ""}},
+	}
+
+	permsEmpty := &Permissions{}
+	permsOptOut := &Permissions{Extensions: map[string]string{"no-touch-required": ""}}
+	permsCritOnly := &Permissions{CriticalOptions: map[string]string{"no-touch-required": ""}}
+
+	cases := []struct {
+		name  string
+		pub   PublicKey
+		perms *Permissions
+		want  bool
+	}{
+		{"nil perms, no cert", sk, nil, false},
+		{"empty perms, no cert", sk, permsEmpty, false},
+		{"perms opt-out, raw key", sk, permsOptOut, true},
+		{"nil perms, cert opt-out", certOptOut, nil, true},
+		{"nil perms, cert opt-out non-empty value", certOptOutNonEmpty, nil, true},
+		{"nil perms, cert no ext", certNoExt, nil, false},
+		{"perms opt-out, cert no ext", certNoExt, permsOptOut, true},
+		{"empty perms, cert opt-out", certOptOut, permsEmpty, true},
+		// Negative controls: CriticalOptions must not waive UP.
+		{"critical-options only, raw key", sk, permsCritOnly, false},
+		{"critical-options only, cert", certCritOnly, nil, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := noTouchAllowed(tc.pub, tc.perms); got != tc.want {
+				t.Errorf("noTouchAllowed = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestSKUserPresenceEd25519(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := skTestHarness{
+		format:      "sk-ssh-ed25519@openssh.com",
+		application: "ssh:",
+		data:        []byte("test data"),
+		signBlob: func(blob []byte) []byte {
+			return ed25519.Sign(priv, blob)
+		},
+	}
+
+	pk := &skEd25519PublicKey{
+		application: h.application,
+		PublicKey:   pub,
+	}
+
+	if err := pk.Verify(h.data, h.sign(t, flagUserPresence)); err != nil {
+		t.Errorf("Verify failed with UP=1: %v", err)
+	}
+	sigNoUP := h.sign(t, 0)
+	if err := pk.Verify(h.data, sigNoUP); !errors.Is(err, errSKMissingUserPresence) {
+		t.Errorf("expected errSKMissingUserPresence, got: %v", err)
+	}
+	pk.noTouchRequired = true
+	if err := pk.Verify(h.data, sigNoUP); err != nil {
+		t.Errorf("Verify with noTouchRequired failed: %v", err)
 	}
 }
 

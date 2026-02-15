@@ -444,7 +444,17 @@ func (c *CertChecker) CheckCert(principal string, cert *Certificate) error {
 	if before := int64(cert.ValidBefore); cert.ValidBefore != uint64(CertTimeInfinity) && (unixNow >= before || before < 0) {
 		return fmt.Errorf("ssh: cert has expired")
 	}
-	if err := cert.SignatureKey.Verify(cert.bytesForSigning(), cert.Signature); err != nil {
+	// Match OpenSSH: the SK user-presence flag is never enforced on a
+	// certificate's CA signature. OpenSSH calls sshkey_verify with
+	// detailsp==NULL in sshkey.c:cert_parse, so the UP/UV flags are
+	// not even extracted. The UP bit on a CA signature reflects the
+	// CA operator's presence at signing time, which has no bearing on
+	// whether the user being authenticated is present now; enforcing
+	// it here would only break interop with certificates issued by
+	// non-interactive SK CAs. skKeyWithoutUP is a no-op for non-SK
+	// keys (the common case).
+	caKey := skKeyWithoutUP(cert.SignatureKey)
+	if err := caKey.Verify(cert.bytesForSigning(), cert.Signature); err != nil {
 		return fmt.Errorf("ssh: certificate signature does not verify")
 	}
 

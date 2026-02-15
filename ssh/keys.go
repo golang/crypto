@@ -901,11 +901,25 @@ type skFields struct {
 	Counter uint32
 }
 
+// flagUserPresence is the "user present" bit (UP) in the SK signature
+// flags, matching the FIDO CTAP2 authenticatorData UP flag. See
+// openssh/PROTOCOL.u2f.
+const flagUserPresence = 0x01
+
+// errSKMissingUserPresence is returned by SK key Verify methods when
+// the signature does not assert user presence and the key was not
+// marked as no-touch-required.
+var errSKMissingUserPresence = errors.New("ssh: signature missing required user presence flag")
+
 type skECDSAPublicKey struct {
 	// application is a URL-like string, typically "ssh:" for SSH.
 	// see openssh/PROTOCOL.u2f for details.
 	application string
 	ecdsa.PublicKey
+	// noTouchRequired, when true, disables the default user-presence
+	// check in Verify. It is set by skKeyWithoutUP on a clone of the
+	// key, never on an instance shared across authentication attempts.
+	noTouchRequired bool
 }
 
 func (k *skECDSAPublicKey) Type() string {
@@ -991,6 +1005,10 @@ func (k *skECDSAPublicKey) Verify(data []byte, sig *Signature) error {
 		return err
 	}
 
+	if skf.Flags&flagUserPresence == 0 && !k.noTouchRequired {
+		return errSKMissingUserPresence
+	}
+
 	blob := struct {
 		ApplicationDigest []byte `ssh:"rest"`
 		Flags             byte
@@ -1024,6 +1042,10 @@ type skEd25519PublicKey struct {
 	// see openssh/PROTOCOL.u2f for details.
 	application string
 	ed25519.PublicKey
+	// noTouchRequired, when true, disables the default user-presence
+	// check in Verify. It is set by skKeyWithoutUP on a clone of the
+	// key, never on an instance shared across authentication attempts.
+	noTouchRequired bool
 }
 
 func (k *skEd25519PublicKey) Type() string {
@@ -1096,6 +1118,10 @@ func (k *skEd25519PublicKey) Verify(data []byte, sig *Signature) error {
 	var skf skFields
 	if err := Unmarshal(sig.Rest, &skf); err != nil {
 		return err
+	}
+
+	if skf.Flags&flagUserPresence == 0 && !k.noTouchRequired {
+		return errSKMissingUserPresence
 	}
 
 	blob := struct {
