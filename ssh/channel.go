@@ -530,7 +530,17 @@ func (ch *channel) Reject(reason RejectionReason, message string) error {
 		Language: "en",
 	}
 	ch.decided = true
-	return ch.sendMessage(reject)
+	err := ch.sendMessage(reject)
+
+	// Remove the channel from the mux to prevent memory leaks.
+	// Do not call ch.close() here: no goroutine holds a reference to a
+	// rejected channel's internal channels (msg, incomingRequests), so
+	// removing it from chanList is sufficient for GC. Calling close()
+	// would race with the mux loop goroutine (handlePacket or dropAll),
+	// causing a panic from closing an already-closed channel.
+	ch.mux.chanList.remove(ch.localId)
+
+	return err
 }
 
 func (ch *channel) Read(data []byte) (int, error) {

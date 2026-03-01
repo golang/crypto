@@ -825,6 +825,50 @@ func TestMuxChannelWindowDeferredUpdates(t *testing.T) {
 	}
 }
 
+func TestMuxChannelRejectRemovesFromMux(t *testing.T) {
+	serverMux, clientMux := muxPair()
+	defer serverMux.Close()
+	defer clientMux.Close()
+
+	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+
+		// The server waits for the channel creation request
+		newCh, ok := <-serverMux.incomingChannels
+		if !ok {
+			t.Error("failed to accept channel")
+			return
+		}
+		ch := newCh.(*channel)
+
+		if serverMux.chanList.getChan(ch.localId) == nil {
+			t.Errorf("channel %d is not in the chanList before Reject", ch.localId)
+		}
+
+		if err := ch.Reject(Prohibited, "rejecting this channel"); err != nil {
+			t.Errorf("Reject failed: %v", err)
+		}
+
+		if serverMux.chanList.getChan(ch.localId) != nil {
+			t.Errorf("channel %d is still in the chanList after Reject", ch.localId)
+		}
+	}()
+
+	_, _, err := clientMux.OpenChannel("test_leak", nil)
+
+	if err == nil {
+		t.Fatal("expected an error (channel rejected), but got nil")
+	}
+
+	if _, ok := err.(*OpenChannelError); !ok {
+		t.Errorf("expected *OpenChannelError, got: %T", err)
+	}
+}
+
 // Don't ship code with debug=true.
 func TestDebug(t *testing.T) {
 	if debugMux {
