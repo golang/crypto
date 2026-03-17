@@ -232,7 +232,7 @@ func TestServerKeyExchanges(t *testing.T) {
 
 	var keyExchanges []string
 	for _, kex := range config.KeyExchanges {
-		// Exclude ecdh for now, to make them determistic we should use see a
+		// Exclude ecdh for now, to make them deterministic we should use see a
 		// stream of fixed bytes as the random source.
 		// Exclude ML-KEM because server side is not deterministic.
 		if !strings.HasPrefix(kex, "ecdh-") && !strings.HasPrefix(kex, "mlkem") {

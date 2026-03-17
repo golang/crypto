@@ -330,15 +330,13 @@ func TestCertTypes(t *testing.T) {
 			go NewServerConn(c1, conf)
 
 			priv := m.signer
-			if err != nil {
-				t.Fatalf("error generating ssh pubkey: %v", err)
-			}
-
 			cert := &Certificate{
 				CertType: UserCert,
 				Key:      priv.PublicKey(),
 			}
-			cert.SignCert(rand.Reader, priv)
+			if err := cert.SignCert(rand.Reader, priv); err != nil {
+				t.Fatalf("error signing certificate: %v", err)
+			}
 
 			certSigner, err := NewCertSigner(cert, priv)
 			if err != nil {

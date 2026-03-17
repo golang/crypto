@@ -59,6 +59,17 @@ func TestKeyMarshalParse(t *testing.T) {
 	}
 }
 
+func TestParsePublicKeyWithSigningAlgoAsKeyFormat(t *testing.T) {
+	key := []byte(`rsa-sha2-256 AAAADHJzYS1zaGEyLTI1NgAAAAMBAAEAAAEBAJ7qMyjLXEJCCJmRknuCLo0uPi5GrPY5pQYr84lhlN8Gor5KVL2LKYCW4e70r5xzj7SrHHSCft1FMlYg1KDO9xrprJh733kQqAPWETmSuH0EfRtGtcH6EarKyVxk6As076/yNiiMKVBtG0RPa1L7FviTfcYK4vnCCVrbv3RmA5CCzuG5BSMbRLxzVb4Ri3p8jhxYT8N4QGe/2yqvJLys5vQ9szpZR3tcFp3DJIVZhBRfR6LnoY23XZniAAMQaUVBX86dXQ++dNwAwZSXSt9Og+AniOCiBYqhNVa5n3DID/H7YtEtG+CbZr3r2KD3fv8AfSLRar4XOp8rsRdD31h/kr8=`)
+	_, _, _, _, err := ParseAuthorizedKey(key)
+	if err == nil {
+		t.Fatal("parsing a public key using a signature algorithm as the key format succeeded unexpectedly")
+	}
+	if !strings.Contains(err.Error(), `signature algorithm "rsa-sha2-256" isn't a key format`) {
+		t.Errorf(`got %v, expected 'signature algorithm "rsa-sha2-256" isn't a key format'`, err)
+	}
+}
+
 func TestUnsupportedCurves(t *testing.T) {
 	raw, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
 	if err != nil {
@@ -258,6 +269,21 @@ func TestParseEncryptedPrivateKeysWithPassphrase(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestParseEncryptedPrivateKeysWithUnsupportedCiphers(t *testing.T) {
+    for _, tt := range testdata.UnsupportedCipherData {
+        t.Run(tt.Name, func(t *testing.T){
+            _, err := ParsePrivateKeyWithPassphrase(tt.PEMBytes, []byte(tt.EncryptionKey))
+            if err == nil {
+                t.Fatalf("expected 'unknown cipher' error for %q, got nil", tt.Name)
+                // If this cipher is now supported, remove it from testdata.UnsupportedCipherData
+            }
+            if !strings.Contains(err.Error(), "unknown cipher") {
+                t.Errorf("wanted 'unknown cipher' error, got %v", err.Error())
+            }
+        })
+    }
 }
 
 func TestParseEncryptedPrivateKeysWithIncorrectPassphrase(t *testing.T) {

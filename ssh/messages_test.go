@@ -257,7 +257,7 @@ func TestDecode(t *testing.T) {
 	userAuthSuccess, err := decode([]byte{msgUserAuthSuccess})
 	if err != nil {
 		t.Errorf("error decoding userAuthSuccessMsg")
-	} else if reflect.TypeOf(userAuthSuccess) != reflect.TypeOf((*userAuthSuccessMsg)(nil)) {
+	} else if _, ok := userAuthSuccess.(*userAuthSuccessMsg); !ok {
 		t.Errorf("error decoding userAuthSuccessMsg, unexpected %T", userAuthSuccess)
 	}
 }

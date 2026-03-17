@@ -8,6 +8,7 @@ import (
 	"crypto"
 	"crypto/rand"
 	"fmt"
+	"io"
 	pseudorand "math/rand"
 	"reflect"
 	"strings"
@@ -256,6 +257,12 @@ func TestParseConstraints(t *testing.T) {
 	}
 	if !reflect.DeepEqual(expect, extensions) {
 		t.Errorf("got extension %v, want %v", extensions, expect)
+	}
+
+	// Test Malformed Constraint
+	_, _, _, err = parseConstraints([]byte{1})
+	if err != io.ErrUnexpectedEOF {
+		t.Errorf("got %v, want %v", err, io.ErrUnexpectedEOF)
 	}
 
 	// Test Unknown Constraint

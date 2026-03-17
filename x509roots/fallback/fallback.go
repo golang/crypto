@@ -20,13 +20,9 @@ package fallback
 
 import (
 	"crypto/x509"
-	_ "embed"
-	"fmt"
-	"time"
-)
 
-//go:embed bundle.der
-var rawCerts []byte
+	"golang.org/x/crypto/x509roots/fallback/bundle"
+)
 
 func init() {
 	x509.SetFallbackRoots(newFallbackCertPool())
@@ -34,62 +30,16 @@ func init() {
 
 func newFallbackCertPool() *x509.CertPool {
 	p := x509.NewCertPool()
-	for _, c := range mustParse(unparsedCertificates) {
-		if len(c.constraints) == 0 {
-			p.AddCert(c.cert)
-		} else {
-			p.AddCertWithConstraint(c.cert, func(chain []*x509.Certificate) error {
-				for _, constraint := range c.constraints {
-					if err := constraint(chain); err != nil {
-						return err
-					}
-				}
-				return nil
-			})
-		}
-	}
-	return p
-}
-
-type unparsedCertificate struct {
-	cn           string
-	sha256Hash   string
-	certStartOff int
-	certLength   int
-
-	// possible constraints
-	distrustAfter string
-}
-
-type parsedCertificate struct {
-	cert        *x509.Certificate
-	constraints []func([]*x509.Certificate) error
-}
-
-func mustParse(unparsedCerts []unparsedCertificate) []parsedCertificate {
-	b := make([]parsedCertificate, 0, len(unparsedCerts))
-	for _, unparsed := range unparsedCerts {
-		cert, err := x509.ParseCertificate(rawCerts[unparsed.certStartOff : unparsed.certStartOff+unparsed.certLength])
+	for c := range bundle.Roots() {
+		cert, err := x509.ParseCertificate(c.Certificate)
 		if err != nil {
 			panic(err)
 		}
-		parsed := parsedCertificate{cert: cert}
-		// parse possible constraints, this should check all fields of unparsedCertificate.
-		if unparsed.distrustAfter != "" {
-			distrustAfter, err := time.Parse(time.RFC3339, unparsed.distrustAfter)
-			if err != nil {
-				panic(fmt.Sprintf("failed to parse distrustAfter %q: %s", unparsed.distrustAfter, err))
-			}
-			parsed.constraints = append(parsed.constraints, func(chain []*x509.Certificate) error {
-				for _, c := range chain {
-					if c.NotBefore.After(distrustAfter) {
-						return fmt.Errorf("certificate issued after distrust-after date %q", distrustAfter)
-					}
-				}
-				return nil
-			})
+		if c.Constraint == nil {
+			p.AddCert(cert)
+		} else {
+			p.AddCertWithConstraint(cert, c.Constraint)
 		}
-		b = append(b, parsed)
 	}
-	return b
+	return p
 }

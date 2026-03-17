@@ -69,6 +69,6 @@ func TestGenerateSignOpen(t *testing.T) {
 	}
 
 	if !bytes.Equal(message, testMessage) {
-		t.Fatalf("verified message does not match signed messge, got\n%x\n, expected\n%x", message, testMessage)
+		t.Fatalf("verified message does not match signed message, got\n%x\n, expected\n%x", message, testMessage)
 	}
 }

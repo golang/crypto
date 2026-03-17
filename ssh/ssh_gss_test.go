@@ -17,6 +17,37 @@ func TestParseGSSAPIPayload(t *testing.T) {
 	}
 }
 
+func TestParseDubiousGSSAPIPayload(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		payload []byte
+		wanterr bool
+	}{
+		{
+			"num mechanisms is unrealistic",
+			[]byte{0xFF, 0x00, 0x00, 0xFF,
+				0x00, 0x00, 0x00, 0x0b, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x12, 0x01, 0x02, 0x02},
+			true,
+		},
+		{
+			"num mechanisms greater than payload",
+			[]byte{0x00, 0x00, 0x00, 0x40, // 64, |rest| too small
+				0x00, 0x00, 0x00, 0x0b, 0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x12, 0x01, 0x02, 0x02},
+			true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := parseGSSAPIPayload(tc.payload)
+			if tc.wanterr && err == nil {
+				t.Errorf("got nil, want error")
+			}
+			if !tc.wanterr && err != nil {
+				t.Errorf("got %v, want nil", err)
+			}
+		})
+	}
+}
+
 func TestBuildMIC(t *testing.T) {
 	sessionID := []byte{134, 180, 134, 194, 62, 145, 171, 82, 119, 149, 254, 196, 125, 173, 177, 145, 187, 85, 53,
 		183, 44, 150, 219, 129, 166, 195, 19, 33, 209, 246, 175, 121}

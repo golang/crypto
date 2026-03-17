@@ -382,7 +382,12 @@ func testIssuance(t *testing.T, env *environment, challSrv challengeServer) {
 	// Wait for the order to become ready for finalization.
 	order, err = client.WaitOrder(ctx, order.URI)
 	if err != nil {
-		t.Fatalf("failed to wait for order %s: %s", orderURL, err)
+		var orderErr *acme.OrderError
+		if errors.Is(err, orderErr) {
+			t.Fatalf("failed to wait for order %s: %s: %s", orderURL, err, orderErr.Problem)
+		} else {
+			t.Fatalf("failed to wait for order %s: %s", orderURL, err)
+		}
 	}
 	if order.Status != acme.StatusReady {
 		t.Fatalf("expected order %s status to be ready, got %v",
@@ -752,7 +757,7 @@ func prepareBinaries(t *testing.T, pebbleDir string) string {
 
 	// We don't want to build in the module cache dir, which might not be
 	// writable or to pollute the user's clone with binaries if pebbleLocalDir
-	//is used.
+	// is used.
 	binDir := t.TempDir()
 
 	build := func(cmd string) {

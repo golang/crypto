@@ -14,6 +14,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -1135,7 +1136,7 @@ func TestPickSignatureAlgorithm(t *testing.T) {
 				t.Fatalf("error generating cert signer: %v", err)
 			}
 			// The signer supports the public key algorithm and the
-			// public key format is a certificate type so the cerificate
+			// public key format is a certificate type so the certificate
 			// algorithm matching the key format must be returned
 			_, algo, err = pickSignatureAlgorithm(certSigner, c.extensions)
 			if err != nil {
@@ -1214,7 +1215,7 @@ func (cb configurablePublicKeyCallback) auth(session []byte, user string, c pack
 	if err != nil {
 		return authFailure, nil, err
 	}
-	if success == authSuccess || !contains(methods, cb.method()) {
+	if success == authSuccess || !slices.Contains(methods, cb.method()) {
 		return success, methods, err
 	}
 

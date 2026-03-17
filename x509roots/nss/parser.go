@@ -192,7 +192,7 @@ func Parse(r io.Reader) ([]*Certificate, error) {
 	// Since we only really care about a couple of fields, this parser throws
 	// away a lot of information, essentially just consuming CKA_CLASS objects
 	// and looking for the individual fields we care about. We could write a
-	// siginificantly more complex parser, which handles the entire format, but
+	// significantly more complex parser, which handles the entire format, but
 	// it feels like that would be over engineered for the little information
 	// that we really care about.
 

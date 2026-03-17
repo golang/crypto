@@ -30,7 +30,7 @@ func validateListedKeys(t *testing.T, a Agent, expectedKeys []string) {
 		return
 	}
 	if len(listedKeys) != len(expectedKeys) {
-		t.Fatalf("expeted %d key, got %d", len(expectedKeys), len(listedKeys))
+		t.Fatalf("expected %d key, got %d", len(expectedKeys), len(listedKeys))
 		return
 	}
 	actualKeys := make(map[string]bool)

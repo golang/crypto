@@ -1330,7 +1330,7 @@ func TestAlgorithmNegotiationError(t *testing.T) {
 
 	_, _, _, err = NewClientConn(c2, "", clientConf)
 	if err == nil {
-		t.Fatal("client connection succeded expected algorithm negotiation error")
+		t.Fatal("client connection succeeded expected algorithm negotiation error")
 	}
 	var negotiationError *AlgorithmNegotiationError
 	if !errors.As(err, &negotiationError) {
