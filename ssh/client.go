@@ -197,6 +197,59 @@ type HostKeyCallback func(hostname string, remote net.Addr, key PublicKey) error
 // the server. A BannerCallback receives the message sent by the remote server.
 type BannerCallback func(message string) error
 
+// ClientAuthContext contains information about the current state of the
+// authentication process, passed to [ClientAuthCallback].
+type ClientAuthContext struct {
+	// Metadata contains the connection metadata.
+	Metadata ConnMetadata
+
+	// Algorithms contains the negotiated algorithms.
+	Algorithms NegotiatedAlgorithms
+
+	// AllowedMethods lists the authentication methods currently accepted
+	// by the server. These are the protocol-level names defined in RFC 4252
+	// such as "publickey", "password".
+	AllowedMethods []string
+
+	// PartialSuccessMethods lists the authentication methods that have already
+	// succeeded, indicating a multi-step authentication flow. This list
+	// represents the exact sequence of partial successes and may contain
+	// duplicates if the same method succeeded multiple times.
+	PartialSuccessMethods []string
+
+	// TriedMethods lists the methods that have already been attempted and
+	// failed during this session. This list represents the exact sequence of
+	// failures and may contain duplicates. This allows the callback to also
+	// track the number of failed attempts for a specific method.
+	TriedMethods []string
+}
+
+// ClientAuthCallback is a hook invoked before each authentication attempt. It
+// allows the client to dynamically select an authentication method based on the
+// current context, server capabilities, or previous failures.
+//
+// The callback is invoked after the initial "none" authentication method, once
+// the server's supported authentication methods are known.
+//
+// Return values:
+//   - (AuthMethod, nil): The client will attempt this specific method next.
+//     The returned method does NOT need to be present in [ClientConfig.Auth].
+//     This allows for dynamic authentication strategies (e.g., prompting
+//     for a password only if public key auth fails). Callers should inspect
+//     [ClientAuthContext.TriedMethods] to avoid repeatedly returning the
+//     same failing method.
+//   - (nil, nil): The client selects from [ClientConfig.Auth] the first
+//     instance of a method that has not been tried yet, or aborts if none
+//     are left. If authentication is not successful, the callback is invoked
+//     again before the following attempt.
+//   - (nil, error): The authentication process is aborted immediately,
+//     causing the ongoing SSH handshake to fail with the provided error.
+//
+// To bound resource use, the client caps the total number of authentication
+// attempts (failures and partial successes combined) at 64. If the cap is
+// exceeded the handshake aborts with an error.
+type ClientAuthCallback func(ctx *ClientAuthContext) (AuthMethod, error)
+
 // A ClientConfig structure is used to configure a Client. It must not be
 // modified after having been passed to an SSH function.
 type ClientConfig struct {
@@ -210,6 +263,9 @@ type ClientConfig struct {
 	// Auth contains possible authentication methods to use with the
 	// server. Only the first instance of a particular RFC 4252 method will
 	// be used during authentication.
+	//
+	// If AuthCallback is set, these AuthMethod are only used if the
+	// callback returns nil.
 	Auth []AuthMethod
 
 	// HostKeyCallback is called during the cryptographic
@@ -240,6 +296,9 @@ type ClientConfig struct {
 	//
 	// A Timeout of zero means no timeout.
 	Timeout time.Duration
+
+	// AuthCallback, if non-nil, is invoked before each authentication attempt.
+	AuthCallback ClientAuthCallback
 }
 
 // InsecureIgnoreHostKey returns a function that can be used for

@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"net"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -531,12 +532,18 @@ func TestVerifiedPublicCallbackPartialSuccess(t *testing.T) {
 	serverConf.AddHostKey(testSigners["rsa"])
 
 	clientConf := ClientConfig{
-		User: "user",
-		Auth: []AuthMethod{
-			PublicKeys(testSigners["rsa"]),
-			Password(clientPassword),
-		},
+		User:            "user",
+		Auth:            nil,
 		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			if slices.Contains(ctx.AllowedMethods, "publickey") && !slices.Contains(ctx.PartialSuccessMethods, "publickey") {
+				return PublicKeys(testSigners["rsa"]), nil
+			}
+			if slices.Contains(ctx.AllowedMethods, "password") && slices.Contains(ctx.PartialSuccessMethods, "publickey") {
+				return Password(clientPassword), nil
+			}
+			return nil, nil
+		},
 	}
 
 	go NewServerConn(c1, serverConf)
