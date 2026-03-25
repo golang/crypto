@@ -377,11 +377,11 @@ func (cb publicKeyCallback) auth(session []byte, user string, c packetConn, rand
 			return authFailure, nil, err
 		}
 
-		// If authentication succeeds or the list of available methods does not
-		// contain the "publickey" method, do not attempt to authenticate with any
-		// other keys.  According to RFC 4252 Section 7, the latter can occur when
-		// additional authentication methods are required.
-		if success == authSuccess || !slices.Contains(methods, cb.method()) {
+		// If authentication succeeds or partially succeeds, return immediately
+		// so the caller can select the next auth method. According to RFC 4252
+		// Section 7, if the server no longer lists "publickey" among its
+		// allowed methods, do not attempt to authenticate with any other keys.
+		if success == authSuccess || success == authPartialSuccess || !slices.Contains(methods, cb.method()) {
 			return success, methods, err
 		}
 	}

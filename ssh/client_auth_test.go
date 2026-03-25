@@ -169,6 +169,280 @@ func TestClientAuthThirdKey(t *testing.T) {
 	}
 }
 
+// partialSuccessPublicKeyAndKbdInteractiveServer returns a server config
+// where the rsa key gets partial success and the server offers both publickey
+// and keyboard-interactive as next methods. The VerifiedPublicKeyCallback
+// tracks state so that the same key only triggers partial success once,
+// avoiding an impossible auth loop.
+func partialSuccessPublicKeyAndKbdInteractiveServer() *ServerConfig {
+	rsaDone := false
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if !rsaDone && bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				rsaDone = true
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+							if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+								return nil, nil
+							}
+							return nil, errors.New("invalid credentials")
+						},
+						KeyboardInteractiveCallback: func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error) {
+							answers, err := client("", "", []string{"token: "}, []bool{true})
+							if err != nil {
+								return nil, err
+							}
+							if len(answers) == 1 && answers[0] == "correct-token" {
+								return nil, nil
+							}
+							return nil, errors.New("invalid token")
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	return serverConf
+}
+
+// partialSuccessMultiKeyServer returns a server config that requires two
+// public keys in sequence: the first key (rsa) triggers partial success
+// requiring a second key (ecdsa) to complete authentication.
+func partialSuccessMultiKeyServer() *ServerConfig {
+	firstKeyDone := false
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			if bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if !firstKeyDone && bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				firstKeyDone = true
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+							if bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+								return nil, nil
+							}
+							return nil, errors.New("invalid credentials")
+						},
+					},
+				}
+			}
+			if firstKeyDone && bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	return serverConf
+}
+
+func TestStaticMultiKeyPartialSuccess(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"], testSigners["ecdsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, partialSuccessMultiKeyServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func TestStaticPartialSuccess(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+			KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+				return []string{"correct-token"}, nil
+			}),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, partialSuccessPublicKeyAndKbdInteractiveServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+// partialSuccessKeyAThenKeyBServer returns a server config where keyA (rsa)
+// gets partial success and the server offers BOTH publickey and
+// keyboard-interactive. keyB (ecdsa) then completes auth successfully.
+func partialSuccessKeyAThenKeyBServer() *ServerConfig {
+	keyADone := false
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			if bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if !keyADone && bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				keyADone = true
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+							if bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+								return nil, nil
+							}
+							return nil, errors.New("invalid credentials")
+						},
+						KeyboardInteractiveCallback: func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error) {
+							answers, err := client("", "", []string{"token: "}, []bool{true})
+							if err != nil {
+								return nil, err
+							}
+							if len(answers) == 1 && answers[0] == "correct-token" {
+								return nil, nil
+							}
+							return nil, errors.New("invalid token")
+						},
+					},
+				}
+			}
+			if keyADone && bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	return serverConf
+}
+
+func TestStaticPartialSuccessKeyAThenKeyB(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"], testSigners["ecdsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, partialSuccessKeyAThenKeyBServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+// partialSuccessMultiKeyThenKbdInteractiveServer returns a server config
+// that strictly requires keyA (rsa) AND keyB (ecdsa) as public keys before
+// allowing keyboard-interactive. After keyA, ONLY publickey is offered
+// (for keyB). After keyB, ONLY keyboard-interactive is offered.
+func partialSuccessMultiKeyThenKbdInteractiveServer() *ServerConfig {
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+							if bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+								return nil, &PartialSuccessError{
+									Next: ServerAuthCallbacks{
+										KeyboardInteractiveCallback: func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error) {
+											answers, err := client("", "", []string{"token: "}, []bool{true})
+											if err != nil {
+												return nil, err
+											}
+											if len(answers) == 1 && answers[0] == "correct-token" {
+												return nil, nil
+											}
+											return nil, errors.New("invalid token")
+										},
+									},
+								}
+							}
+							return nil, errors.New("invalid credentials")
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	return serverConf
+}
+
+func TestStaticMultiKeyPartialThenKbdInteractive(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"], testSigners["ecdsa"]),
+			KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+				return []string{"correct-token"}, nil
+			}),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, partialSuccessMultiKeyThenKbdInteractiveServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
 func TestAuthMethodPassword(t *testing.T) {
 	config := &ClientConfig{
 		User: "testuser",
