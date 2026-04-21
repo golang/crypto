@@ -1135,3 +1135,234 @@ func TestMuxGlobalResponseAcceptedWhilePending(t *testing.T) {
 	clientMux.Close()
 	<-serverDone
 }
+
+func TestChannelUnexpectedResponsesDiscarded(t *testing.T) {
+	// A malicious peer that spams channelRequestSuccess/Failure messages
+	// for an open, idle channel must not be able to stall the mux read
+	// loop by filling ch.msg. After the flood, the channel must still be
+	// usable: a subsequent legitimate SendRequest receives its reply.
+	clientMux, serverMux := muxPair()
+	defer serverMux.Close()
+	defer clientMux.Close()
+
+	serverRes := make(chan *channel, 1)
+	go func() {
+		newCh, ok := <-serverMux.incomingChannels
+		if !ok {
+			close(serverRes)
+			return
+		}
+		c, _, err := newCh.Accept()
+		if err != nil {
+			close(serverRes)
+			return
+		}
+		serverRes <- c.(*channel)
+	}()
+
+	clientCh, err := clientMux.openChannel("chan", nil)
+	if err != nil {
+		t.Fatalf("openChannel: %v", err)
+	}
+	serverCh := <-serverRes
+	if serverCh == nil {
+		t.Fatal("server did not accept channel")
+	}
+
+	// Spam many unsolicited success/failure responses. More than chanSize
+	// to ensure ch.msg would overflow without the pending-gate.
+	const spam = chanSize * 4
+	done := make(chan error, 1)
+	go func() {
+		for i := range spam {
+			if err := serverCh.ackRequest(i%2 == 0); err != nil {
+				done <- fmt.Errorf("ackRequest %d: %w", i, err)
+				return
+			}
+		}
+		// Echo any legitimate request back.
+		for req := range serverCh.incomingRequests {
+			if req.WantReply {
+				if err := req.Reply(true, append([]byte("reply:"), req.Payload...)); err != nil {
+					done <- fmt.Errorf("reply: %w", err)
+					return
+				}
+			}
+		}
+		done <- nil
+	}()
+
+	// If the flood had wedged the mux loop, this SendRequest would never
+	// receive a reply.
+	ok, err := clientCh.SendRequest("ping", true, []byte("hello"))
+	if err != nil {
+		t.Fatalf("SendRequest: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected success reply")
+	}
+
+	// Clean up so the server goroutine can exit.
+	clientCh.Close()
+	serverCh.Close()
+	if err := <-done; err != nil {
+		if !errors.Is(err, io.EOF) {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestChannelConcurrentRequests(t *testing.T) {
+	writer, reader, mux := channelPair(t)
+	defer writer.Close()
+	defer reader.Close()
+	defer mux.Close()
+
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		for req := range writer.incomingRequests {
+			if req.WantReply {
+				req.Reply(true, append([]byte("reply:"), req.Payload...))
+			}
+		}
+	}()
+
+	const numRequests = 50
+	var wg sync.WaitGroup
+	wg.Add(numRequests)
+	errCh := make(chan error, numRequests)
+
+	for i := 0; i < numRequests; i++ {
+		go func(id int) {
+			defer wg.Done()
+			payload := []byte(fmt.Sprintf("req-%d", id))
+			ok, err := reader.SendRequest("echo", true, payload)
+			if err != nil {
+				errCh <- fmt.Errorf("req %d: %v", id, err)
+				return
+			}
+			if !ok {
+				errCh <- fmt.Errorf("req %d: expected success", id)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	reader.Close()
+	writer.Close()
+	<-serverDone
+}
+
+func TestChannelResponseDroppedWhenIdle(t *testing.T) {
+	// A spurious response arriving while no SendRequest is pending must
+	// be dropped rather than buffered in ch.msg.
+	writer, reader, mux := channelPair(t)
+	defer writer.Close()
+	defer reader.Close()
+	defer mux.Close()
+
+	// Server sends an unsolicited reply, then a request so we can
+	// synchronise: once the client observes the request, the mux loop has
+	// necessarily processed (and dropped) the prior spurious reply.
+	errCh := make(chan error, 1)
+	go func() {
+		if err := writer.ackRequest(true); err != nil {
+			errCh <- err
+			return
+		}
+		if _, err := writer.SendRequest("sync", false, nil); err != nil {
+			errCh <- err
+			return
+		}
+		errCh <- nil
+	}()
+
+	req := <-reader.incomingRequests
+	if req.Type != "sync" {
+		t.Fatalf("unexpected request type %q", req.Type)
+	}
+
+	if n := len(reader.msg); n != 0 {
+		t.Fatalf("ch.msg should be empty after idle drop, has %d entries", n)
+	}
+
+	if err := <-errCh; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestChannelStaleResponseDrained(t *testing.T) {
+	// Simulate a stale response sitting in ch.msg (e.g. a response that
+	// slipped through the pending-gate on a prior SendRequest that exited
+	// without consuming it). The drain step in the next SendRequest must
+	// discard it so the caller receives the correct reply.
+	writer, reader, mux := channelPair(t)
+	defer writer.Close()
+	defer reader.Close()
+	defer mux.Close()
+
+	reader.msg <- &channelRequestSuccessMsg{PeersID: reader.remoteId}
+
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		for req := range writer.incomingRequests {
+			if req.WantReply {
+				req.Reply(false, append([]byte("nack:"), req.Payload...))
+			}
+		}
+	}()
+
+	ok, err := reader.SendRequest("test", true, []byte("hello"))
+	if err != nil {
+		t.Fatalf("SendRequest: %v", err)
+	}
+	// If the stale success had been consumed, ok would be true.
+	if ok {
+		t.Fatal("got stale success response; drain did not remove it")
+	}
+
+	reader.Close()
+	writer.Close()
+	<-serverDone
+}
+
+func TestChannelResponseAcceptedWhilePending(t *testing.T) {
+	// Positive control: when a SendRequest is actually pending, the
+	// response must be delivered (the gate is open).
+	writer, reader, mux := channelPair(t)
+	defer writer.Close()
+	defer reader.Close()
+	defer mux.Close()
+
+	serverDone := make(chan struct{})
+	go func() {
+		defer close(serverDone)
+		for req := range writer.incomingRequests {
+			if req.WantReply {
+				req.Reply(true, nil)
+			}
+		}
+	}()
+
+	ok, err := reader.SendRequest("ping", true, nil)
+	if err != nil {
+		t.Fatalf("SendRequest: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected success")
+	}
+
+	reader.Close()
+	writer.Close()
+	<-serverDone
+}

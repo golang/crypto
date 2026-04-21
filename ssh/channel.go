@@ -11,6 +11,7 @@ import (
 	"io"
 	"log"
 	"sync"
+	"sync/atomic"
 )
 
 const (
@@ -183,6 +184,12 @@ type channel struct {
 	// with WantReply=true outstanding.  This lock is held by a
 	// goroutine that has such an outgoing request pending.
 	sentRequestMu sync.Mutex
+	// sentRequestPending is set to true while a SendRequest call with
+	// WantReply=true is in flight. handlePacket uses it as a gate: responses
+	// arriving while no request is pending are dropped to prevent a
+	// misbehaving peer from stalling the mux read loop by filling ch.msg
+	// with unsolicited channelRequestSuccess/Failure messages.
+	sentRequestPending atomic.Bool
 
 	incomingRequests chan *Request
 
@@ -466,6 +473,18 @@ func (ch *channel) handlePacket(packet []byte) error {
 		}
 
 		ch.incomingRequests <- &req
+	case *channelRequestSuccessMsg, *channelRequestFailureMsg:
+		// Drop responses that arrive when no SendRequest is waiting, to
+		// prevent a malicious peer from filling ch.msg and stalling the
+		// mux read loop. The non-blocking send additionally protects the
+		// loop if a well-behaved caller is slow to read.
+		if !ch.sentRequestPending.Load() {
+			return nil
+		}
+		select {
+		case ch.msg <- msg:
+		default:
+		}
 	default:
 		ch.msg <- msg
 	}
@@ -602,6 +621,24 @@ func (ch *channel) SendRequest(name string, wantReply bool, payload []byte) (boo
 	if wantReply {
 		ch.sentRequestMu.Lock()
 		defer ch.sentRequestMu.Unlock()
+
+		// Open the gate so that responses arriving while this request is in
+		// flight are allowed to reach ch.msg. Responses arriving while no
+		// request is pending are dropped by handlePacket.
+		ch.sentRequestPending.Store(true)
+		defer ch.sentRequestPending.Store(false)
+
+		// Drain any spurious responses that may have been buffered. This
+		// prevents a previously buffered unexpected response from being
+		// consumed instead of the actual response for this request.
+	drain:
+		for {
+			select {
+			case <-ch.msg:
+			default:
+				break drain
+			}
+		}
 	}
 
 	msg := channelRequestMsg{
