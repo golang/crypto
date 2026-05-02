@@ -971,6 +971,155 @@ func TestAuthMethodGSSAPIWithMIC(t *testing.T) {
 	}
 }
 
+type maliciousGSSAPIWithMICAuthMethod struct {
+	gssAPIClient GSSAPIClient
+	target       string
+}
+
+func (g *maliciousGSSAPIWithMICAuthMethod) method() string {
+	// Reuse an advertised auth method name so the client attempts this
+	// AuthMethod even when gssapi-with-mic is not advertised.
+	return "password"
+}
+
+func (g *maliciousGSSAPIWithMICAuthMethod) auth(session []byte, user string, c packetConn, rand io.Reader, _ map[string][]byte) (authResult, []string, error) {
+	req := &userAuthRequestMsg{
+		User:    user,
+		Service: serviceSSH,
+		Method:  "gssapi-with-mic",
+	}
+	req.Payload = appendU32(req.Payload, 1)
+	req.Payload = appendString(req.Payload, string(krb5OID))
+	if err := c.writePacket(Marshal(req)); err != nil {
+		return authFailure, nil, err
+	}
+
+	packet, err := c.readPacket()
+	if err != nil {
+		return authFailure, nil, err
+	}
+	switch packet[0] {
+	case msgUserAuthFailure:
+		var msg userAuthFailureMsg
+		if err := Unmarshal(packet, &msg); err != nil {
+			return authFailure, nil, err
+		}
+		if msg.PartialSuccess {
+			return authPartialSuccess, msg.Methods, nil
+		}
+		return authFailure, msg.Methods, nil
+	case msgUserAuthGSSAPIResponse:
+	default:
+		return authFailure, nil, unexpectedMessageError(msgUserAuthGSSAPIResponse, packet[0])
+	}
+
+	defer g.gssAPIClient.DeleteSecContext()
+	var token []byte
+	for {
+		nextToken, needContinue, err := g.gssAPIClient.InitSecContext("host@"+g.target, token, false)
+		if err != nil {
+			return authFailure, nil, err
+		}
+		if len(nextToken) > 0 {
+			if err := c.writePacket(Marshal(&userAuthGSSAPIToken{Token: nextToken})); err != nil {
+				return authFailure, nil, err
+			}
+		}
+		if !needContinue {
+			break
+		}
+		packet, err = c.readPacket()
+		if err != nil {
+			return authFailure, nil, err
+		}
+		switch packet[0] {
+		case msgUserAuthFailure:
+			var msg userAuthFailureMsg
+			if err := Unmarshal(packet, &msg); err != nil {
+				return authFailure, nil, err
+			}
+			if msg.PartialSuccess {
+				return authPartialSuccess, msg.Methods, nil
+			}
+			return authFailure, msg.Methods, nil
+		case msgUserAuthGSSAPIError:
+			userAuthGSSAPIErrorResp := &userAuthGSSAPIError{}
+			if err := Unmarshal(packet, userAuthGSSAPIErrorResp); err != nil {
+				return authFailure, nil, err
+			}
+			return authFailure, nil, fmt.Errorf("GSS-API Error:\nMajor Status: %d\nMinor Status: %d\nError Message: %s\n",
+				userAuthGSSAPIErrorResp.MajorStatus, userAuthGSSAPIErrorResp.MinorStatus, userAuthGSSAPIErrorResp.Message)
+		case msgUserAuthGSSAPIToken:
+			userAuthGSSAPITokenReq := &userAuthGSSAPIToken{}
+			if err := Unmarshal(packet, userAuthGSSAPITokenReq); err != nil {
+				return authFailure, nil, err
+			}
+			token = userAuthGSSAPITokenReq.Token
+		default:
+			return authFailure, nil, unexpectedMessageError(msgUserAuthGSSAPIToken, packet[0])
+		}
+	}
+
+	micField := buildMIC(string(session), user, serviceSSH, "gssapi-with-mic")
+	micToken, err := g.gssAPIClient.GetMIC(micField)
+	if err != nil {
+		return authFailure, nil, err
+	}
+	if err := c.writePacket(Marshal(&userAuthGSSAPIMIC{MIC: micToken})); err != nil {
+		return authFailure, nil, err
+	}
+	return handleAuthResponse(c)
+}
+
+func TestGSSAPIWithMICPartialConfigRejectedAtRuntime(t *testing.T) {
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			&maliciousGSSAPIWithMICAuthMethod{
+				gssAPIClient: &FakeClient{
+					exchanges: []*exchange{
+						{
+							outToken: "client-valid-token-1",
+						},
+					},
+					mic:      []byte("valid-mic"),
+					maxRound: 1,
+				},
+				target: "testtarget",
+			},
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	clientErr, serverErrs := tryAuthBothSides(t, config, &GSSAPIWithMICConfig{
+		Server: &FakeServer{
+			exchanges: []*exchange{
+				{
+					expectedToken: "client-valid-token-1",
+				},
+			},
+			maxRound:    1,
+			expectedMIC: []byte("valid-mic"),
+			srcName:     "testuser@DOMAIN",
+		},
+	})
+
+	if clientErr == nil || !strings.Contains(clientErr.Error(), "ssh: unable to authenticate") {
+		t.Fatalf("client got %v, want authentication failure", clientErr)
+	}
+
+	found := false
+	for _, err := range serverErrs {
+		if err != nil && strings.Contains(err.Error(), "ssh: gssapi-with-mic auth not configured") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("server auth errors = %v, want gssapi-with-mic auth not configured", serverErrs)
+	}
+}
+
 func TestCompatibleAlgoAndSignatures(t *testing.T) {
 	type testcase struct {
 		algo       string

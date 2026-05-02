@@ -63,6 +63,10 @@ type GSSAPIWithMICConfig struct {
 	Server GSSAPIServer
 }
 
+func gssapiWithMICConfigured(config *GSSAPIWithMICConfig) bool {
+	return config != nil && config.AllowLogin != nil && config.Server != nil
+}
+
 // SendAuthBanner implements [ServerPreAuthConn].
 func (s *connection) SendAuthBanner(msg string) error {
 	return s.transport.writePacket(Marshal(&userAuthBannerMsg{
@@ -302,8 +306,7 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	}
 
 	if !config.NoClientAuth && config.PasswordCallback == nil && config.PublicKeyCallback == nil &&
-		config.KeyboardInteractiveCallback == nil && (config.GSSAPIWithMICConfig == nil ||
-		config.GSSAPIWithMICConfig.AllowLogin == nil || config.GSSAPIWithMICConfig.Server == nil) {
+		config.KeyboardInteractiveCallback == nil && !gssapiWithMICConfigured(config.GSSAPIWithMICConfig) {
 		return nil, errors.New("ssh: no authentication methods configured but NoClientAuth is also false")
 	}
 
@@ -752,7 +755,7 @@ userAuthLoop:
 				}
 			}
 		case "gssapi-with-mic":
-			if authConfig.GSSAPIWithMICConfig == nil {
+			if !gssapiWithMICConfigured(authConfig.GSSAPIWithMICConfig) {
 				authErr = errors.New("ssh: gssapi-with-mic auth not configured")
 				break
 			}
@@ -878,8 +881,7 @@ userAuthLoop:
 		if authConfig.KeyboardInteractiveCallback != nil {
 			failureMsg.Methods = append(failureMsg.Methods, "keyboard-interactive")
 		}
-		if authConfig.GSSAPIWithMICConfig != nil && authConfig.GSSAPIWithMICConfig.Server != nil &&
-			authConfig.GSSAPIWithMICConfig.AllowLogin != nil {
+		if gssapiWithMICConfigured(authConfig.GSSAPIWithMICConfig) {
 			failureMsg.Methods = append(failureMsg.Methods, "gssapi-with-mic")
 		}
 
