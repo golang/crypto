@@ -49,6 +49,9 @@ type Permissions struct {
 	ExtraData map[any]any
 }
 
+// GSSAPIWithMICConfig includes the server callbacks for gssapi-with-mic
+// authentication. If either field is nil, gssapi-with-mic is considered not
+// configured.
 type GSSAPIWithMICConfig struct {
 	// AllowLogin, must be set, is called when gssapi-with-mic
 	// authentication is selected (RFC 4462 section 3). The srcName is from the
