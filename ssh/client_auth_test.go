@@ -1654,6 +1654,74 @@ func TestAuthMethodGSSAPIWithMIC(t *testing.T) {
 	}
 }
 
+type maliciousGSSAPIWithMICAuthMethod struct{}
+
+func (maliciousGSSAPIWithMICAuthMethod) method() string {
+	// Reuse an advertised auth method name so the client attempts this
+	// AuthMethod even when gssapi-with-mic is not advertised.
+	return "password"
+}
+
+func (maliciousGSSAPIWithMICAuthMethod) auth(session []byte, user string, c packetConn, rand io.Reader, _ map[string][]byte) (authResult, []string, error) {
+	req := &userAuthRequestMsg{
+		User:    user,
+		Service: serviceSSH,
+		Method:  "gssapi-with-mic",
+	}
+	req.Payload = appendU32(req.Payload, 1)
+	req.Payload = appendString(req.Payload, string(krb5OID))
+	if err := c.writePacket(Marshal(req)); err != nil {
+		return authFailure, nil, err
+	}
+
+	packet, err := c.readPacket()
+	if err != nil {
+		return authFailure, nil, err
+	}
+	switch packet[0] {
+	case msgUserAuthFailure:
+		var msg userAuthFailureMsg
+		if err := Unmarshal(packet, &msg); err != nil {
+			return authFailure, nil, err
+		}
+		if msg.PartialSuccess {
+			return authPartialSuccess, msg.Methods, nil
+		}
+		return authFailure, msg.Methods, nil
+	default:
+		return authFailure, nil, unexpectedMessageError(msgUserAuthFailure, packet[0])
+	}
+}
+
+func TestGSSAPIWithMICPartialConfigRejectedAtRuntime(t *testing.T) {
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			maliciousGSSAPIWithMICAuthMethod{},
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	clientErr, serverErrs := tryAuthBothSides(t, config, &GSSAPIWithMICConfig{
+		Server: &FakeServer{},
+	})
+
+	if clientErr == nil || !strings.Contains(clientErr.Error(), "ssh: unable to authenticate") {
+		t.Fatalf("client got %v, want authentication failure", clientErr)
+	}
+
+	found := false
+	for _, err := range serverErrs {
+		if err != nil && strings.Contains(err.Error(), "ssh: gssapi-with-mic auth not configured") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("server auth errors = %v, want gssapi-with-mic auth not configured", serverErrs)
+	}
+}
+
 func TestCompatibleAlgoAndSignatures(t *testing.T) {
 	type testcase struct {
 		algo       string
