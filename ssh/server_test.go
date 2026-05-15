@@ -669,6 +669,44 @@ func TestVerifiedPubKeyCallbackError(t *testing.T) {
 	}
 }
 
+func TestVerifiedPubKeyCallbackSourceAddress(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			return nil, nil
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			return &Permissions{
+				CriticalOptions: map[string]string{
+					sourceAddressCriticalOption: "192.168.99.99",
+				},
+			}, nil
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err == nil {
+		t.Fatal("client login succeed with VerifiedPublicKeyCallback returning mismatching source-address")
+	}
+}
+
 func TestVerifiedPublicCallbackPartialSuccessBadUsage(t *testing.T) {
 	c1, c2, err := netPipe()
 	if err != nil {

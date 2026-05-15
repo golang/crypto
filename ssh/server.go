@@ -837,6 +837,13 @@ userAuthLoop:
 					// considered verified and the callback must not run.
 					perms, authErr = config.VerifiedPublicKeyCallback(s, pubKey, perms, algo)
 				}
+				if authErr == nil && perms != nil && perms.CriticalOptions != nil {
+					if saco := perms.CriticalOptions[sourceAddressCriticalOption]; saco != "" {
+						if err := checkSourceAddress(s.RemoteAddr(), saco); err != nil {
+							authErr = err
+						}
+					}
+				}
 			}
 		case "gssapi-with-mic":
 			if authConfig.GSSAPIWithMICConfig == nil {
