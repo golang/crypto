@@ -376,7 +376,7 @@ func (c *Client) authorize(ctx context.Context, typ, val string) (*Authorization
 
 	var v wireAuthz
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
-		return nil, fmt.Errorf("acme: invalid response: %v", err)
+		return nil, fmt.Errorf("acme: invalid response: %w", err)
 	}
 	if v.Status != StatusPending && v.Status != StatusValid {
 		return nil, fmt.Errorf("acme: unexpected status: %s", v.Status)
@@ -400,7 +400,7 @@ func (c *Client) GetAuthorization(ctx context.Context, url string) (*Authorizati
 	defer res.Body.Close()
 	var v wireAuthz
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
-		return nil, fmt.Errorf("acme: invalid response: %v", err)
+		return nil, fmt.Errorf("acme: invalid response: %w", err)
 	}
 	return v.authorization(url), nil
 }
@@ -503,7 +503,7 @@ func (c *Client) GetChallenge(ctx context.Context, url string) (*Challenge, erro
 	defer res.Body.Close()
 	v := wireChallenge{URI: url}
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
-		return nil, fmt.Errorf("acme: invalid response: %v", err)
+		return nil, fmt.Errorf("acme: invalid response: %w", err)
 	}
 	return v.challenge(), nil
 }
@@ -532,7 +532,7 @@ func (c *Client) Accept(ctx context.Context, chal *Challenge) (*Challenge, error
 
 	var v wireChallenge
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
-		return nil, fmt.Errorf("acme: invalid response: %v", err)
+		return nil, fmt.Errorf("acme: invalid response: %w", err)
 	}
 	return v.challenge(), nil
 }

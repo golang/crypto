@@ -301,7 +301,7 @@ func (p *prober) fulfill(ctx context.Context, z *acme.Authorization) error {
 func (p *prober) runTLSALPN01(ctx context.Context, z *acme.Authorization, chal *acme.Challenge) error {
 	tokenCert, err := p.client.TLSALPN01ChallengeCert(chal.Token, z.Identifier.Value)
 	if err != nil {
-		return fmt.Errorf("TLSALPN01ChallengeCert: %v", err)
+		return fmt.Errorf("TLSALPN01ChallengeCert: %w", err)
 	}
 	s := &http.Server{
 		Addr: p.localAddr,
@@ -321,7 +321,7 @@ func (p *prober) runTLSALPN01(ctx context.Context, z *acme.Authorization, chal *
 	defer s.Close()
 
 	if _, err := p.client.Accept(ctx, chal); err != nil {
-		return fmt.Errorf("Accept(%q): %v", chal.URI, err)
+		return fmt.Errorf("Accept(%q): %w", chal.URI, err)
 	}
 	_, zerr := p.client.WaitAuthorization(ctx, z.URI)
 	return zerr
@@ -330,7 +330,7 @@ func (p *prober) runTLSALPN01(ctx context.Context, z *acme.Authorization, chal *
 func (p *prober) runHTTP01(ctx context.Context, z *acme.Authorization, chal *acme.Challenge) error {
 	body, err := p.client.HTTP01ChallengeResponse(chal.Token)
 	if err != nil {
-		return fmt.Errorf("HTTP01ChallengeResponse: %v", err)
+		return fmt.Errorf("HTTP01ChallengeResponse: %w", err)
 	}
 	s := &http.Server{
 		Addr: p.localAddr,
@@ -347,7 +347,7 @@ func (p *prober) runHTTP01(ctx context.Context, z *acme.Authorization, chal *acm
 	defer s.Close()
 
 	if _, err := p.client.Accept(ctx, chal); err != nil {
-		return fmt.Errorf("Accept(%q): %v", chal.URI, err)
+		return fmt.Errorf("Accept(%q): %w", chal.URI, err)
 	}
 	_, zerr := p.client.WaitAuthorization(ctx, z.URI)
 	return zerr
@@ -356,7 +356,7 @@ func (p *prober) runHTTP01(ctx context.Context, z *acme.Authorization, chal *acm
 func (p *prober) runDNS01(ctx context.Context, z *acme.Authorization, chal *acme.Challenge) error {
 	token, err := p.client.DNS01ChallengeRecord(chal.Token)
 	if err != nil {
-		return fmt.Errorf("DNS01ChallengeRecord: %v", err)
+		return fmt.Errorf("DNS01ChallengeRecord: %w", err)
 	}
 
 	name := fmt.Sprintf("_acme-challenge.%s", z.Identifier.Value)
@@ -365,11 +365,11 @@ func (p *prober) runDNS01(ctx context.Context, z *acme.Authorization, chal *acme
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s: %v", p.dnsScript, err)
+		return fmt.Errorf("%s: %w", p.dnsScript, err)
 	}
 
 	if _, err := p.client.Accept(ctx, chal); err != nil {
-		return fmt.Errorf("Accept(%q): %v", chal.URI, err)
+		return fmt.Errorf("Accept(%q): %w", chal.URI, err)
 	}
 	_, zerr := p.client.WaitAuthorization(ctx, z.URI)
 	return zerr
@@ -389,7 +389,7 @@ func checkCert(derChain [][]byte, id []acme.AuthzID) error {
 	for i, b := range derChain {
 		crt, err := x509.ParseCertificate(b)
 		if err != nil {
-			return fmt.Errorf("%d: ParseCertificate: %v", i, err)
+			return fmt.Errorf("%d: ParseCertificate: %w", i, err)
 		}
 		log.Printf("%d: serial: 0x%s", i, crt.SerialNumber)
 		log.Printf("%d: subject: %s", i, crt.Subject)
