@@ -6,6 +6,8 @@ package knownhosts
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"fmt"
 	"net"
 	"reflect"
@@ -272,7 +274,45 @@ func TestWildcardMatch(t *testing.T) {
 	}
 }
 
-// TODO(hanwen): test coverage for certificates.
+func TestRevokedCA(t *testing.T) {
+	_, caPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caSigner, err := ssh.NewSignerFromKey(caPriv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	caKey := caSigner.PublicKey()
+
+	_, hostPriv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hostKey, err := ssh.NewPublicKey(hostPriv.Public())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert := &ssh.Certificate{
+		CertType:        ssh.HostCert,
+		Key:             hostKey,
+		ValidBefore:     ssh.CertTimeInfinity,
+		ValidPrincipals: []string{"server.org"},
+	}
+	if err := cert.SignCert(rand.Reader, caSigner); err != nil {
+		t.Fatal(err)
+	}
+
+	caLine := "ssh-ed25519 " + serialize(caKey)[len("ssh-ed25519 "):]
+	knownHostsData := "@revoked server.org " + caLine + "\n" +
+		"@cert-authority server.org " + caLine + "\n"
+	db := testDB(t, knownHostsData)
+
+	if !db.IsRevoked(cert) {
+		t.Error("IsRevoked returned false for certificate signed by revoked CA")
+	}
+}
 
 const testHostname = "hostname"
 
