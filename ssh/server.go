@@ -670,7 +670,8 @@ userAuthLoop:
 				candidate.user = s.user
 				candidate.pubKeyData = pubKeyData
 				candidate.perms, candidate.result = authConfig.PublicKeyCallback(s, pubKey)
-				_, isPartialSuccessError := candidate.result.(*PartialSuccessError)
+				var partialSuccessErr *PartialSuccessError
+				isPartialSuccessError := errors.As(candidate.result, &partialSuccessErr)
 				if isPartialSuccessError && config.VerifiedPublicKeyCallback != nil {
 					return nil, errors.New("ssh: invalid library usage: PublicKeyCallback must not return partial success when VerifiedPublicKeyCallback is defined")
 				}
@@ -695,7 +696,8 @@ userAuthLoop:
 				if len(payload) > 0 {
 					return nil, parseError(msgUserAuthRequest)
 				}
-				_, isPartialSuccessError := candidate.result.(*PartialSuccessError)
+				var partialSuccessErr *PartialSuccessError
+				isPartialSuccessError := errors.As(candidate.result, &partialSuccessErr)
 				if candidate.result == nil || isPartialSuccessError {
 					okMsg := userAuthPubKeyOkMsg{
 						Algo:   algo,
@@ -823,7 +825,8 @@ userAuthLoop:
 
 		var failureMsg userAuthFailureMsg
 
-		if partialSuccess, ok := authErr.(*PartialSuccessError); ok {
+		var partialSuccess *PartialSuccessError
+		if errors.As(authErr, &partialSuccess) {
 			// After a partial success error we don't allow changing the user
 			// name and execute the NoClientAuthCallback.
 			partialSuccessReturned = true

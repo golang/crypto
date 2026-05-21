@@ -73,7 +73,8 @@ func (c *connection) clientAuthenticate(config *ClientConfig) error {
 		ok, methods, err := auth.auth(sessionID, config.User, c.transport, config.Rand, extensions)
 		if err != nil {
 			// On disconnect, return error immediately
-			if _, ok := err.(*disconnectMsg); ok {
+			var disc *disconnectMsg
+			if errors.As(err, &disc) {
 				return err
 			}
 			// We return the error later if there is no other method left to

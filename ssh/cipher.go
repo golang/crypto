@@ -494,7 +494,8 @@ func (e cbcError) Error() string { return string(e) }
 func (c *cbcCipher) readCipherPacket(seqNum uint32, r io.Reader) ([]byte, error) {
 	p, err := c.readCipherPacketLeaky(seqNum, r)
 	if err != nil {
-		if _, ok := err.(cbcError); ok {
+		var cbcErr cbcError
+		if errors.As(err, &cbcErr) {
 			// Verification error: read a fixed amount of
 			// data, to make distinguishing between
 			// failing MAC and failing length check more

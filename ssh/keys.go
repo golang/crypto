@@ -1342,7 +1342,7 @@ func ParseRawPrivateKeyWithPassphrase(pemBytes, passphrase []byte) (interface{},
 	// detect an incorrect password. In these cases decrypted DER bytes is
 	// random noise. If the parsing of the key returns an asn1.StructuralError
 	// we return x509.IncorrectPasswordError.
-	if _, ok := err.(asn1.StructuralError); ok {
+	if errors.As(err, &asn1.StructuralError{}) {
 		return nil, x509.IncorrectPasswordError
 	}
 
@@ -1548,12 +1548,13 @@ func parseOpenSSHPrivateKey(key []byte, decrypt openSSHDecryptFunc) (crypto.Priv
 
 	privKeyBlock, err := decrypt(w.CipherName, w.KdfName, w.KdfOpts, w.PrivKeyBlock)
 	if err != nil {
-		if err, ok := err.(*PassphraseMissingError); ok {
+		var pmErr *PassphraseMissingError
+		if errors.As(err, &pmErr) {
 			pub, errPub := ParsePublicKey(w.PubKey)
 			if errPub != nil {
 				return nil, fmt.Errorf("ssh: failed to parse embedded public key: %v", errPub)
 			}
-			err.PublicKey = pub
+			pmErr.PublicKey = pub
 		}
 		return nil, err
 	}

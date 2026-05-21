@@ -330,9 +330,11 @@ func TestServerResponseTooLarge(t *testing.T) {
 		n, err := b.Write(ssh.Marshal(response))
 		if n < 4 {
 			if runtime.GOOS == "plan9" {
-				if e1, ok := err.(*net.OpError); ok {
-					if e2, ok := e1.Err.(*os.PathError); ok {
-						switch e2.Err.Error() {
+				var opErr *net.OpError
+				if errors.As(err, &opErr) {
+					var pathErr *os.PathError
+					if errors.As(opErr.Err, &pathErr) {
+						switch pathErr.Err.Error() {
 						case "Hangup", "i/o on hungup channel":
 							// syscall.Pwrite returns -1 in this case even when some data did get written.
 							return
