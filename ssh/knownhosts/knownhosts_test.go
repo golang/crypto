@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"strings"
 	"testing"
 
 	"golang.org/x/crypto/ssh"
@@ -444,5 +445,20 @@ func TestUnicodeSpaceTrimming(t *testing.T) {
 	}
 	if !lines[0].match(dirtyAddr) {
 		t.Errorf("Did not match dirty host, implying parsing issue")
+	}
+}
+
+func TestKeyTypeMismatch(t *testing.T) {
+	line := fmt.Sprintf("server.org ssh-rsa %s", base64.StdEncoding.EncodeToString(edKey.Marshal()))
+
+	db := newHostKeyDB()
+	err := db.Read(bytes.NewBufferString(line), "testdb")
+	if err == nil {
+		t.Fatal("Read succeeded on line with key type mismatch, expected error")
+	}
+
+	expectedErr := `knownhosts: key type mismatch: found "ssh-ed25519", want "ssh-rsa"`
+	if !strings.Contains(err.Error(), expectedErr) {
+		t.Fatalf("got error %q, want to contain %q", err.Error(), expectedErr)
 	}
 }

@@ -192,8 +192,7 @@ func parseLine(line []byte) (marker, host string, key ssh.PublicKey, err error) 
 		return "", "", nil, errors.New("knownhosts: missing host pattern")
 	}
 
-	// ignore the keytype as it's in the key blob anyway.
-	_, line = nextWord(line)
+	wantType, line := nextWord(line)
 	if len(line) == 0 {
 		return "", "", nil, errors.New("knownhosts: missing key type pattern")
 	}
@@ -207,6 +206,10 @@ func parseLine(line []byte) (marker, host string, key ssh.PublicKey, err error) 
 	key, err = ssh.ParsePublicKey(keyBytes)
 	if err != nil {
 		return "", "", nil, err
+	}
+
+	if key.Type() != wantType {
+		return "", "", nil, fmt.Errorf("knownhosts: key type mismatch: found %q, want %q", key.Type(), wantType)
 	}
 
 	return marker, host, key, nil
