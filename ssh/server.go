@@ -607,6 +607,15 @@ func (b *BannerError) Error() string {
 	return b.Err.Error()
 }
 
+// maxAuthServerAttempts caps the total number of SSH_MSG_USERAUTH_REQUEST
+// messages the server will process on a single connection, regardless of
+// outcome (failure, partial success, public key query, or none). It is a
+// backstop against clients that drive the authentication loop indefinitely
+// without ever incurring a real failure — for example by repeatedly
+// triggering PartialSuccessError or by spamming public key offer queries —
+// neither of which increment the MaxAuthTries failure counter.
+const maxAuthServerAttempts = 128
+
 func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, error) {
 	if config.PreAuthConnCallback != nil {
 		config.PreAuthConnCallback(s)
@@ -617,6 +626,7 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 	var perms *Permissions
 
 	authFailures := 0
+	authAttempts := 0
 	noneAuthCount := 0
 	var authErrs []error
 	var calledBannerCallback bool
@@ -644,6 +654,19 @@ userAuthLoop:
 			authErrs = append(authErrs, discMsg)
 			return nil, &ServerAuthError{Errors: authErrs}
 		}
+
+		if authAttempts >= maxAuthServerAttempts {
+			discMsg := &disconnectMsg{
+				Reason:  2,
+				Message: "too many authentication attempts",
+			}
+			if err := s.transport.writePacket(Marshal(discMsg)); err != nil {
+				return nil, err
+			}
+			authErrs = append(authErrs, discMsg)
+			return nil, &ServerAuthError{Errors: authErrs}
+		}
+		authAttempts++
 
 		var userAuthReq userAuthRequestMsg
 		if packet, err := s.transport.readPacket(); err != nil {

@@ -166,6 +166,52 @@ func TestMaxAuthTriesNoneMethod(t *testing.T) {
 	}
 }
 
+func TestMaxAuthServerAttempts(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	invocations := 0
+	clientConf := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			invocations++
+			return PublicKeys(testSigners["rsa"]), nil
+		},
+	}
+
+	go NewServerConn(c1, alwaysPartialPubKeyServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err == nil {
+		t.Fatal("expected the server to disconnect after exceeding the attempts cap")
+	}
+	// The error must be the server's disconnect, not the client-side
+	// "too many authentication attempts (N), aborting" bound. The
+	// disconnect format is set by disconnectMsg.Error().
+	if !strings.Contains(err.Error(), "ssh: disconnect") ||
+		!strings.Contains(err.Error(), "too many authentication attempts") {
+		t.Fatalf("expected server disconnect, got: %v", err)
+	}
+	// Server-side request sequence per AuthCallback iteration:
+	//   1 "none"       (initial, before any AuthCallback)
+	//   2 pubkey query (AuthCallback #k, server returns OK)
+	//   3 pubkey signed (AuthCallback #k, server returns partial)
+	// So after k complete callbacks the server has processed 1+2k requests.
+	// The (k+1)-th callback's query is processed as request number 2(k+1);
+	// the subsequent signed request is rejected by the cap check
+	// (authAttempts >= maxAuthServerAttempts), so 2(k+1) = maxAuthServerAttempts
+	// and invocations = maxAuthServerAttempts / 2.
+	expected := maxAuthServerAttempts / 2
+	if invocations != expected {
+		t.Errorf("AuthCallback invoked %d times; want %d", invocations, expected)
+	}
+}
+
 func TestMaxAuthTriesFirstNoneAuthErrorIgnored(t *testing.T) {
 	username := "testuser"
 	serverConfig := &ServerConfig{
