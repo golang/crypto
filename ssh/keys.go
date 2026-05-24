@@ -1466,6 +1466,17 @@ func passphraseProtectedOpenSSHKey(passphrase []byte) openSSHDecryptFunc {
 			return nil, err
 		}
 
+		// OpenSSH does not impose an upper bound on the bcrypt round count
+		// stored in the key file, but bcrypt_pbkdf cost is linear in rounds:
+		// the default is 16, ssh-keygen lets users pick anything up to
+		// INT_MAX. Cap at 2048 (128x the default, a few seconds of CPU) so
+		// that an oversized value in the file cannot tie up the caller for
+		// months.
+		const maxRounds = 1 << 11
+		if opts.Rounds > maxRounds {
+			return nil, fmt.Errorf("ssh: bcrypt KDF rounds %d exceed maximum %d", opts.Rounds, maxRounds)
+		}
+
 		k, err := bcrypt_pbkdf.Key(passphrase, []byte(opts.Salt), int(opts.Rounds), 32+16)
 		if err != nil {
 			return nil, err

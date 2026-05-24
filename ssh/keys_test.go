@@ -506,6 +506,38 @@ func TestParseEncryptedPrivateKeysWithIncorrectPassphrase(t *testing.T) {
 	}
 }
 
+func TestParseEncryptedPrivateKeyExcessiveBcryptRounds(t *testing.T) {
+	// Craft a minimal openssh-key-v1 blob whose KdfOpts declares a bcrypt
+	// round count above the accepted maximum. The check must reject the file
+	// before bcrypt_pbkdf is invoked, so the rest of the blob (public key,
+	// encrypted body) can be empty.
+	kdfOpts := Marshal(struct {
+		Salt   []byte
+		Rounds uint32
+	}{
+		Salt:   []byte("salt-not-used"),
+		Rounds: (1 << 11) + 1,
+	})
+	header := Marshal(openSSHEncryptedPrivateKey{
+		CipherName: "aes256-ctr",
+		KdfName:    "bcrypt",
+		KdfOpts:    string(kdfOpts),
+		NumKeys:    1,
+	})
+	pemBytes := pem.EncodeToMemory(&pem.Block{
+		Type:  "OPENSSH PRIVATE KEY",
+		Bytes: append([]byte(privateKeyAuthMagic), header...),
+	})
+
+	_, err := ParseRawPrivateKeyWithPassphrase(pemBytes, []byte("password"))
+	if err == nil {
+		t.Fatal("expected error for excessive bcrypt rounds, got nil")
+	}
+	if !strings.Contains(err.Error(), "bcrypt KDF rounds") {
+		t.Errorf("got error %q, want substring %q", err.Error(), "bcrypt KDF rounds")
+	}
+}
+
 func TestParseDSA(t *testing.T) {
 	// We actually exercise the ParsePrivateKey codepath here, as opposed to
 	// using the ParseRawPrivateKey+NewSignerFromKey path that testdata_test.go
