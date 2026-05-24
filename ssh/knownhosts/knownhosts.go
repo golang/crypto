@@ -178,7 +178,7 @@ func nextWord(line []byte) (string, []byte) {
 		return string(line), nil
 	}
 
-	return string(line[:i]), bytes.TrimSpace(line[i:])
+	return string(line[:i]), trimSpace(line[i:])
 }
 
 func parseLine(line []byte) (marker, host string, key ssh.PublicKey, err error) {
@@ -387,7 +387,7 @@ func (db *hostKeyDB) Read(r io.Reader, filename string) error {
 	for scanner.Scan() {
 		lineNum++
 		line := scanner.Bytes()
-		line = bytes.TrimSpace(line)
+		line = trimSpace(line)
 		if len(line) == 0 || line[0] == '#' {
 			continue
 		}
@@ -534,4 +534,11 @@ func newHashedHost(encoded string) (*hashedHost, error) {
 
 func (h *hashedHost) match(a addr) bool {
 	return bytes.Equal(hashHost(Normalize(a.String()), h.salt), h.hash)
+}
+
+// trimSpace removes leading and trailing ASCII whitespace (space and tab). It
+// is used instead of bytes.TrimSpace to match OpenSSH behavior, which strictly
+// parses only ASCII space (0x20) and tab (0x09) as whitespace.
+func trimSpace(in []byte) []byte {
+	return bytes.Trim(in, " \t")
 }

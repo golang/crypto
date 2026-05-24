@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"reflect"
@@ -405,5 +406,43 @@ func TestIssue36126(t *testing.T) {
 
 	if err := db.check("server.org:22", testAddr, alternateEdKey); err != nil {
 		t.Errorf("should have passed the check, got %v", err)
+	}
+}
+
+func TestUnicodeSpace(t *testing.T) {
+	line := fmt.Sprintf("server.org %s  %s", edKey.Type(), base64.StdEncoding.EncodeToString(edKey.Marshal()))
+
+	db := newHostKeyDB()
+	err := db.Read(bytes.NewBufferString(line), "testdb")
+
+	if err == nil {
+		t.Fatal("Read succeeded on line with Unicode space, expected error due to strict ASCII parsing")
+	}
+}
+
+func TestUnicodeSpaceTrimming(t *testing.T) {
+	const unicodeSpace = " "
+	line := fmt.Sprintf("%sserver.org %s", unicodeSpace, edKeyStr)
+
+	db := newHostKeyDB()
+	err := db.Read(bytes.NewBufferString(line), "testdb")
+
+	if err != nil {
+		t.Fatalf("Read failed: %v", err)
+	}
+
+	lines := db.lines
+	if len(lines) != 1 {
+		t.Fatalf("Expected 1 line, got %d", len(lines))
+	}
+
+	cleanAddr := addr{host: "server.org", port: "22"}
+	dirtyAddr := addr{host: unicodeSpace + "server.org", port: "22"}
+
+	if lines[0].match(cleanAddr) {
+		t.Errorf("Matched clean host 'server.org', implying Unicode space was trimmed")
+	}
+	if !lines[0].match(dirtyAddr) {
+		t.Errorf("Did not match dirty host, implying parsing issue")
 	}
 }
