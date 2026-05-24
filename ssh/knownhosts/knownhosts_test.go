@@ -462,3 +462,41 @@ func TestKeyTypeMismatch(t *testing.T) {
 		t.Fatalf("got error %q, want to contain %q", err.Error(), expectedErr)
 	}
 }
+
+func TestMultipleMarkers(t *testing.T) {
+	lineDouble := fmt.Sprintf("@cert-authority @revoked server.org %s %s", edKey.Type(), base64.StdEncoding.EncodeToString(edKey.Marshal()))
+	db := newHostKeyDB()
+	err := db.Read(bytes.NewBufferString(lineDouble), "testdb")
+	if err == nil {
+		t.Fatal("Read succeeded on line with multiple markers, expected error")
+	}
+	expectedError := "unexpected marker"
+	if !strings.Contains(err.Error(), expectedError) {
+		t.Errorf("got error %q, want it to contain %q", err.Error(), expectedError)
+	}
+
+	lineUnknown := fmt.Sprintf("@unknown-marker server.org %s %s", edKey.Type(), base64.StdEncoding.EncodeToString(edKey.Marshal()))
+	err = db.Read(bytes.NewBufferString(lineUnknown), "testdb")
+	if err == nil {
+		t.Fatal("Read succeeded on line with unknown marker, expected error")
+	}
+	if !strings.Contains(err.Error(), expectedError) {
+		t.Errorf("got error %q, want it to contain %q", err.Error(), expectedError)
+	}
+}
+
+func TestUnknownMarker(t *testing.T) {
+	line := fmt.Sprintf("@unknown-marker server.org %s %s", edKey.Type(), base64.StdEncoding.EncodeToString(edKey.Marshal()))
+
+	db := newHostKeyDB()
+	err := db.Read(bytes.NewBufferString(line), "testdb")
+
+	if err == nil {
+		t.Fatal("Read succeeded on line with unknown marker, expected error")
+	}
+
+	expectedError := "unexpected marker"
+	if !strings.Contains(err.Error(), expectedError) {
+		t.Errorf("got error %q, want it to contain %q", err.Error(), expectedError)
+	}
+}

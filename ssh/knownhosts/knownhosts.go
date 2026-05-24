@@ -188,6 +188,12 @@ func parseLine(line []byte) (marker, host string, key ssh.PublicKey, err error) 
 	}
 
 	host, line = nextWord(line)
+	// If the extracted 'host' starts with '@', it means we either encountered
+	// a second marker (e.g., "@cert-authority @revoked") or an unknown marker
+	// (e.g., "@unknown"). Both are invalid.
+	if len(host) > 0 && host[0] == '@' {
+		return "", "", nil, fmt.Errorf("knownhosts: unexpected marker: %q", host)
+	}
 	if len(line) == 0 {
 		return "", "", nil, errors.New("knownhosts: missing host pattern")
 	}
