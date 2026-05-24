@@ -1635,10 +1635,28 @@ func parseOpenSSHPrivateKey(key []byte, decrypt openSSHDecryptFunc) (crypto.Priv
 			return nil, err
 		}
 
+		// Mirror the validation done in parseRSA for public keys: cap the
+		// modulus at the same limit enforced by crypto/tls, reject oversized
+		// or invalid exponents, and additionally bound the prime factors to
+		// avoid the expensive CRT coefficient recomputation in pk.Precompute.
+		if key.N.BitLen() > 8192 {
+			return nil, errors.New("ssh: rsa modulus too large")
+		}
+		if key.P.BitLen() > 4096 || key.Q.BitLen() > 4096 {
+			return nil, errors.New("ssh: rsa prime too large")
+		}
+		if key.E.BitLen() > 24 {
+			return nil, errors.New("ssh: exponent too large")
+		}
+		e := key.E.Int64()
+		if e < 3 || e&1 == 0 {
+			return nil, errors.New("ssh: incorrect exponent")
+		}
+
 		pk := &rsa.PrivateKey{
 			PublicKey: rsa.PublicKey{
 				N: key.N,
-				E: int(key.E.Int64()),
+				E: int(e),
 			},
 			D:      key.D,
 			Primes: []*big.Int{key.P, key.Q},
