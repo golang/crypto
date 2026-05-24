@@ -1461,3 +1461,39 @@ cLYUOHfQDw==
 		t.Fatal("parsing an SSH certificate using another certificate as signature key succeeded; expected failure")
 	}
 }
+
+func TestParseECDSAAlgorithmMismatch(t *testing.T) {
+	cases := []struct {
+		keyName    string // key fixture in testPublicKeys
+		nativeAlgo string // algorithm actually carried in the key blob
+		askedAlgo  string // algorithm passed to parsePubKey
+	}{
+		{"ecdsap256", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384"},
+		{"ecdsap256", "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp521"},
+		{"ecdsap384", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp256"},
+		{"ecdsap384", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521"},
+		{"ecdsap521", "ecdsa-sha2-nistp521", "ecdsa-sha2-nistp256"},
+		{"ecdsap521", "ecdsa-sha2-nistp521", "ecdsa-sha2-nistp384"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.nativeAlgo+"_as_"+tc.askedAlgo, func(t *testing.T) {
+			pubKey := testPublicKeys[tc.keyName]
+			algo, in, ok := parseString(pubKey.Marshal())
+			if !ok {
+				t.Fatal("unable to parse public key wire format")
+			}
+			if string(algo) != tc.nativeAlgo {
+				t.Fatalf("test setup failed: expected %q, got %q", tc.nativeAlgo, algo)
+			}
+
+			_, _, err := parsePubKey(in, tc.askedAlgo)
+			if err == nil {
+				t.Fatal("expected error due to algorithm mismatch, but got nil")
+			}
+			if !strings.Contains(err.Error(), "algorithm type mismatch") {
+				t.Fatalf("unexpected error message: %v", err)
+			}
+		})
+	}
+}
