@@ -6,6 +6,7 @@ package agent
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
@@ -652,5 +653,38 @@ func TestAddConstraintExtensionsWireFormat(t *testing.T) {
 		if !bytes.Equal(got[i].ExtensionDetails, want.ExtensionDetails) {
 			t.Errorf("extension[%d] details: got %x, want %x", i, got[i].ExtensionDetails, want.ExtensionDetails)
 		}
+	}
+}
+
+func TestAddRejectsShortEd25519Key(t *testing.T) {
+	short := ed25519.PrivateKey(make([]byte, 16))
+	// insertCert reaches its ed25519 branch only when AddedKey.Certificate
+	// is non-nil. The length check returns before cert.Type/Marshal run, so
+	// an empty certificate is sufficient to drive the path.
+	emptyCert := &ssh.Certificate{}
+
+	cases := []struct {
+		name string
+		add  AddedKey
+	}{
+		{"insertKey value", AddedKey{PrivateKey: short}},
+		{"insertKey pointer", AddedKey{PrivateKey: &short}},
+		{"insertCert value", AddedKey{PrivateKey: short, Certificate: emptyCert}},
+		{"insertCert pointer", AddedKey{PrivateKey: &short, Certificate: emptyCert}},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			client, cleanup := startKeyringAgent(t)
+			defer cleanup()
+
+			err := client.Add(tc.add)
+			if err == nil {
+				t.Fatal("Add accepted ed25519 key shorter than 64 bytes")
+			}
+			if !strings.Contains(err.Error(), "bad ED25519 key size") {
+				t.Errorf("got error %q, want substring %q", err.Error(), "bad ED25519 key size")
+			}
+		})
 	}
 }

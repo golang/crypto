@@ -621,6 +621,9 @@ func (c *client) insertKey(s interface{}, comment string, constraints []byte) er
 			Constraints: constraints,
 		})
 	case ed25519.PrivateKey:
+		if len(k) != ed25519.PrivateKeySize {
+			return fmt.Errorf("agent: bad ED25519 key size: %d", len(k))
+		}
 		req = ssh.Marshal(ed25519KeyMsg{
 			Type:        ssh.KeyAlgoED25519,
 			Pub:         []byte(k)[32:],
@@ -632,6 +635,9 @@ func (c *client) insertKey(s interface{}, comment string, constraints []byte) er
 	// general idiom is to pass ed25519.PrivateKey by value, not by pointer.
 	// We still support the pointer variant for backwards compatibility.
 	case *ed25519.PrivateKey:
+		if len(*k) != ed25519.PrivateKeySize {
+			return fmt.Errorf("agent: bad ED25519 key size: %d", len(*k))
+		}
 		req = ssh.Marshal(ed25519KeyMsg{
 			Type:        ssh.KeyAlgoED25519,
 			Pub:         []byte(*k)[32:],
@@ -756,6 +762,9 @@ func (c *client) insertCert(s interface{}, cert *ssh.Certificate, comment string
 			Constraints: constraints,
 		})
 	case ed25519.PrivateKey:
+		if len(k) != ed25519.PrivateKeySize {
+			return fmt.Errorf("agent: bad ED25519 key size: %d", len(k))
+		}
 		req = ssh.Marshal(ed25519CertMsg{
 			Type:        cert.Type(),
 			CertBytes:   cert.Marshal(),
@@ -768,6 +777,9 @@ func (c *client) insertCert(s interface{}, cert *ssh.Certificate, comment string
 	// general idiom is to pass ed25519.PrivateKey by value, not by pointer.
 	// We still support the pointer variant for backwards compatibility.
 	case *ed25519.PrivateKey:
+		if len(*k) != ed25519.PrivateKeySize {
+			return fmt.Errorf("agent: bad ED25519 key size: %d", len(*k))
+		}
 		req = ssh.Marshal(ed25519CertMsg{
 			Type:        cert.Type(),
 			CertBytes:   cert.Marshal(),
