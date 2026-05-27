@@ -13,6 +13,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -86,6 +87,96 @@ func TestSetupForwardAgent(t *testing.T) {
 	agentClient := NewClient(ch)
 	testAgentInterface(t, agentClient, testPrivateKeys["rsa"], nil, 0)
 	conn.Close()
+}
+
+func TestForwardAgentDiscardsStderr(t *testing.T) {
+	a, b, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer a.Close()
+	defer b.Close()
+
+	serverConf := ssh.ServerConfig{
+		NoClientAuth: true,
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	incoming := make(chan *ssh.ServerConn, 1)
+	go func() {
+		conn, _, _, err := ssh.NewServerConn(a, &serverConf)
+		incoming <- conn
+		if err != nil {
+			t.Errorf("NewServerConn error: %v", err)
+			return
+		}
+	}()
+
+	conf := ssh.ClientConfig{
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+	conn, chans, reqs, err := ssh.NewClientConn(b, "", &conf)
+	if err != nil {
+		t.Fatalf("NewClientConn: %v", err)
+	}
+	client := ssh.NewClient(conn, chans, reqs)
+	defer client.Close()
+
+	if err := ForwardToAgent(client, NewKeyring()); err != nil {
+		t.Fatalf("ForwardToAgent: %v", err)
+	}
+
+	server := <-incoming
+	if server == nil {
+		t.Fatal("Unable to get server")
+	}
+	defer server.Close()
+
+	ch, chanReqs, err := server.OpenChannel(channelType, nil)
+	if err != nil {
+		t.Fatalf("OpenChannel(%q): %v", channelType, err)
+	}
+	go ssh.DiscardRequests(chanReqs)
+	defer ch.Close()
+
+	// Write more than the default channel receive window (2 MiB) on the
+	// stderr stream. If the forwarder did not drain it the remote window
+	// would be exhausted and this write would block forever, because no
+	// window-adjust messages are emitted for an extended stream that is
+	// never read.
+	const payload = 4 * 1024 * 1024
+	done := make(chan error, 1)
+	go func() {
+		buf := make([]byte, 32*1024)
+		remaining := payload
+		for remaining > 0 {
+			n := len(buf)
+			if remaining < n {
+				n = remaining
+			}
+			w, err := ch.Stderr().Write(buf[:n])
+			if err != nil {
+				done <- err
+				return
+			}
+			remaining -= w
+		}
+		done <- nil
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("write to stderr: %v", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("write to stderr blocked: ForwardToAgent is not draining channel.Stderr()")
+	}
+
+	// The agent must still be reachable on the main stream after the
+	// stderr traffic.
+	if _, err := NewClient(ch).List(); err != nil {
+		t.Fatalf("List after stderr flood: %v", err)
+	}
 }
 
 func TestV1ProtocolMessages(t *testing.T) {
