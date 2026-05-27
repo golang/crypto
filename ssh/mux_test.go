@@ -10,6 +10,7 @@ import (
 	"io"
 	"sync"
 	"testing"
+	"time"
 )
 
 func muxPair() (*mux, *mux) {
@@ -1365,4 +1366,42 @@ func TestChannelResponseAcceptedWhilePending(t *testing.T) {
 	reader.Close()
 	writer.Close()
 	<-serverDone
+}
+
+func TestChannelSendRequestAfterCloseNoSpinloop(t *testing.T) {
+	writer, reader, mux := channelPair(t)
+	defer writer.Close()
+	defer mux.Close()
+
+	// Close the channel, this closes reader.msg.
+	if err := reader.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+	// Wait for reader.msg to actually be closed by the mux loop.
+	for {
+		select {
+		case _, ok := <-reader.msg:
+			if !ok {
+				goto closed
+			}
+		case <-time.After(2 * time.Second):
+			t.Fatal("reader.msg was not closed")
+		}
+	}
+closed:
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := reader.SendRequest("ping", true, nil)
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if !errors.Is(err, io.EOF) {
+			t.Fatalf("SendRequest after close: got %v, want io.EOF", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("SendRequest spinloop on closed ch.msg")
+	}
 }
