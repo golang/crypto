@@ -9,6 +9,7 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"math/big"
 	pseudorand "math/rand"
 	"reflect"
 	"strings"
@@ -301,5 +302,39 @@ func TestParseEd25519KeyShortPanic(t *testing.T) {
 	}
 	if len(keys) != 0 {
 		t.Error("short ed25519 key was accepted into keyring")
+	}
+}
+
+func TestParseRSAKeyModulusBound(t *testing.T) {
+	// An oversized modulus must be rejected before the expensive
+	// rsa.PrivateKey.Precompute call, while an in-bounds key still parses.
+	for _, tc := range []struct {
+		bits      int
+		wantError bool
+	}{
+		{bits: maxRSAKeyBits, wantError: false},
+		{bits: maxRSAKeyBits + 1, wantError: true},
+		{bits: 16384, wantError: true},
+	} {
+		// Construct a modulus with exactly tc.bits bits without generating a
+		// real (expensive) key: setting the top bit suffices for BitLen.
+		n := new(big.Int).Lsh(big.NewInt(1), uint(tc.bits-1))
+		msg := ssh.Marshal(rsaKeyMsg{
+			Type: ssh.KeyAlgoRSA,
+			N:    n,
+			E:    big.NewInt(65537),
+			D:    big.NewInt(1),
+			Iqmp: big.NewInt(1),
+			P:    big.NewInt(1),
+			Q:    big.NewInt(1),
+		})
+		_, err := parseRSAKey(msg)
+		if tc.wantError {
+			if err == nil || !strings.Contains(err.Error(), "RSA modulus too large") {
+				t.Errorf("%d-bit modulus: got error %v, want \"RSA modulus too large\"", tc.bits, err)
+			}
+		} else if err != nil {
+			t.Errorf("%d-bit modulus: unexpected error: %v", tc.bits, err)
+		}
 	}
 }

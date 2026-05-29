@@ -240,6 +240,32 @@ func setConstraints(key *AddedKey, constraintBytes []byte) error {
 	return nil
 }
 
+// maxRSAKeyBits is the maximum supported RSA modulus size in bits. It mirrors
+// the bound enforced by ssh/keys.go on the SSH-server side and prevents an
+// attacker from supplying a huge modulus that makes key precomputation
+// (rsa.PrivateKey.Precompute) and later operations prohibitively expensive.
+const maxRSAKeyBits = 8192
+
+// checkDSAParams enforces the same FIPS 186-2 DSA parameter bounds as
+// ssh/keys.go. SSH specifies a single 1024-bit P with a 160-bit Q, and
+// bounding these prevents a DoS where an attacker supplies oversized
+// parameters that make verification slow.
+func checkDSAParams(param *dsa.Parameters) error {
+	if l := param.P.BitLen(); l != 1024 {
+		return fmt.Errorf("agent: unsupported DSA key size %d", l)
+	}
+	if l := param.Q.BitLen(); l != 160 {
+		return fmt.Errorf("agent: unsupported DSA sub-prime size %d", l)
+	}
+	if param.G.Cmp(param.P) >= 0 {
+		return errors.New("agent: DSA generator larger than modulus")
+	}
+	if param.G.Sign() <= 0 {
+		return errors.New("agent: DSA generator must be positive")
+	}
+	return nil
+}
+
 func parseRSAKey(req []byte) (*AddedKey, error) {
 	var k rsaKeyMsg
 	if err := ssh.Unmarshal(req, &k); err != nil {
@@ -247,6 +273,9 @@ func parseRSAKey(req []byte) (*AddedKey, error) {
 	}
 	if k.E.BitLen() > 30 {
 		return nil, errors.New("agent: RSA public exponent too large")
+	}
+	if k.N.BitLen() > maxRSAKeyBits {
+		return nil, errors.New("agent: RSA modulus too large")
 	}
 	priv := &rsa.PrivateKey{
 		PublicKey: rsa.PublicKey{
@@ -287,14 +316,18 @@ func parseDSAKey(req []byte) (*AddedKey, error) {
 	if err := ssh.Unmarshal(req, &k); err != nil {
 		return nil, err
 	}
+	params := dsa.Parameters{
+		P: k.P,
+		Q: k.Q,
+		G: k.G,
+	}
+	if err := checkDSAParams(&params); err != nil {
+		return nil, err
+	}
 	priv := &dsa.PrivateKey{
 		PublicKey: dsa.PublicKey{
-			Parameters: dsa.Parameters{
-				P: k.P,
-				Q: k.Q,
-				G: k.G,
-			},
-			Y: k.Y,
+			Parameters: params,
+			Y:          k.Y,
 		},
 		X: k.X,
 	}
@@ -402,6 +435,9 @@ func parseRSACert(req []byte) (*AddedKey, error) {
 	if rsaPub.E.BitLen() > 30 {
 		return nil, errors.New("agent: RSA public exponent too large")
 	}
+	if rsaPub.N.BitLen() > maxRSAKeyBits {
+		return nil, errors.New("agent: RSA modulus too large")
+	}
 
 	priv := rsa.PrivateKey{
 		PublicKey: rsa.PublicKey{
@@ -443,14 +479,18 @@ func parseDSACert(req []byte) (*AddedKey, error) {
 		return nil, fmt.Errorf("agent: Unmarshal failed to parse public key: %v", err)
 	}
 
+	params := dsa.Parameters{
+		P: w.P,
+		Q: w.Q,
+		G: w.G,
+	}
+	if err := checkDSAParams(&params); err != nil {
+		return nil, err
+	}
 	priv := &dsa.PrivateKey{
 		PublicKey: dsa.PublicKey{
-			Parameters: dsa.Parameters{
-				P: w.P,
-				Q: w.Q,
-				G: w.G,
-			},
-			Y: w.Y,
+			Parameters: params,
+			Y:          w.Y,
 		},
 		X: k.X,
 	}
