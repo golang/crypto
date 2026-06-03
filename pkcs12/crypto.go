@@ -80,9 +80,11 @@ func pbDecrypterFor(algorithm pkix.AlgorithmIdentifier, password []byte) (cipher
 		return nil, 0, err
 	}
 
+	if params.Iterations <= 0 || params.Iterations > 10_000_000 {
+		return nil, 0, errors.New("pkcs12: iteration count out of safe range")
+	}
 	key := cipherType.deriveKey(params.Salt, password, params.Iterations)
 	iv := cipherType.deriveIV(params.Salt, password, params.Iterations)
-
 	block, err := cipherType.create(key)
 	if err != nil {
 		return nil, 0, err

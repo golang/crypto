@@ -9,6 +9,7 @@ import (
 	"crypto/sha1"
 	"crypto/x509/pkix"
 	"encoding/asn1"
+	"errors"
 )
 
 type macData struct {
@@ -31,7 +32,9 @@ func verifyMac(macData *macData, message, password []byte) error {
 	if !macData.Mac.Algorithm.Algorithm.Equal(oidSHA1) {
 		return NotImplementedError("unknown digest algorithm: " + macData.Mac.Algorithm.Algorithm.String())
 	}
-
+	if macData.Iterations <= 0 || macData.Iterations > 10_000_000 {
+		return errors.New("pkcs12: iteration count out of safe range")
+	}
 	key := pbkdf(sha1Sum, 20, 64, macData.MacSalt, password, macData.Iterations, 3, 20)
 
 	mac := hmac.New(sha1.New, key)
