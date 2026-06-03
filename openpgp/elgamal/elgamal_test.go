@@ -62,3 +62,14 @@ func TestDecryptBadKey(t *testing.T) {
 		t.Errorf("unexpected success decrypting")
 	}
 }
+
+func TestDecryptZeroCiphertext(t *testing.T) {
+	priv, err := GenerateKey(rand.Reader, 1024)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Decrypt(priv, big.NewInt(2), big.NewInt(0))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+}
