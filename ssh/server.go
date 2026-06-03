@@ -804,7 +804,8 @@ userAuthLoop:
 				if len(payload) > 0 {
 					return nil, parseError(msgUserAuthRequest)
 				}
-				_, isPartialSuccessError := candidate.result.(*PartialSuccessError)
+				var _partialSuccessForQuery *PartialSuccessError
+				isPartialSuccessError := errors.As(candidate.result, &_partialSuccessForQuery)
 				if candidate.result == nil || isPartialSuccessError {
 					okMsg := userAuthPubKeyOkMsg{
 						Algo:   algo,
@@ -946,7 +947,8 @@ userAuthLoop:
 
 		var failureMsg userAuthFailureMsg
 
-		if partialSuccess, ok := authErr.(*PartialSuccessError); ok {
+		var partialSuccess *PartialSuccessError
+		if errors.As(authErr, &partialSuccess) {
 			// Permissions are not preserved between authentication steps. To
 			// avoid confusion about the final state of the connection, we
 			// disallow returning non-nil Permissions combined with
