@@ -139,3 +139,12 @@ p8SsTugkit8wOwYJKoZIhvcNAQkUMS4eLABGAHIAaQBlAG4AZABsAHkAIABuAGEAbQBlACAAZgBv
 AHIAIABjAGUAcgB0MDEwITAJBgUrDgMCGgUABBRFsNz3Zd1O1GI8GTuFwCWuDOjEEwQIuBEfIcAy
 HQ8CAggA`,
 }
+
+func TestDecodeHugeIterationCount(t *testing.T) {
+	// Minimal PFX with Iterations = 2^31
+	// Should return error, not hang
+	_, _, err := Decode(hugeIterPFX, "password")
+	if err == nil {
+		t.Fatal("expected error for huge iteration count, got nil")
+	}
+}
