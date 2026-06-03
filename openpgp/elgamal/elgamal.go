@@ -89,6 +89,9 @@ func Decrypt(priv *PrivateKey, c1, c2 *big.Int) (msg []byte, err error) {
 	s.Mod(s, priv.P)
 	em := s.Bytes()
 
+	if len(em) == 0 {
+		return nil, errors.New("elgamal: decryption error")
+	}
 	firstByteIsTwo := subtle.ConstantTimeByteEq(em[0], 2)
 
 	// The remainder of the plaintext must be a string of non-zero random
