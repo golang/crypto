@@ -848,6 +848,65 @@ func TestInvalidEntry(t *testing.T) {
 	}
 }
 
+func TestAuthorizedKeyOptionWithoutKeyType(t *testing.T) {
+	_, pubSerialized := getTestKey()
+	for _, opt := range []string{"restrict", "no-pty", "no-port-forwarding", "no-agent-forwarding"} {
+		// The key type ("ssh-rsa") is intentionally omitted.
+		line := opt + " " + pubSerialized
+		testAuthorizedKeys(t, []byte(line), []testAuthResult{
+			{nil, nil, "", "", false},
+		})
+	}
+}
+
+func TestAuthorizedKeyTypeMismatch(t *testing.T) {
+	_, pubSerialized := getTestKey() // an ssh-rsa key
+	lines := []string{
+		"ssh-ed25519 " + pubSerialized + " user@host",
+		"restrict ssh-ed25519 " + pubSerialized + " user@host",
+		"rsa-sha2-512 " + pubSerialized + " user@host",
+	}
+	for _, line := range lines {
+		testAuthorizedKeys(t, []byte(line), []testAuthResult{
+			{nil, nil, "", "", false},
+		})
+	}
+}
+
+func TestAuthorizedKeyCertificate(t *testing.T) {
+	certLine := testdata.SSHCertificates["rsa-user-testcertificate"]
+
+	key, _, options, _, err := ParseAuthorizedKey(certLine)
+	if err != nil {
+		t.Fatalf("ParseAuthorizedKey on certificate: %v", err)
+	}
+	if _, ok := key.(*Certificate); !ok {
+		t.Fatalf("got %T, want *Certificate", key)
+	}
+	if len(options) != 0 {
+		t.Errorf("got options %v, want none", options)
+	}
+
+	key, _, options, _, err = ParseAuthorizedKey(append([]byte("cert-authority "), certLine...))
+	if err != nil {
+		t.Fatalf("ParseAuthorizedKey on cert-authority certificate: %v", err)
+	}
+	if _, ok := key.(*Certificate); !ok {
+		t.Fatalf("got %T, want *Certificate", key)
+	}
+	if !reflect.DeepEqual(options, []string{"cert-authority"}) {
+		t.Errorf("got options %v, want [cert-authority]", options)
+	}
+}
+
+func TestAuthorizedKeyOptionWithKeyType(t *testing.T) {
+	pub, pubSerialized := getTestKey()
+	line := "restrict ssh-rsa " + pubSerialized + " user@host"
+	testAuthorizedKeys(t, []byte(line), []testAuthResult{
+		{pub, []string{"restrict"}, "user@host", "", true},
+	})
+}
+
 var knownHostsParseTests = []struct {
 	input string
 	err   string
@@ -926,6 +985,13 @@ var knownHostsParseTests = []struct {
 	{
 		"@marker \tlocalhost,[host2:123]\tssh-rsa aabbccdd",
 		"short read",
+
+		"", "", nil, "",
+	},
+	{
+		// Declared key type does not match the type embedded in the blob.
+		"localhost ssh-ed25519 {RSAPUB}",
+		"key type mismatch",
 
 		"", "", nil, "",
 	},
