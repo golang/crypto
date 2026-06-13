@@ -94,6 +94,14 @@ func (e *EncryptedKey) Decrypt(priv *PrivateKey, config *Config) error {
 		return err
 	}
 
+	// The decrypted session key is one cipher-algorithm octet, the key
+	// material, and a two-octet checksum. A decryption that yields fewer than
+	// three octets (e.g. from a crafted ElGamal/RSA/ECDH ciphertext) would
+	// otherwise make the indexing below panic with slice/index out of range.
+	if len(b) < 3 {
+		return errors.StructuralError("session key is too short")
+	}
+
 	e.CipherFunc = CipherFunction(b[0])
 	e.Key = b[1 : len(b)-2]
 	expectedChecksum := uint16(b[len(b)-2])<<8 | uint16(b[len(b)-1])
