@@ -796,7 +796,8 @@ userAuthLoop:
 
 			pubKey, err := ParsePublicKey(pubKeyData)
 			if err != nil {
-				return nil, err
+				authErr = err
+				break
 			}
 
 			candidate, ok := cache.get(s.user, pubKeyData)
