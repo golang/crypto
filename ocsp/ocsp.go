@@ -16,6 +16,7 @@ import (
 	_ "crypto/sha1"
 	_ "crypto/sha256"
 	_ "crypto/sha512"
+	"crypto/subtle"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/asn1"
@@ -459,7 +460,9 @@ func ParseRequest(bytes []byte) (*Request, error) {
 // the signature on the embedded certificate.
 //
 // If the response does not contain an embedded certificate and issuer is not
-// nil, then issuer will be used to verify the response signature.
+// nil, then issuer will be used to verify the response signature. This is unsafe
+// unless the OCSP request and response was transmitted over a secure channel,
+// such as HTTPS signed by an external CA.
 //
 // Invalid responses and parse failures will result in a ParseError.
 // Error responses will result in a ResponseError.
@@ -552,30 +555,66 @@ func ParseResponseForCert(bytes []byte, cert, issuer *x509.Certificate) (*Respon
 	}
 
 	if len(basicResp.Certificates) > 0 {
-		// Responders should only send a single certificate (if they
+		// Responders SHOULD only send a single certificate (if they
 		// send any) that connects the responder's certificate to the
 		// original issuer. We accept responses with multiple
-		// certificates due to a number responders sending them[1], but
-		// ignore all but the first.
+		// certificates due to a number responders sending them [1, 2].
+		// However, we only retain the one that signed this request:
+		// notably, RFC 6960 does not guarantee an order, but states
+		// that any delegated OCSP responder certificate MUST be
+		// directly issued by the CA that issued this certificate [2],
+		// so any remaining certificates presumably overlap with the
+		// existing certs known by the caller.
 		//
 		// [1] https://github.com/golang/go/issues/21527
-		ret.Certificate, err = x509.ParseCertificate(basicResp.Certificates[0].FullBytes)
-		if err != nil {
-			return nil, err
+		// [2] https://github.com/golang/go/issues/59641
+		var lastErr error
+		for _, candidateBytes := range basicResp.Certificates {
+			candidate, err := x509.ParseCertificate(candidateBytes.FullBytes)
+			if err != nil {
+				return nil, ParseError("bad embedded certificate: " + err.Error())
+			}
+
+			if err := ret.CheckSignatureFrom(candidate); err != nil {
+				lastErr = err
+				continue
+			}
+
+			// We found a certificate which directly issued this OCSP
+			// request; set it as our certificate object and clear any
+			// errors.
+			lastErr = nil
+			ret.Certificate = candidate
+			break
 		}
 
-		if err := ret.CheckSignatureFrom(ret.Certificate); err != nil {
+		if lastErr != nil {
+			// n.b.: this error message string is checked by callers but is
+			// incorrectly worded: the signature on the _response_ is bad,
+			// from this selected certificate, not the signature on this
+			// embedded certificate from some parent issuer.
 			return nil, ParseError("bad signature on embedded certificate: " + err.Error())
 		}
+	}
 
-		if issuer != nil {
+	// When given a trusted issuer CA, use it to validate that this
+	// response is valid.
+	if issuer != nil {
+		if ret.Certificate == nil {
+			// We have no other information about this request, so require
+			// it to be signed by this trusted issuer.
+			if err := ret.CheckSignatureFrom(issuer); err != nil {
+				return nil, ParseError("bad OCSP signature: " + err.Error())
+			}
+		} else if subtle.ConstantTimeCompare(ret.Certificate.Raw, issuer.Raw) == 0 {
+			// Since we had a certificate, we had two scenarios: (1) either the
+			// responder unnecessarily sent us the issuer again (guarded by
+			// the above if), or (2), we have a different certificate here in
+			// this branch and thus we need to check the signature from
+			// issuer->ret.Certificate.
 			if err := issuer.CheckSignature(ret.Certificate.SignatureAlgorithm, ret.Certificate.RawTBSCertificate, ret.Certificate.Signature); err != nil {
 				return nil, ParseError("bad OCSP signature: " + err.Error())
 			}
-		}
-	} else if issuer != nil {
-		if err := ret.CheckSignatureFrom(issuer); err != nil {
-			return nil, ParseError("bad OCSP signature: " + err.Error())
 		}
 	}
 
