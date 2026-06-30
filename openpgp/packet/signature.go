@@ -80,6 +80,13 @@ type Signature struct {
 }
 
 func (sig *Signature) parse(r io.Reader) (err error) {
+	return sig.parseWithDepth(r, 0)
+}
+
+// maxEmbeddedSignatureDepth limits recursion in embedded signature parsing.
+const maxEmbeddedSignatureDepth = 2
+
+func (sig *Signature) parseWithDepth(r io.Reader, depth int) (err error) {
 	// RFC 4880, section 5.2.3
 	var buf [5]byte
 	_, err = readFull(r, buf[:1])
@@ -129,7 +136,7 @@ func (sig *Signature) parse(r io.Reader) (err error) {
 	trailer[4] = uint8(l >> 8)
 	trailer[5] = uint8(l)
 
-	err = parseSignatureSubpackets(sig, hashedSubpackets, true)
+	err = parseSignatureSubpackets(sig, hashedSubpackets, true, depth)
 	if err != nil {
 		return
 	}
@@ -144,7 +151,7 @@ func (sig *Signature) parse(r io.Reader) (err error) {
 	if err != nil {
 		return
 	}
-	err = parseSignatureSubpackets(sig, unhashedSubpackets, false)
+	err = parseSignatureSubpackets(sig, unhashedSubpackets, false, depth)
 	if err != nil {
 		return
 	}
@@ -175,9 +182,9 @@ func (sig *Signature) parse(r io.Reader) (err error) {
 
 // parseSignatureSubpackets parses subpackets of the main signature packet. See
 // RFC 4880, section 5.2.3.1.
-func parseSignatureSubpackets(sig *Signature, subpackets []byte, isHashed bool) (err error) {
+func parseSignatureSubpackets(sig *Signature, subpackets []byte, isHashed bool, depth int) (err error) {
 	for len(subpackets) > 0 {
-		subpackets, err = parseSignatureSubpacket(sig, subpackets, isHashed)
+		subpackets, err = parseSignatureSubpacket(sig, subpackets, isHashed, depth)
 		if err != nil {
 			return
 		}
@@ -208,7 +215,7 @@ const (
 )
 
 // parseSignatureSubpacket parses a single subpacket. len(subpacket) is >= 1.
-func parseSignatureSubpacket(sig *Signature, subpacket []byte, isHashed bool) (rest []byte, err error) {
+func parseSignatureSubpacket(sig *Signature, subpacket []byte, isHashed bool, depth int) (rest []byte, err error) {
 	// RFC 4880, section 5.2.3.1
 	var (
 		length     uint32
@@ -372,11 +379,15 @@ func parseSignatureSubpacket(sig *Signature, subpacket []byte, isHashed bool) (r
 			err = errors.StructuralError("Cannot have multiple embedded signatures")
 			return
 		}
+		if depth >= maxEmbeddedSignatureDepth {
+			err = errors.StructuralError("embedded signature nesting too deep")
+			return
+		}
 		sig.EmbeddedSignature = new(Signature)
 		// Embedded signatures are required to be v4 signatures see
 		// section 12.1. However, we only parse v4 signatures in this
 		// file anyway.
-		if err := sig.EmbeddedSignature.parse(bytes.NewBuffer(subpacket)); err != nil {
+		if err := sig.EmbeddedSignature.parseWithDepth(bytes.NewBuffer(subpacket), depth+1); err != nil {
 			return nil, err
 		}
 		if sigType := sig.EmbeddedSignature.SigType; sigType != SigTypePrimaryKeyBinding {
