@@ -760,6 +760,80 @@ func TestVerifiedPubKeyCallbackSourceAddress(t *testing.T) {
 	}
 }
 
+func TestSourceAddressCriticalOptionNonPublicKey(t *testing.T) {
+	// CVE-2026-46595 added source-address enforcement to the publickey
+	// path. The same critical option must also be enforced for the other
+	// auth methods that hand back *Permissions. Each callback below
+	// restricts access to 192.168.99.99, which never matches the loopback
+	// address used by netPipe, so every authentication must be rejected.
+	const mismatchingSourceAddr = "192.168.99.99"
+	restrictedPerms := func() (*Permissions, error) {
+		return &Permissions{
+			CriticalOptions: map[string]string{
+				sourceAddressCriticalOption: mismatchingSourceAddr,
+			},
+		}, nil
+	}
+
+	for _, tt := range []struct {
+		name       string
+		serverConf *ServerConfig
+		auth       []AuthMethod
+	}{
+		{
+			name: "none",
+			serverConf: &ServerConfig{
+				NoClientAuth: true,
+				NoClientAuthCallback: func(ConnMetadata) (*Permissions, error) {
+					return restrictedPerms()
+				},
+			},
+			auth: nil,
+		},
+		{
+			name: "password",
+			serverConf: &ServerConfig{
+				PasswordCallback: func(ConnMetadata, []byte) (*Permissions, error) {
+					return restrictedPerms()
+				},
+			},
+			auth: []AuthMethod{Password("password")},
+		},
+		{
+			name: "keyboard-interactive",
+			serverConf: &ServerConfig{
+				KeyboardInteractiveCallback: func(ConnMetadata, KeyboardInteractiveChallenge) (*Permissions, error) {
+					return restrictedPerms()
+				},
+			},
+			auth: []AuthMethod{KeyboardInteractive(func(string, string, []string, []bool) ([]string, error) {
+				return nil, nil
+			})},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c1, c2, err := netPipe()
+			if err != nil {
+				t.Fatalf("netPipe: %v", err)
+			}
+			defer c1.Close()
+			defer c2.Close()
+
+			tt.serverConf.AddHostKey(testSigners["rsa"])
+			go NewServerConn(c1, tt.serverConf)
+
+			clientConf := &ClientConfig{
+				User:            "user",
+				Auth:            tt.auth,
+				HostKeyCallback: InsecureIgnoreHostKey(),
+			}
+			if _, _, _, err := NewClientConn(c2, "", clientConf); err == nil {
+				t.Fatalf("client login succeeded via %s auth with a callback returning a mismatching source-address", tt.name)
+			}
+		})
+	}
+}
+
 func TestVerifiedPublicCallbackPartialSuccessBadUsage(t *testing.T) {
 	c1, c2, err := netPipe()
 	if err != nil {
