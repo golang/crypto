@@ -99,7 +99,7 @@ func TestSigning(t *testing.T) {
 			continue
 		}
 		if err := plaintext.Close(); err != nil {
-			t.Fatalf("#%d: error from Close: %s", i, err)
+			t.Errorf("#%d: error from Close: %s", i, err)
 			continue
 		}
 
