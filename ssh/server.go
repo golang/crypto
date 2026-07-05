@@ -476,12 +476,14 @@ func checkSourceAddress(addr net.Addr, sourceAddrs string) error {
 
 // checkSourceAddressCriticalOption enforces the source-address critical
 // option, if present in perms, as documented in Permissions.CriticalOptions.
+// A present but empty value matches no address, so it denies authentication,
+// consistently with OpenSSH, rather than being treated as absent.
 func checkSourceAddressCriticalOption(addr net.Addr, perms *Permissions) error {
 	if perms == nil {
 		return nil
 	}
-	saco := perms.CriticalOptions[sourceAddressCriticalOption]
-	if saco == "" {
+	saco, ok := perms.CriticalOptions[sourceAddressCriticalOption]
+	if !ok {
 		return nil
 	}
 	return checkSourceAddress(addr, saco)

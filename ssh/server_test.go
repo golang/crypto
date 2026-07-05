@@ -819,6 +819,7 @@ func TestAuthCallbacksSourceAddress(t *testing.T) {
 		}{
 			{"mismatching", "192.168.99.99", true},
 			{"matching", "127.0.0.0/8,::1/128", false},
+			{"present but empty", "", true},
 		} {
 			t.Run(method.name+"/"+tc.name, func(t *testing.T) {
 				clientConf := &ClientConfig{
