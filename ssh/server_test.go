@@ -849,6 +849,18 @@ func TestAuthCallbacksSourceAddress(t *testing.T) {
 	}
 }
 
+func TestCheckSourceAddressNonIP(t *testing.T) {
+	for _, addr := range []net.Addr{
+		&net.UnixAddr{Name: "/run/test.sock", Net: "unix"},
+		&net.UnixAddr{},
+		nil,
+	} {
+		if err := checkSourceAddress(addr, "127.0.0.0/8,::1/128"); err == nil {
+			t.Errorf("source-address check succeeded for non-IP remote address %v", addr)
+		}
+	}
+}
+
 func TestVerifiedPublicCallbackPartialSuccessBadUsage(t *testing.T) {
 	c1, c2, err := netPipe()
 	if err != nil {

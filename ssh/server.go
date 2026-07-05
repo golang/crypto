@@ -28,7 +28,11 @@ type Permissions struct {
 	// the given address). The SSH package currently only enforces
 	// the "source-address" critical option: it is validated against
 	// the client's remote address whenever it is present in the
-	// Permissions returned by any authentication callback. It is up
+	// Permissions returned by any authentication callback. Its value
+	// is a comma-separated list of IP addresses and CIDR blocks;
+	// consistently with OpenSSH, a connection whose remote address is
+	// not an IP address, such as a Unix domain socket, never matches
+	// the list and is rejected when the option is present. It is up
 	// to server implementations to enforce other critical options,
 	// such as "force-command", by checking them after the SSH
 	// handshake is successful. In general, SSH servers should reject
@@ -444,6 +448,10 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 	return perms, err
 }
 
+// checkSourceAddress matches addr against sourceAddrs, a comma-separated list
+// of IP addresses and CIDR blocks. Consistently with OpenSSH, a remote address
+// that is not IP-based, such as a Unix domain socket, never matches the list
+// and is rejected.
 func checkSourceAddress(addr net.Addr, sourceAddrs string) error {
 	if addr == nil {
 		return errors.New("ssh: no address known for client, but source-address match required")
@@ -451,7 +459,7 @@ func checkSourceAddress(addr net.Addr, sourceAddrs string) error {
 
 	tcpAddr, ok := addr.(*net.TCPAddr)
 	if !ok {
-		return fmt.Errorf("ssh: remote address %v is not an TCP address when checking source-address match", addr)
+		return fmt.Errorf("ssh: remote address %v is not a TCP address when checking source-address match", addr)
 	}
 
 	for _, sourceAddr := range strings.Split(sourceAddrs, ",") {
