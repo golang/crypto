@@ -216,6 +216,10 @@ type channel struct {
 	// packetPool has a buffer for each extended channel ID to
 	// save allocations during writes.
 	packetPool map[uint32][]byte
+
+	// closeOnce guards close so it is idempotent: closing the internal Go
+	// channels (msg, incomingRequests) more than once would panic.
+	closeOnce sync.Once
 }
 
 // writePacket sends a packet. If the packet is a channel close, it updates
@@ -393,17 +397,19 @@ func (c *channel) ReadExtended(data []byte, extended uint32) (n int, err error) 
 }
 
 func (c *channel) close() {
-	c.pending.eof()
-	c.extPending.eof()
-	close(c.msg)
-	close(c.incomingRequests)
-	c.writeMu.Lock()
-	// This is not necessary for a normal channel teardown, but if
-	// there was another error, it is.
-	c.sentClose = true
-	c.writeMu.Unlock()
-	// Unblock writers.
-	c.remoteWin.close()
+	c.closeOnce.Do(func() {
+		c.pending.eof()
+		c.extPending.eof()
+		close(c.msg)
+		close(c.incomingRequests)
+		c.writeMu.Lock()
+		// This is not necessary for a normal channel teardown, but if
+		// there was another error, it is.
+		c.sentClose = true
+		c.writeMu.Unlock()
+		// Unblock writers.
+		c.remoteWin.close()
+	})
 }
 
 // responseMessageReceived is called when a success or failure message is

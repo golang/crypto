@@ -1213,6 +1213,18 @@ func TestChannelUnexpectedResponsesDiscarded(t *testing.T) {
 	}
 }
 
+func TestChannelCloseIdempotent(t *testing.T) {
+	a, b := memPipe()
+	defer a.Close()
+	defer b.Close()
+
+	m := newMux(a)
+	ch := m.newChannel("session", channelOutbound, nil)
+
+	ch.close()
+	ch.close() // must be a no-op, not a panic
+}
+
 func TestChannelConcurrentRequests(t *testing.T) {
 	writer, reader, mux := channelPair(t)
 	defer writer.Close()
