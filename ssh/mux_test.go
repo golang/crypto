@@ -1225,6 +1225,53 @@ func TestChannelCloseIdempotent(t *testing.T) {
 	ch.close() // must be a no-op, not a panic
 }
 
+func TestNewChannelFullyInitializedWhenPublished(t *testing.T) {
+	a, b := memPipe()
+	defer a.Close()
+	defer b.Close()
+
+	m := newMux(a)
+
+	const channels = 100
+	stop := make(chan struct{})
+	readerDone := make(chan struct{})
+	go func() {
+		// Mimic the mux loop: fetch channels by id and read the fields it
+		// uses to route and validate packets.
+		defer close(readerDone)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			for id := uint32(0); id < channels; id++ {
+				ch := m.chanList.getChan(id)
+				if ch == nil {
+					continue
+				}
+				if got := ch.localId; got != id {
+					t.Errorf("channel registered under id %d has localId %d", id, got)
+					return
+				}
+				if got := ch.maxIncomingPayload; got != channelMaxPacket {
+					t.Errorf("channel %d: maxIncomingPayload = %d, want %d", id, got, channelMaxPacket)
+					return
+				}
+			}
+		}
+	}()
+
+	for range channels {
+		ch := m.newChannel("session", channelOutbound, nil)
+		if m.chanList.getChan(ch.localId) != ch {
+			t.Fatalf("channel %d not registered under its localId", ch.localId)
+		}
+	}
+	close(stop)
+	<-readerDone
+}
+
 func TestChannelConcurrentRequests(t *testing.T) {
 	writer, reader, mux := channelPair(t)
 	defer writer.Close()
