@@ -15,10 +15,15 @@ import (
 	"encoding/asn1"
 	"encoding/hex"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
+
+	"golang.org/x/crypto/cryptobyte"
+	cbasn1 "golang.org/x/crypto/cryptobyte/asn1"
 )
 
 func TestOCSPDecode(t *testing.T) {
@@ -197,6 +202,127 @@ func TestOCSPRequest(t *testing.T) {
 			marshaledRequest,
 		)
 	}
+}
+
+func TestOCSPRequestErrors(t *testing.T) {
+	tests := []struct {
+		name    string
+		input   []byte
+		wantErr string
+	}{
+		{
+			name:    "signed request",
+			input:   testOCSPRequest(1, true),
+			wantErr: "signed",
+		},
+		{
+			name:    "trailing data",
+			input:   append(testOCSPRequest(1, false), 0x00),
+			wantErr: "trailing",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := ParseRequest(tc.input)
+			if err == nil {
+				t.Fatalf(
+					"ParseRequest succeeded, want ParseError containing %q",
+					tc.wantErr,
+				)
+			}
+			var parseError ParseError
+			if !errors.As(err, &parseError) {
+				t.Fatalf("ParseRequest returned %T, want ParseError", err)
+			}
+			if !strings.Contains(parseError.Error(), tc.wantErr) {
+				t.Fatalf(
+					"ParseRequest error = %q, want it to contain %q",
+					parseError.Error(), tc.wantErr,
+				)
+			}
+		})
+	}
+}
+
+func TestOCSPMultipleCertRequest(t *testing.T) {
+	req, err := ParseRequest(testOCSPRequest(2, false))
+	if err != nil {
+		t.Fatalf("ParseRequest errored for multiple request input: %q", err)
+	}
+
+	// testOCSPRequest uses the request cert counter as the issuerNameHash,
+	// issuerKeyHash and serial. We expect the first request cert to be used
+	// (counter=1), not the second (counter=2).
+	wantHash := []byte{0x01}
+	if actual := req.IssuerNameHash; !bytes.Equal(actual, wantHash) {
+		t.Errorf(
+			"ParseRequest.IssuerNameHash returned = %q, wanted %q",
+			actual, wantHash,
+		)
+	}
+	if actual := req.IssuerKeyHash; !bytes.Equal(actual, wantHash) {
+		t.Errorf("ParseRequest.IssuerKeyHash returned = %q, wanted %q",
+			actual, wantHash)
+	}
+	wantSerial := big.NewInt(0x01)
+	if actual := req.SerialNumber; actual.Cmp(wantSerial) != 0 {
+		t.Errorf("ParseRequest.SerialNumber returned = %q, wanted %q",
+			actual, wantHash)
+	}
+}
+
+// testOCSPRequest constructs an unsupported OCSP request in DER form for testing.
+//
+// We build these by hand using cryptobyte to specifically target shapes that are
+// not supported by ParseRequest, and can't be created with CreateRequest.
+//
+// The resulting requestList will contain numCerts RequestList entries. If
+// includeSignature is true, the request will carry a signature field (with an
+// arbitrary signatureAlgorithm and signature).
+//
+// See RFC 6960, §4.1.1.
+func testOCSPRequest(numCerts int, includeSignature bool) []byte {
+	sha1AlgID, err := asn1.Marshal(pkix.AlgorithmIdentifier{
+		Algorithm:  asn1.ObjectIdentifier{1, 3, 14, 3, 2, 26},
+		Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	var b cryptobyte.Builder
+	b.AddASN1(cbasn1.SEQUENCE, func(b *cryptobyte.Builder) { // OCSPRequest
+		b.AddASN1(cbasn1.SEQUENCE, func(b *cryptobyte.Builder) { // tbsRequest
+			b.AddASN1(cbasn1.SEQUENCE, func(b *cryptobyte.Builder) { // requestList
+				for i := 0; i < numCerts; i++ {
+					b.AddASN1(cbasn1.SEQUENCE, func(b *cryptobyte.Builder) { // Request
+						b.AddASN1(cbasn1.SEQUENCE, func(b *cryptobyte.Builder) { // CertID
+							b.AddBytes(sha1AlgID)                     // hashAlgorithm
+							b.AddASN1OctetString([]byte{byte(i + 1)}) // issuerNameHash
+							b.AddASN1OctetString([]byte{byte(i + 1)}) // issuerKeyHash
+							b.AddASN1Int64(int64(i + 1))              // serialNumber
+						})
+					})
+				}
+			})
+		})
+		if includeSignature {
+			// optionalSignature [0] EXPLICIT Signature
+			b.AddASN1(cbasn1.Tag(0).ContextSpecific().Constructed(), func(b *cryptobyte.Builder) {
+				b.AddASN1(cbasn1.SEQUENCE, func(b *cryptobyte.Builder) { // Signature
+					b.AddBytes(sha1AlgID)                              // signatureAlgorithm
+					b.AddASN1BitString([]byte{0x09, 0x0A, 0x0B, 0x0C}) // signature
+				})
+			})
+		}
+	})
+
+	der, err := b.Bytes()
+	if err != nil {
+		panic(err)
+	}
+
+	return der
 }
 
 func TestOCSPResponse(t *testing.T) {
