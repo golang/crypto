@@ -419,7 +419,7 @@ type AlgorithmNegotiationError struct {
 }
 
 func (a *AlgorithmNegotiationError) Error() string {
-	return fmt.Sprintf("ssh: no common algorithm for %s; we offered: %v, peer offered: %v",
+	return fmt.Sprintf("ssh: no common algorithm for %s; we offered: %q, peer offered: %q",
 		a.What, a.SupportedAlgorithms, a.RequestedAlgorithms)
 }
 

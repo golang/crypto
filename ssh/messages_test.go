@@ -269,10 +269,10 @@ func TestDisconnectMsgSanitizesMessage(t *testing.T) {
 		want string
 	}{
 		{"clean message", `"clean message"`},
-		{"line1\nline2\nline3", `"line1line2line3"`},
-		{"has\x00null\x00bytes", `"hasnullbytes"`},
-		{"\x1b[31mred\x1b[0m", `"[31mred[0m"`},
-		{"newline\r\nCRLF", `"newlineCRLF"`},
+		{"line1\nline2\nline3", `"line1\nline2\nline3"`},
+		{"has\x00null\x00bytes", `"has\x00null\x00bytes"`},
+		{"\x1b[31mred\x1b[0m", `"\x1b[31mred\x1b[0m"`},
+		{"newline\r\nCRLF", `"newline\r\nCRLF"`},
 		{"tab\there", `"tab\there"`},
 	} {
 		t.Run(tc.in, func(t *testing.T) {

@@ -710,7 +710,7 @@ userAuthLoop:
 		}
 
 		if userAuthReq.Service != serviceSSH {
-			return nil, errors.New("ssh: client attempted to negotiate for unknown service: " + userAuthReq.Service)
+			return nil, fmt.Errorf("ssh: client attempted to negotiate for unknown service: %q", userAuthReq.Service)
 		}
 
 		if s.user != userAuthReq.User && partialSuccessReturned {

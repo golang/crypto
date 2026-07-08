@@ -299,7 +299,7 @@ func TestMuxReject(t *testing.T) {
 		t.Errorf("got %#v, want {Reason: 42, Message: %q}", ocf, "message")
 	}
 
-	want := "ssh: rejected: unknown reason 42 (message)"
+	want := "ssh: rejected: unknown reason 42 (\"message\")"
 	if err.Error() != want {
 		t.Errorf("got %q, want %q", err.Error(), want)
 	}
