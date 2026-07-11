@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -358,11 +359,32 @@ func FixedHostKey(key PublicKey) HostKeyCallback {
 }
 
 // BannerDisplayStderr returns a function that can be used for
-// ClientConfig.BannerCallback to display banners on os.Stderr.
+// ClientConfig.BannerCallback to display banners on os.Stderr. Control
+// characters, other than tab, carriage return, and newline, are filtered
+// out to prevent a malicious server from manipulating the client's
+// terminal. To display a banner without filtering, implement a custom
+// BannerCallback.
 func BannerDisplayStderr() BannerCallback {
 	return func(banner string) error {
-		_, err := os.Stderr.WriteString(banner)
+		_, err := os.Stderr.WriteString(sanitizeBanner(banner))
 
 		return err
 	}
+}
+
+// sanitizeBanner strips control characters that could be used to
+// manipulate the terminal, keeping tab, carriage return, newline, and
+// printable text. Banners are UTF-8 encoded per RFC 4252, section 5.4,
+// so non-ASCII text is preserved.
+func sanitizeBanner(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\r' || r == '\n' {
+			return r
+		}
+		// Strip the C0 and C1 control ranges as well as DEL.
+		if r < ' ' || (r >= 0x7f && r < 0xa0) {
+			return -1
+		}
+		return r
+	}, s)
 }
