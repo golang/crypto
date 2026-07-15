@@ -229,7 +229,9 @@ type ServerConfig struct {
 	// Permissions object can be the same object, optionally modified, or a
 	// completely new object. If VerifiedPublicKeyCallback is non-nil,
 	// PublicKeyCallback is not allowed to return a PartialSuccessError, which
-	// can instead be returned by VerifiedPublicKeyCallback.
+	// can instead be returned by VerifiedPublicKeyCallback. The
+	// signatureAlgorithm argument is the format of the signature that was
+	// successfully verified.
 	//
 	// VerifiedPublicKeyCallback does not affect which authentication methods
 	// are included in the list of methods that can be attempted by the client.
@@ -891,7 +893,7 @@ userAuthLoop:
 					// Only call VerifiedPublicKeyCallback after the key has been accepted
 					// and successfully verified. If authErr is non-nil, the key is not
 					// considered verified and the callback must not run.
-					perms, authErr = config.VerifiedPublicKeyCallback(s, pubKey, perms, algo)
+					perms, authErr = config.VerifiedPublicKeyCallback(s, pubKey, perms, sig.Format)
 				}
 			}
 		case "gssapi-with-mic":

@@ -544,6 +544,62 @@ func TestVerifiedPublicKeyCallback(t *testing.T) {
 	<-done
 }
 
+func TestVerifiedPublicKeyCallbackSignatureFormat(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	var gotSignatureAlgorithm string
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			return nil, nil
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			gotSignatureAlgorithm = signatureAlgorithm
+			return permissions, nil
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	serverDone := make(chan error, 1)
+	go func() {
+		conn, _, _, err := NewServerConn(c1, serverConf)
+		if err == nil {
+			conn.Close()
+		}
+		serverDone <- err
+	}()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			// The selected algorithm and signature format differ for
+			// compatibility with old RSA clients.
+			configurablePublicKeyCallback{
+				signer:          testSigners["rsa"].(AlgorithmSigner),
+				signatureAlgo:   KeyAlgoRSASHA256,
+				signatureFormat: KeyAlgoRSA,
+			},
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	clientConn, _, _, clientErr := NewClientConn(c2, "", clientConf)
+	if clientErr == nil {
+		clientConn.Close()
+	}
+	serverErr := <-serverDone
+	if clientErr != nil || serverErr != nil {
+		t.Fatalf("connection failed: client error: %v; server error: %v", clientErr, serverErr)
+	}
+	if gotSignatureAlgorithm != KeyAlgoRSA {
+		t.Errorf("signature algorithm = %q; want verified signature format %q", gotSignatureAlgorithm, KeyAlgoRSA)
+	}
+}
+
 func TestVerifiedPublicCallbackPartialSuccess(t *testing.T) {
 	c1, c2, err := netPipe()
 	if err != nil {
