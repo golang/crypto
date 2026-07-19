@@ -344,7 +344,18 @@ func (ch *channel) handleData(packet []byte) error {
 	if extended == 1 {
 		ch.extPending.write(data)
 	} else if extended > 0 {
-		// discard other extended data.
+		// RFC 4254, Section 5.2 defines no extended data types other
+		// than stderr (type 1, handled above) and this package provides
+		// no API to read them, so the data is discarded. Credit its
+		// window back immediately: it can never be read, so the
+		// deduction above would otherwise shrink the window permanently.
+		// adjustWindow returns io.EOF if the local side has already
+		// sent a channel close; ignore it like ReadExtended does, since
+		// an error returned here would terminate the mux read loop and
+		// tear down the whole connection.
+		if err := ch.adjustWindow(length); err != nil && err != io.EOF {
+			return err
+		}
 	} else {
 		ch.pending.write(data)
 	}
