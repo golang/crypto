@@ -383,7 +383,7 @@ func testIssuance(t *testing.T, env *environment, challSrv challengeServer) {
 	order, err = client.WaitOrder(ctx, order.URI)
 	if err != nil {
 		var orderErr *acme.OrderError
-		if errors.Is(err, orderErr) {
+		if errors.As(err, &orderErr) {
 			t.Fatalf("failed to wait for order %s: %s: %s", orderURL, err, orderErr.Problem)
 		} else {
 			t.Fatalf("failed to wait for order %s: %s", orderURL, err)
