@@ -322,7 +322,7 @@ type Request struct {
 func (req *Request) Marshal() ([]byte, error) {
 	hashAlg := getOIDFromHashAlgorithm(req.HashAlgorithm)
 	if hashAlg == nil {
-		return nil, errors.New("Unknown hash algorithm")
+		return nil, errors.New("unknown hash algorithm")
 	}
 	return asn1.Marshal(ocspRequest{
 		TBSRequest: tbsRequest{

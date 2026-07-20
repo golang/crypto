@@ -195,7 +195,7 @@ func TestOCSPRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if bytes.Compare(expectedBytes, marshaledRequest) != 0 {
+	if !bytes.Equal(expectedBytes, marshaledRequest) {
 		t.Errorf(
 			"Marshaled request doesn't match expected: wanted %x, got %x",
 			expectedBytes,

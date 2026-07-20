@@ -1014,7 +1014,7 @@ func TestKnownHostsParsing(t *testing.T) {
 		input := test.input
 		if strings.Contains(input, rsaKeyToken) {
 			expectedKey = rsaPub
-			input = strings.Replace(test.input, rsaKeyToken, rsaPubSerialized, -1)
+			input = strings.ReplaceAll(test.input, rsaKeyToken, rsaPubSerialized)
 		}
 
 		marker, hosts, pubKey, comment, rest, err := ParseKnownHosts([]byte(input))

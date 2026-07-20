@@ -195,7 +195,7 @@ func TestHandshakeBasic(t *testing.T) {
 		}
 
 		want := []byte{msgRequestSuccess, byte(i)}
-		if bytes.Compare(p, want) != 0 {
+		if !bytes.Equal(p, want) {
 			t.Errorf("message %d: got %v, want %v", i, p, want)
 		}
 	}
