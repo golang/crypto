@@ -492,7 +492,12 @@ func (ch *channel) handlePacket(packet []byte) error {
 		default:
 		}
 	default:
-		ch.msg <- msg
+		// Ignore message types that are not valid on an established channel.
+		// Only the channel-open responses and the SendRequest replies handled
+		// in the cases above are ever read from ch.msg; delivering any other
+		// type there would let a peer fill ch.msg on an open, idle channel and
+		// permanently stall the single mux read loop — the same primitive as
+		// the unexpected-response case fixed above (CVE-2026-39830).
 	}
 	return nil
 }
