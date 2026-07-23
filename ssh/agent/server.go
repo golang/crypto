@@ -73,6 +73,17 @@ type agentUnlockMsg struct {
 	Passphrase []byte `sshtype:"23"`
 }
 
+type agentRemoveSmartcardKeyMsg struct {
+	ReaderID string `sshtype:"21"`
+	PIN      string
+}
+
+type agentAddSmartcardKeyMsg struct {
+	ReaderID    string `sshtype:"20|26"`
+	PIN         string
+	Constraints []byte `ssh:"rest"`
+}
+
 func (s *server) processRequest(data []byte) (interface{}, error) {
 	switch data[0] {
 	case agentRequestV1Identities:
@@ -192,7 +203,51 @@ func (s *server) processRequest(data []byte) (interface{}, error) {
 				responseStub.Rest = res
 			}
 		}
+		return responseStub, nil
 
+	case agentAddSmartcardKey, agentAddSmartcardKeyConstrained:
+		// Return a stub object where the whole contents of the response gets marshaled.
+		var responseStub struct {
+			Rest []byte `ssh:"rest"`
+		}
+		if scagent, ok := s.agent.(SmartcardAgent); !ok {
+			responseStub.Rest = []byte{agentFailure}
+		} else {
+			var req agentAddSmartcardKeyMsg
+			if err := ssh.Unmarshal(data, &req); err != nil {
+				return nil, err
+			}
+			key := AddedSmartcardKey{
+				PIN:      req.PIN,
+				ReaderID: req.ReaderID,
+			}
+			lifetimeSecs, confirmBeforeUse, constraintExtensions, err := parseConstraints(req.Constraints)
+			if err != nil {
+				return nil, err
+			}
+			key.LifetimeSecs = lifetimeSecs
+			key.ConfirmBeforeUse = confirmBeforeUse
+			key.ConstraintExtensions = constraintExtensions
+			return nil, scagent.AddSmartcard(key)
+		}
+		return responseStub, nil
+	case agentRemoveSmartcardKey:
+		var responseStub struct {
+			Rest []byte `ssh:"rest"`
+		}
+		if scagent, ok := s.agent.(SmartcardAgent); !ok {
+			responseStub.Rest = []byte{agentFailure}
+		} else {
+			var req agentRemoveSmartcardKeyMsg
+			if err := ssh.Unmarshal(data, &req); err != nil {
+				return nil, err
+			}
+			key := RemovedSmartcardKey{
+				PIN:      req.PIN,
+				ReaderID: req.ReaderID,
+			}
+			return nil, scagent.RemoveSmartcard(key)
+		}
 		return responseStub, nil
 	}
 
