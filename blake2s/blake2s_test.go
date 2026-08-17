@@ -1083,10 +1083,15 @@ func BenchmarkSTW(b *testing.B) {
 			b.SetBytes(int64(len(buf)))
 			for b.Loop() {
 				done := make(chan struct{})
+				hashing := make(chan struct{})
 				go func() {
 					defer close(done)
+					close(hashing)
 					tc.hash()
 				}()
+				// Wait until the hash goroutine is running, so the collection
+				// below cannot finish before the hash has even started.
+				<-hashing
 				start := time.Now()
 				runtime.GC() // one per iteration, so the mean is well defined
 				total += time.Since(start)
