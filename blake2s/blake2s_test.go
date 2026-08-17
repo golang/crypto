@@ -9,7 +9,9 @@ import (
 	"encoding"
 	"encoding/hex"
 	"fmt"
+	"runtime"
 	"testing"
+	"time"
 )
 
 func TestHashes(t *testing.T) {
@@ -264,6 +266,7 @@ func benchmarkWrite(b *testing.B, size int) {
 }
 
 func BenchmarkWrite64(b *testing.B) { benchmarkWrite(b, 64) }
+func BenchmarkWrite1M(b *testing.B) { benchmarkWrite(b, 1024*1024) }
 func BenchmarkWrite1K(b *testing.B) { benchmarkWrite(b, 1024) }
 
 func BenchmarkSum64(b *testing.B) { benchmarkSum(b, 64) }
@@ -1047,4 +1050,50 @@ var hashes2X = []string{
 	"50957c407519951bd32e45d21129d6b83436e520b0801ec8292d79a828106a41583a0d607f853dc4410e0a1427f7e873455a75df065cfc6eef970f7e49d123b346976460aadd91cf513c140c356442a84656904a8b1d708dc6089db371c36f4fe059c62302eaab3c06c0cb3b429961f899dcf99798464b8571a440cac7a52b495f32417af6bc8f58adc63647531f804b4e96273b29b42434c1236bde80ba3744fef7b1d11c2f9db332b35bc25123338ac9a0796aac213c9709b3c514ea7ecd80e22d3d8a74f28c8194418a6e1ff30714d0f5a61c068b73b2ba6cad14e05569b4a5a100da3f91429d6e3ffee10ceea057845ec6fc47a6c5125b22e598b2dc",
 	"f2273ec31e03cf42d9ca953f8b87e78c291cb538098e0f2436194b308ce30583f553fccb21ae6c2d58f3a5a2ca6037c1b8b7afb291009e4310a0c518e75314c5bb1e813bf521f56d0a4891d0772ad84f09a00634815029a3f9ad4e41eafb4a745e409ef3d4f0b1cf6232b70a5ce262b9432f096e834201a0992db5d09ffa5cbc5471460519a4bc7cdc33ae6dfe6ffc1e80ea5d29813136406499c3514186ced71854a340701519ef33b6c82ca67049ab58578ff49c4c4fbf7d97bfec2ecd8fbefec1b6d6467503fea9d26e134e8c35739a422647aaf4db29c9a32e3df36e5845791fdd75a70903e0ce808313a3327431b7772567f779bbaee2e134c109a387",
 	"5784e614d538f7f26c803191deb464a884817002988c36448dcbecfad1997fe51ab0b3853c51ed49ce9f4e477522fb3f32cc50515b753c18fb89a8d965afcf1ed5e099b22c4225732baeb986f5c5bc88e4582d27915e2a19126d3d4555fab4f6516a6a156dbfeed9e982fc589e33ce2b9e1ba2b416e11852ddeab93025974267ac82c84f071c3d07f215f47e3565fd1d962c76e0d635892ea71488273765887d31f250a26c4ddc377ed89b17326e259f6cc1de0e63158e83aebb7f5a7c08c63c767876c8203639958a407acca096d1f606c04b4f4b3fd771781a5901b1c3cee7c04c3b6870226eee309b74f51edbf70a3817cc8da87875301e04d0416a65dc5d",
+}
+
+var sinkSTW []byte
+
+// BenchmarkSTW reports how long a garbage collection had to wait while a hash
+// ran alongside it, as gcwait-ns/op. Assembly is not preemptible, so a call
+// that covers the whole input blocks every goroutine in the process for as
+// long as it runs; bounding the call gives the collector a way in between
+// chunks. Both paths are covered: Write and the one-shot Sum256, which reaches
+// hashBlocks through checkSum rather than Write. Run with GOMAXPROCS>=2 so the
+// hash and the collection actually overlap.
+func BenchmarkSTW(b *testing.B) {
+	buf := make([]byte, 64<<20)
+	for _, tc := range []struct {
+		name string
+		hash func()
+	}{
+		{"Write", func() {
+			h, _ := New256(nil)
+			h.Write(buf)
+			sinkSTW = h.Sum(nil)
+		}},
+		{"Sum", func() {
+			sum := Sum256(buf)
+			sinkSTW = sum[:]
+		}},
+	} {
+		b.Run(tc.name, func(b *testing.B) {
+			var total time.Duration
+			var iters int
+			b.SetBytes(int64(len(buf)))
+			for b.Loop() {
+				done := make(chan struct{})
+				go func() {
+					defer close(done)
+					tc.hash()
+				}()
+				start := time.Now()
+				runtime.GC() // one per iteration, so the mean is well defined
+				total += time.Since(start)
+				iters++
+				<-done
+			}
+			b.ReportMetric(float64(total.Nanoseconds())/float64(iters), "gcwait-ns/op")
+		})
+	}
 }
