@@ -365,3 +365,69 @@ func TestUnsupportedAlgorithm(t *testing.T) {
 		})
 	}
 }
+
+func TestCBCCiphers(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		config Config
+	}{
+		{
+			"AES-CBC",
+			Config{
+				Ciphers: []string{InsecureCipherAES128CBC},
+				MACs:    []string{HMACSHA256},
+			},
+		},
+		{
+			"AES-CBC-ETM",
+			Config{
+				Ciphers: []string{InsecureCipherAES128CBC},
+				MACs:    []string{HMACSHA512ETM},
+			},
+		},
+		{
+			"3DES-CBC",
+			Config{
+				Ciphers: []string{InsecureCipherTripleDESCBC},
+				MACs:    []string{HMACSHA1},
+			},
+		},
+		{
+			"3DES-CBC-ETM",
+			Config{
+				Ciphers: []string{InsecureCipherTripleDESCBC},
+				MACs:    []string{HMACSHA256ETM},
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			c1, c2, err := netPipe()
+			if err != nil {
+				t.Fatalf("netPipe: %v", err)
+			}
+			defer c1.Close()
+			defer c2.Close()
+
+			serverConf := &ServerConfig{
+				Config: tt.config,
+				PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+					return &Permissions{}, nil
+				},
+			}
+			serverConf.AddHostKey(testSigners["rsa"])
+			go NewServerConn(c1, serverConf)
+
+			clientConf := &ClientConfig{
+				User:   "testuser",
+				Config: tt.config,
+				Auth: []AuthMethod{
+					Password("testpw"),
+				},
+				HostKeyCallback: InsecureIgnoreHostKey(),
+			}
+			if _, _, _, err := NewClientConn(c2, "", clientConf); err != nil {
+				t.Errorf("unexpected error %v", err)
+			}
+		})
+	}
+}
