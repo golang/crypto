@@ -1181,6 +1181,13 @@ func TestChannelUnexpectedResponsesDiscarded(t *testing.T) {
 				return
 			}
 		}
+		// Follow the flood with a request so the client can synchronize with
+		// its mux loop. Once the client receives this request, the mux loop has
+		// necessarily processed (and discarded) all the preceding responses.
+		if _, err := serverCh.SendRequest("sync", false, nil); err != nil {
+			done <- fmt.Errorf("send sync request: %w", err)
+			return
+		}
 		// Echo any legitimate request back.
 		for req := range serverCh.incomingRequests {
 			if req.WantReply {
@@ -1193,9 +1200,17 @@ func TestChannelUnexpectedResponsesDiscarded(t *testing.T) {
 		done <- nil
 	}()
 
+	req, ok := <-clientCh.incomingRequests
+	if !ok {
+		t.Fatal("channel closed before sync request")
+	}
+	if req.Type != "sync" {
+		t.Fatalf("unexpected sync request type %q", req.Type)
+	}
+
 	// If the flood had wedged the mux loop, this SendRequest would never
 	// receive a reply.
-	ok, err := clientCh.SendRequest("ping", true, []byte("hello"))
+	ok, err = clientCh.SendRequest("ping", true, []byte("hello"))
 	if err != nil {
 		t.Fatalf("SendRequest: %v", err)
 	}
