@@ -212,6 +212,143 @@ func TestRetryBackoffArgs(t *testing.T) {
 	}
 }
 
+func TestShouldRetry(t *testing.T) {
+	tt := []struct {
+		desc                   string
+		requestMethodType      string
+		shouldRetry            func(*http.Response) bool
+		responseHttpStatusCode int
+		expectedToRetry        bool
+		expectedErr            *Error
+	}{
+		{
+			desc:                   "retries post request that returns response code that is retriable in defaultShouldRetry configuration",
+			requestMethodType:      http.MethodPost,
+			responseHttpStatusCode: http.StatusOK,
+			expectedToRetry:        true,
+			expectedErr: &Error{
+				StatusCode: http.StatusOK,
+			},
+		},
+		{
+			desc:                   "does not retry post request that returns response code that is not retriable in defaultShouldRetry configuration",
+			requestMethodType:      http.MethodPost,
+			responseHttpStatusCode: http.StatusUnprocessableEntity,
+			expectedErr: &Error{
+				StatusCode: http.StatusUnprocessableEntity,
+			},
+		},
+		{
+			desc:                   "retries get request that returns response code that is retriable in defaultShouldRetry configuration",
+			requestMethodType:      http.MethodGet,
+			responseHttpStatusCode: http.StatusTooManyRequests,
+			expectedToRetry:        true,
+			expectedErr: &Error{
+				StatusCode: http.StatusTooManyRequests,
+			},
+		},
+		{
+			desc:                   "does not retry get request that returns response code that is not retriable in defaultShouldRetry configuration",
+			requestMethodType:      http.MethodGet,
+			responseHttpStatusCode: http.StatusNotFound,
+			expectedErr: &Error{
+				StatusCode: http.StatusNotFound,
+			},
+		},
+		{
+			desc:                   "retries post request that returns response code that is retriable in the client.ShouldRetry configuration",
+			requestMethodType:      http.MethodPost,
+			responseHttpStatusCode: http.StatusInternalServerError,
+			shouldRetry: func(resp *http.Response) bool {
+				return resp.StatusCode >= 500
+			},
+			expectedToRetry: true,
+			expectedErr: &Error{
+				StatusCode: http.StatusInternalServerError,
+			},
+		},
+		{
+			desc:                   "does not retry post request that returns response code that is not retriable in the client.ShouldRetry configuration",
+			requestMethodType:      http.MethodPost,
+			responseHttpStatusCode: http.StatusTooManyRequests,
+			shouldRetry: func(resp *http.Response) bool {
+				return false
+			},
+			expectedErr: &Error{
+				StatusCode: http.StatusTooManyRequests,
+			},
+		},
+		{
+			desc:                   "retries get request that returns response code that is retriable in the client.ShouldRetry configuration",
+			requestMethodType:      http.MethodGet,
+			responseHttpStatusCode: http.StatusTooManyRequests,
+			shouldRetry: func(resp *http.Response) bool {
+				return resp.StatusCode == http.StatusTooManyRequests
+			},
+			expectedToRetry: true,
+			expectedErr: &Error{
+				StatusCode: http.StatusTooManyRequests,
+			},
+		},
+		{
+			desc:                   "does not retry get request that returns response code that is not retriable in the client.ShouldRetry configuration",
+			requestMethodType:      http.MethodGet,
+			responseHttpStatusCode: http.StatusTooManyRequests,
+			shouldRetry: func(resp *http.Response) bool {
+				return resp.StatusCode <= 399 || resp.StatusCode >= 500
+			},
+			expectedErr: &Error{
+				StatusCode: http.StatusTooManyRequests,
+			},
+		},
+	}
+
+	for _, test := range tt {
+		t.Run(test.desc, func(t *testing.T) {
+			ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(test.responseHttpStatusCode)
+			}))
+			defer ts.Close()
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			var retryNr int
+
+			client := &Client{
+				Key: testKey,
+				RetryBackoff: func(n int, r *http.Request, res *http.Response) time.Duration {
+					retryNr++
+					if retryNr == 1 {
+						cancel()
+					}
+					return time.Millisecond
+				},
+				ShouldRetry: test.shouldRetry,
+				dir:         &Directory{AuthzURL: ts.URL},
+			}
+
+			var err error
+			switch test.requestMethodType {
+			case http.MethodPost:
+				_, err = client.post(ctx, nil, ts.URL, nil, wantStatus(http.StatusCreated))
+			case http.MethodGet:
+				_, err = client.get(ctx, ts.URL, wantStatus(http.StatusOK))
+			default:
+			}
+
+			acmeError, ok := err.(*Error)
+			if !ok || test.expectedErr.StatusCode != acmeError.StatusCode {
+				t.Fatalf("err is %v (%T); want a non-nil *acme.Error %v", err, err, test.expectedErr)
+			}
+
+			if test.expectedToRetry && retryNr != 1 {
+				t.Errorf("retryNr = %d; want %d", retryNr, 1)
+			}
+		})
+	}
+}
+
 func TestUserAgent(t *testing.T) {
 	for _, custom := range []string{"", "CUSTOM_UA"} {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
