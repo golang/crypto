@@ -106,13 +106,14 @@ func TestShorterCiphertext(t *testing.T) {
 
 func BenchmarkXTS(b *testing.B) {
 	b.ReportAllocs()
+	b.SetBytes(320)
 	c, err := NewCipher(aes.NewCipher, make([]byte, 32))
 	if err != nil {
 		b.Fatalf("NewCipher failed: %s", err)
 	}
-	plaintext := make([]byte, 32)
-	encrypted := make([]byte, 48)
-	decrypted := make([]byte, 48)
+	plaintext := make([]byte, 320)
+	encrypted := make([]byte, 336)
+	decrypted := make([]byte, 336)
 
 	for i := 0; i < b.N; i++ {
 		c.Encrypt(encrypted, plaintext, 0)
