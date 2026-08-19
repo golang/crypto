@@ -807,7 +807,11 @@ userAuthLoop:
 				candidate.user = s.user
 				candidate.pubKeyData = pubKeyData
 				candidate.perms, candidate.result = authConfig.PublicKeyCallback(s, pubKey)
+				var pse *PartialSuccessError
 				_, isPartialSuccessError := candidate.result.(*PartialSuccessError)
+				if !isPartialSuccessError {
+					isPartialSuccessError = errors.As(candidate.result, &pse)
+				}
 				if isPartialSuccessError && config.VerifiedPublicKeyCallback != nil {
 					return nil, errors.New("ssh: invalid library usage: PublicKeyCallback must not return partial success when VerifiedPublicKeyCallback is defined")
 				}
@@ -833,8 +837,12 @@ userAuthLoop:
 				if len(payload) > 0 {
 					return nil, parseError(msgUserAuthRequest)
 				}
-				_, isPartialSuccessError := candidate.result.(*PartialSuccessError)
-				if candidate.result == nil || isPartialSuccessError {
+				var pse2 *PartialSuccessError
+				_, isPartialSuccessError2 := candidate.result.(*PartialSuccessError)
+				if !isPartialSuccessError2 {
+					isPartialSuccessError2 = errors.As(candidate.result, &pse2)
+				}
+				if candidate.result == nil || isPartialSuccessError2 {
 					okMsg := userAuthPubKeyOkMsg{
 						Algo:   algo,
 						PubKey: pubKeyData,
@@ -979,7 +987,8 @@ userAuthLoop:
 
 		var failureMsg userAuthFailureMsg
 
-		if partialSuccess, ok := authErr.(*PartialSuccessError); ok {
+		var partialSuccess *PartialSuccessError
+		if ok := errors.As(authErr, &partialSuccess); ok {
 			// Permissions are not preserved between authentication steps. To
 			// avoid confusion about the final state of the connection, we
 			// disallow returning non-nil Permissions combined with
