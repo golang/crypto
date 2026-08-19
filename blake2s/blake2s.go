@@ -74,6 +74,15 @@ func New128(key []byte) (hash.Hash, error) {
 	return newDigest(Size128, key)
 }
 
+// New returns a new hash.Hash computing the BLAKE2s checksum with a hashSize
+// long output.
+func New(hashSize int, key []byte) (hash.Hash, error) {
+	if hashSize < 1 || hashSize > 32 {
+		return nil, errors.New("blake2s: hash size must be between 1 and 32 bytes")
+	}
+	return newDigest(hashSize, key)
+}
+
 func newDigest(hashSize int, key []byte) (*digest, error) {
 	if len(key) > Size {
 		return nil, errKeySize
