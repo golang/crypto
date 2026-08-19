@@ -9,7 +9,9 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"strings"
 	"testing"
 )
@@ -206,6 +208,53 @@ func TestBannerCallback(t *testing.T) {
 	expected := "Hello World"
 	if receivedBanner != expected {
 		t.Fatalf("got %s; want %s", receivedBanner, expected)
+	}
+}
+
+func TestSanitizeBanner(t *testing.T) {
+	for _, tc := range []struct {
+		in   string
+		want string
+	}{
+		{"clean banner", "clean banner"},
+		{"line1\r\nline2\nline3", "line1\r\nline2\nline3"},
+		{"tab\there", "tab\there"},
+		{"\x1b[31mred\x1b[0m", "[31mred[0m"},
+		{"\x1b]0;evil\x07title", "]0;eviltitle"},
+		{"has\x00null\x00bytes", "hasnullbytes"},
+		{"del\x7fchar", "delchar"},
+		{"\u009b31mcsi", "31mcsi"},
+		{"héllo — 你好", "héllo — 你好"},
+	} {
+		t.Run(tc.in, func(t *testing.T) {
+			if got := sanitizeBanner(tc.in); got != tc.want {
+				t.Errorf("got %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestBannerDisplayStderr(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	defer r.Close()
+	origStderr := os.Stderr
+	os.Stderr = w
+	defer func() { os.Stderr = origStderr }()
+	err = BannerDisplayStderr()("\x1b]0;evil\x07banner \x1b[31mtext\x1b[0m\r\n")
+	os.Stderr = origStderr
+	w.Close()
+	if err != nil {
+		t.Fatalf("BannerDisplayStderr: %v", err)
+	}
+	got, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatalf("ReadAll: %v", err)
+	}
+	if want := "]0;evilbanner [31mtext[0m\r\n"; string(got) != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
