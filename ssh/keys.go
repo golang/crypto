@@ -1431,7 +1431,8 @@ func ParseRawPrivateKeyWithPassphrase(pemBytes, passphrase []byte) (interface{},
 }
 
 // ParseDSAPrivateKey returns a DSA private key from its ASN.1 DER encoding, as
-// specified by the OpenSSL DSA man page.
+// specified by the OpenSSL DSA man page. The key must use parameter size
+// L1024N160; keys with other parameter sizes are rejected.
 func ParseDSAPrivateKey(der []byte) (*dsa.PrivateKey, error) {
 	var k struct {
 		Version int
@@ -1449,14 +1450,34 @@ func ParseDSAPrivateKey(der []byte) (*dsa.PrivateKey, error) {
 		return nil, errors.New("ssh: garbage after DSA key")
 	}
 
+	param := dsa.Parameters{
+		P: k.P,
+		Q: k.Q,
+		G: k.G,
+	}
+	if err := checkDSAParams(&param); err != nil {
+		return nil, err
+	}
+
+	// The public value Y must be a non-zero element of the group, i.e.
+	// strictly between 0 and P. crypto/dsa.Verify does not range-check Y,
+	// so we reject out-of-range values here to prevent a maliciously
+	// oversized Y from slowing verification.
+	if k.Pub.Sign() <= 0 || k.Pub.Cmp(k.P) >= 0 {
+		return nil, errors.New("ssh: DSA public value Y out of range")
+	}
+
+	// The private value X must be in the range [1, Q-1]. A validly
+	// generated key always satisfies this, so rejecting out-of-range
+	// values only guards against maliciously oversized X slowing signing.
+	if k.Priv.Sign() <= 0 || k.Priv.Cmp(k.Q) >= 0 {
+		return nil, errors.New("ssh: DSA private value X out of range")
+	}
+
 	return &dsa.PrivateKey{
 		PublicKey: dsa.PublicKey{
-			Parameters: dsa.Parameters{
-				P: k.P,
-				Q: k.Q,
-				G: k.G,
-			},
-			Y: k.Pub,
+			Parameters: param,
+			Y:          k.Pub,
 		},
 		X: k.Priv,
 	}, nil
