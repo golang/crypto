@@ -267,6 +267,9 @@ type algorithmOpenSSHCertSigner struct {
 // private key is held by signer. It returns an error if the public key in cert
 // doesn't match the key used by signer.
 func NewCertSigner(cert *Certificate, signer Signer) (Signer, error) {
+	if err := checkCertifiableKey(cert.Key); err != nil {
+		return nil, err
+	}
 	if !bytes.Equal(cert.Key.Marshal(), signer.PublicKey().Marshal()) {
 		return nil, errors.New("ssh: signer and cert have different public key")
 	}
@@ -409,6 +412,9 @@ func (c *CertChecker) Authenticate(conn ConnMetadata, pubKey PublicKey) (*Permis
 // the signature of the certificate. Critical options that are not listed in
 // SupportedCriticalOptions are rejected.
 func (c *CertChecker) CheckCert(principal string, cert *Certificate) error {
+	if err := checkCertifiableKey(cert.Key); err != nil {
+		return err
+	}
 	if c.IsRevoked != nil && c.IsRevoked(cert) {
 		return fmt.Errorf("ssh: certificate serial %d revoked", cert.Serial)
 	}
@@ -468,6 +474,9 @@ func (c *CertChecker) CheckCert(principal string, cert *Certificate) error {
 // is useful if you want to sign with a specific algorithm. As specified in
 // [SSH-CERTS], Section 2.1.1, authority can't be a [Certificate].
 func (c *Certificate) SignCert(rand io.Reader, authority Signer) error {
+	if err := checkCertifiableKey(c.Key); err != nil {
+		return err
+	}
 	c.Nonce = make([]byte, 32)
 	if _, err := io.ReadFull(rand, c.Nonce); err != nil {
 		return err
@@ -596,6 +605,18 @@ func (c *Certificate) Type() string {
 		panic("unknown certificate type for key type " + c.Key.Type())
 	}
 	return certName
+}
+
+// checkCertifiableKey returns an error if no certificate algorithm is defined
+// for the type of key, as is the case for ML-DSA.
+func checkCertifiableKey(key PublicKey) error {
+	if key == nil {
+		return errors.New("ssh: certificate has no key")
+	}
+	if _, ok := certificateAlgo(key.Type()); !ok {
+		return fmt.Errorf("ssh: no certificate algorithm defined for key type %q", key.Type())
+	}
+	return nil
 }
 
 // Verify verifies a signature against the certificate's public

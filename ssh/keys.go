@@ -51,6 +51,14 @@ const (
 	KeyAlgoED25519     = "ssh-ed25519"
 	KeyAlgoSKED25519   = "sk-ssh-ed25519@openssh.com"
 
+	// KeyAlgoMLDSA44, KeyAlgoMLDSA65 and KeyAlgoMLDSA87 are the ML-DSA
+	// algorithms of [SSH-MLDSA]. ML-DSA keys can't be used in certificates,
+	// since no certificate algorithm is defined for them, but they can be used
+	// to sign one.
+	KeyAlgoMLDSA44 = "ssh-mldsa-44"
+	KeyAlgoMLDSA65 = "ssh-mldsa-65"
+	KeyAlgoMLDSA87 = "ssh-mldsa-87"
+
 	// KeyAlgoRSASHA256 and KeyAlgoRSASHA512 are only public key algorithms, not
 	// public key formats, so they can't appear as a PublicKey.Type. The
 	// corresponding PublicKey.Type is KeyAlgoRSA. See RFC 8332, Section 2.
@@ -83,6 +91,8 @@ func parsePubKey(in []byte, algo string) (pubKey PublicKey, rest []byte, err err
 		return parseED25519(in)
 	case KeyAlgoSKED25519:
 		return parseSKEd25519(in)
+	case KeyAlgoMLDSA44, KeyAlgoMLDSA65, KeyAlgoMLDSA87:
+		return parseMLDSA(in, algo)
 	case CertAlgoRSAv01, InsecureCertAlgoDSAv01, CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01, CertAlgoSKECDSA256v01, CertAlgoED25519v01, CertAlgoSKED25519v01:
 		cert, err := parseCert(in, certKeyAlgoNames[algo])
 		if err != nil {
@@ -349,7 +359,8 @@ func MarshalAuthorizedKey(key PublicKey) []byte {
 }
 
 // MarshalPrivateKey returns a PEM block with the private key serialized in the
-// OpenSSH format.
+// OpenSSH format. ML-DSA keys are not supported, since no OpenSSH format is
+// defined for them: use [x509.MarshalPKCS8PrivateKey] instead.
 func MarshalPrivateKey(key crypto.PrivateKey, comment string) (*pem.Block, error) {
 	return marshalOpenSSHPrivateKey(key, comment, unencryptedOpenSSHMarshaler)
 }
@@ -1188,9 +1199,9 @@ func (k *skEd25519PublicKey) CryptoPublicKey() crypto.PublicKey {
 }
 
 // NewSignerFromKey takes an *rsa.PrivateKey, *dsa.PrivateKey,
-// *ecdsa.PrivateKey or any other crypto.Signer and returns a
-// corresponding Signer instance. ECDSA keys must use P-256, P-384 or
-// P-521. DSA keys must use parameter size L1024N160.
+// *ecdsa.PrivateKey, *mldsa.PrivateKey, or any other crypto.Signer and returns
+// a corresponding Signer instance. ECDSA keys must use P-256, P-384 or P-521.
+// DSA keys must use parameter size L1024N160.
 func NewSignerFromKey(key interface{}) (Signer, error) {
 	switch key := key.(type) {
 	case crypto.Signer:
@@ -1300,8 +1311,8 @@ func (s *wrappedSigner) SignWithAlgorithm(rand io.Reader, data []byte, algorithm
 }
 
 // NewPublicKey takes an *rsa.PublicKey, *dsa.PublicKey, *ecdsa.PublicKey,
-// or ed25519.PublicKey returns a corresponding PublicKey instance.
-// ECDSA keys must use P-256, P-384 or P-521.
+// ed25519.PublicKey, or an *mldsa.PublicKey, and returns a corresponding
+// PublicKey instance. ECDSA keys must use P-256, P-384 or P-521.
 func NewPublicKey(key interface{}) (PublicKey, error) {
 	switch key := key.(type) {
 	case *rsa.PublicKey:
@@ -1319,7 +1330,13 @@ func NewPublicKey(key interface{}) (PublicKey, error) {
 		}
 		return ed25519PublicKey(key), nil
 	default:
-		return nil, fmt.Errorf("ssh: unsupported key type %T", key)
+		pub, err := newMLDSAPublicKey(key)
+		if errors.Is(err, errNotMLDSAKey) {
+			return nil, fmt.Errorf("ssh: unsupported key type %T", key)
+		} else if err != nil {
+			return nil, err
+		}
+		return pub, nil
 	}
 }
 
