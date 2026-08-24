@@ -1364,3 +1364,128 @@ func TestAlgorithmNegotiationError(t *testing.T) {
 		t.Fatalf("expected supported algorithms %v, got %v", serverConf.Ciphers, negotiationError.SupportedAlgorithms)
 	}
 }
+
+// mismatchedHostKey reports a key type that differs from the format of the
+// blob it marshals to.
+type mismatchedHostKey struct {
+	PublicKey
+	keyType string
+}
+
+func (k mismatchedHostKey) Type() string { return k.keyType }
+
+// mismatchedHostKeySigner emulates a server that advertises one host key
+// algorithm during key exchange and then sends a host key blob of a different
+// format.
+type mismatchedHostKeySigner struct {
+	Signer
+	keyType string
+}
+
+func (s mismatchedHostKeySigner) PublicKey() PublicKey {
+	return mismatchedHostKey{s.Signer.PublicKey(), s.keyType}
+}
+
+func TestHostKeyTypeAndAlgoCompatibility(t *testing.T) {
+	hostCert := &Certificate{
+		Key:         testPublicKeys["ed25519"],
+		CertType:    HostCert,
+		ValidBefore: CertTimeInfinity,
+	}
+	if err := hostCert.SignCert(rand.Reader, testSigners["ecdsa"]); err != nil {
+		t.Fatalf("SignCert: %v", err)
+	}
+	hostCertSigner, err := NewCertSigner(hostCert, testSigners["ed25519"])
+	if err != nil {
+		t.Fatalf("NewCertSigner: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		// hostKey is the host key the server sends.
+		hostKey Signer
+		// hostKeyAlgo is the only host key algorithm the client accepts.
+		hostKeyAlgo string
+		// wantKeyType is the key type expected in HostKeyCallback. If empty,
+		// the handshake must fail before the callback is invoked.
+		wantKeyType string
+	}{
+		{
+			name:        "plain key for certificate algorithm",
+			hostKey:     mismatchedHostKeySigner{testSigners["ed25519"], CertAlgoED25519v01},
+			hostKeyAlgo: CertAlgoED25519v01,
+		},
+		{
+			name:        "certificate for plain key algorithm",
+			hostKey:     mismatchedHostKeySigner{hostCertSigner, KeyAlgoED25519},
+			hostKeyAlgo: KeyAlgoED25519,
+		},
+		{
+			name:        "plain key",
+			hostKey:     testSigners["ed25519"],
+			hostKeyAlgo: KeyAlgoED25519,
+			wantKeyType: KeyAlgoED25519,
+		},
+		{
+			name:        "certificate",
+			hostKey:     hostCertSigner,
+			hostKeyAlgo: CertAlgoED25519v01,
+			wantKeyType: CertAlgoED25519v01,
+		},
+		{
+			// RSA signature algorithms are compatible with the ssh-rsa key
+			// format and must keep being accepted.
+			name:        "RSA SHA-2 signature algorithm",
+			hostKey:     testSigners["rsa"],
+			hostKeyAlgo: KeyAlgoRSASHA512,
+			wantKeyType: KeyAlgoRSA,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c1, c2, err := netPipe()
+			if err != nil {
+				t.Fatalf("netPipe: %v", err)
+			}
+			defer c1.Close()
+			defer c2.Close()
+
+			serverConf := &ServerConfig{
+				PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+					return &Permissions{}, nil
+				},
+			}
+			serverConf.AddHostKey(tt.hostKey)
+			go NewServerConn(c1, serverConf)
+
+			var gotKeyType string
+			clientConf := &ClientConfig{
+				User: "test",
+				Auth: []AuthMethod{Password("testpw")},
+				HostKeyCallback: func(hostname string, remote net.Addr, key PublicKey) error {
+					gotKeyType = key.Type()
+					return nil
+				},
+				HostKeyAlgorithms: []string{tt.hostKeyAlgo},
+			}
+
+			_, _, _, err = NewClientConn(c2, "", clientConf)
+			if tt.wantKeyType == "" {
+				if err == nil {
+					t.Fatal("handshake succeeded with incompatible host key type and algorithm")
+				}
+				if gotKeyType != "" {
+					t.Errorf("HostKeyCallback called with key type %q, want no call", gotKeyType)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("NewClientConn: %v", err)
+			}
+			if gotKeyType != tt.wantKeyType {
+				t.Errorf("HostKeyCallback got key type %q, want %q", gotKeyType, tt.wantKeyType)
+			}
+		})
+	}
+}

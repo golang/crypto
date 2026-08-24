@@ -834,6 +834,16 @@ func (t *handshakeTransport) client(kex kexAlgorithm, magics *handshakeMagics) (
 		return nil, err
 	}
 
+	// Ensure the negotiated host key algorithm is compatible with the type of
+	// the host key we received. This check will ensure we don't accept e.g. a
+	// ssh-ed25519 host key for the ssh-ed25519-cert-v01@openssh.com algorithm.
+	// The algorithm and host key type must be consistent: both must be
+	// certificate algorithms, or neither.
+	if !slices.Contains(algorithmsForKeyFormat(hostKey.Type()), t.algorithms.HostKey) {
+		return nil, fmt.Errorf("ssh: host key type %q not compatible with negotiated algorithm %q",
+			hostKey.Type(), t.algorithms.HostKey)
+	}
+
 	if err := verifyHostKeySignature(hostKey, t.algorithms.HostKey, result); err != nil {
 		return nil, err
 	}
