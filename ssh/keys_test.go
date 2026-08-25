@@ -906,6 +906,28 @@ func TestAuthorizedKeyCertificate(t *testing.T) {
 	}
 }
 
+func TestAuthorizedKeyNonASCIIWhitespace(t *testing.T) {
+	pub, pubSerialized := getTestKey()
+
+	// Only ASCII space and tab delimit fields, so a line held together by
+	// any other space character is not a key line.
+	for _, line := range []string{
+		"\u00a0ssh-rsa " + pubSerialized + " user@host",
+		"\vssh-rsa " + pubSerialized + " user@host",
+		"ssh-rsa " + pubSerialized + "\u00a0",
+	} {
+		testAuthorizedKeys(t, []byte(line), []testAuthResult{
+			{nil, nil, "", "", false},
+		})
+	}
+
+	// ASCII space and tab are still trimmed.
+	testAuthorizedKeys(t, []byte(" \tssh-rsa "+pubSerialized+" user@host \t"),
+		[]testAuthResult{
+			{pub, nil, "user@host", "", true},
+		})
+}
+
 func TestAuthorizedKeyOptionWithKeyType(t *testing.T) {
 	pub, pubSerialized := getTestKey()
 	line := "restrict ssh-rsa " + pubSerialized + " user@host"
@@ -999,6 +1021,36 @@ var knownHostsParseTests = []struct {
 		// Declared key type does not match the type embedded in the blob.
 		"localhost ssh-ed25519 {RSAPUB}",
 		"key type mismatch",
+
+		"", "", nil, "",
+	},
+	{
+		"local\vhost ssh-rsa {RSAPUB}",
+		"",
+
+		"", "", []string{"local\vhost"}, "",
+	},
+	{
+		"\vlocalhost ssh-rsa {RSAPUB}",
+		"",
+
+		"", "", []string{"\vlocalhost"}, "",
+	},
+	{
+		"\u00a0#localhost ssh-rsa {RSAPUB}",
+		"",
+
+		"", "", []string{"\u00a0#localhost"}, "",
+	},
+	{
+		"localhost ssh-rsa {RSAPUB}\v",
+		"illegal base64 data",
+
+		"", "", nil, "",
+	},
+	{
+		"localhost ssh-rsa \v{RSAPUB}",
+		"illegal base64 data",
 
 		"", "", nil, "",
 	},

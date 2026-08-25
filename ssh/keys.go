@@ -98,11 +98,23 @@ func parsePubKey(in []byte, algo string) (pubKey PublicKey, rest []byte, err err
 	return nil, nil, fmt.Errorf("ssh: unknown key algorithm: %v", algo)
 }
 
+// trimSpace removes leading and trailing ASCII space and tab.
+func trimSpace(in []byte) []byte {
+	return bytes.Trim(in, " \t")
+}
+
+// asciiFields splits in around each run of ASCII space and tab.
+func asciiFields(in []byte) [][]byte {
+	return bytes.FieldsFunc(in, func(r rune) bool {
+		return r == ' ' || r == '\t'
+	})
+}
+
 // parseAuthorizedKey parses a public key in OpenSSH authorized_keys format
 // (see sshd(8) manual page) once the options and key type fields have been
 // removed.
 func parseAuthorizedKey(in []byte) (out PublicKey, comment string, err error) {
-	in = bytes.TrimSpace(in)
+	in = trimSpace(in)
 
 	i := bytes.IndexAny(in, " \t")
 	if i == -1 {
@@ -120,7 +132,7 @@ func parseAuthorizedKey(in []byte) (out PublicKey, comment string, err error) {
 	if err != nil {
 		return nil, "", err
 	}
-	comment = string(bytes.TrimSpace(in[i:]))
+	comment = string(trimSpace(in[i:]))
 	return out, comment, nil
 }
 
@@ -154,7 +166,7 @@ func ParseKnownHosts(in []byte) (marker string, hosts []string, pubKey PublicKey
 			in = in[:end]
 		}
 
-		in = bytes.TrimSpace(in)
+		in = trimSpace(in)
 		if len(in) == 0 || in[0] == '#' {
 			in = rest
 			continue
@@ -168,7 +180,7 @@ func ParseKnownHosts(in []byte) (marker string, hosts []string, pubKey PublicKey
 
 		// Strip out the beginning of the known_host key.
 		// This is either an optional marker or a (set of) hostname(s).
-		keyFields := bytes.Fields(in)
+		keyFields := asciiFields(in)
 		if len(keyFields) < 3 || len(keyFields) > 5 {
 			return "", nil, nil, "", nil, errors.New("ssh: invalid entry in known_hosts data")
 		}
@@ -220,7 +232,7 @@ func ParseAuthorizedKey(in []byte) (out PublicKey, comment string, options []str
 			in = in[:end]
 		}
 
-		in = bytes.TrimSpace(in)
+		in = trimSpace(in)
 		if len(in) == 0 || in[0] == '#' {
 			in = rest
 			continue
