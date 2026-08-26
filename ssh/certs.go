@@ -405,9 +405,14 @@ func (c *CertChecker) CheckCert(principal string, cert *Certificate) error {
 	}
 
 	for opt := range cert.CriticalOptions {
-		// sourceAddressCriticalOption will be enforced by
-		// serverAuthenticate
 		if opt == sourceAddressCriticalOption {
+			// source-address is only valid for user certificates.
+			// OpenSSH rejects host certificates containing this option.
+			if cert.CertType == HostCert {
+				return fmt.Errorf("ssh: unsupported critical option %q in host certificate", opt)
+			}
+			// For user certificates, source-address will be enforced by
+			// serverAuthenticate.
 			continue
 		}
 
