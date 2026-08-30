@@ -1025,6 +1025,18 @@ var knownHostsParseTests = []struct {
 		"", "", nil, "",
 	},
 	{
+		"localhost ssh-rsa {RSAPUB} a comment with several words",
+		"",
+
+		"", "a comment with several words", []string{"localhost"}, "",
+	},
+	{
+		"@cert-authority localhost ssh-rsa {RSAPUB} a comment with several words",
+		"",
+
+		"cert-authority", "a comment with several words", []string{"localhost"}, "",
+	},
+	{
 		"local\vhost ssh-rsa {RSAPUB}",
 		"",
 

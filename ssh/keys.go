@@ -180,8 +180,10 @@ func ParseKnownHosts(in []byte) (marker string, hosts []string, pubKey PublicKey
 
 		// Strip out the beginning of the known_host key.
 		// This is either an optional marker or a (set of) hostname(s).
+		// The comment is not delimited, so there is no upper bound on the
+		// number of fields.
 		keyFields := asciiFields(in)
-		if len(keyFields) < 3 || len(keyFields) > 5 {
+		if len(keyFields) < 3 {
 			return "", nil, nil, "", nil, errors.New("ssh: invalid entry in known_hosts data")
 		}
 
