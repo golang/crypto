@@ -928,6 +928,23 @@ func TestAuthorizedKeyNonASCIIWhitespace(t *testing.T) {
 		})
 }
 
+func TestAuthorizedKeyCarriageReturn(t *testing.T) {
+	pub, pubSerialized := getTestKey()
+
+	// A trailing carriage return is dropped, so a file with CRLF line
+	// endings is read like one with LF endings.
+	testAuthorizedKeys(t, []byte("ssh-rsa "+pubSerialized+" user@host\r\n"),
+		[]testAuthResult{
+			{pub, nil, "user@host", "", true},
+		})
+
+	// One anywhere else is part of the field that holds it.
+	testAuthorizedKeys(t, []byte("ssh-rsa "+pubSerialized+" com\rment"),
+		[]testAuthResult{
+			{pub, nil, "com\rment", "", true},
+		})
+}
+
 func TestAuthorizedKeyOptionWithKeyType(t *testing.T) {
 	pub, pubSerialized := getTestKey()
 	line := "restrict ssh-rsa " + pubSerialized + " user@host"
@@ -1035,6 +1052,19 @@ var knownHostsParseTests = []struct {
 		"",
 
 		"cert-authority", "a comment with several words", []string{"localhost"}, "",
+	},
+	{
+		// A carriage return is only dropped at the end of the entry.
+		"host\rname ssh-rsa {RSAPUB}",
+		"",
+
+		"", "", []string{"host\rname"}, "",
+	},
+	{
+		"localhost ssh-rsa {RSAPUB} com\rment",
+		"",
+
+		"", "com\rment", []string{"localhost"}, "",
 	},
 	{
 		"local\vhost ssh-rsa {RSAPUB}",

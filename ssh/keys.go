@@ -110,6 +110,13 @@ func asciiFields(in []byte) [][]byte {
 	})
 }
 
+// dropCR removes a single trailing carriage return, so that an entry written
+// with CRLF line endings is read like one written with LF endings. A carriage
+// return anywhere else belongs to the field that holds it.
+func dropCR(in []byte) []byte {
+	return bytes.TrimSuffix(in, []byte("\r"))
+}
+
 // parseAuthorizedKey parses a public key in OpenSSH authorized_keys format
 // (see sshd(8) manual page) once the options and key type fields have been
 // removed.
@@ -161,10 +168,7 @@ func ParseKnownHosts(in []byte) (marker string, hosts []string, pubKey PublicKey
 			rest = nil
 		}
 
-		end = bytes.IndexByte(in, '\r')
-		if end != -1 {
-			in = in[:end]
-		}
+		in = dropCR(in)
 
 		in = trimSpace(in)
 		if len(in) == 0 || in[0] == '#' {
@@ -229,10 +233,7 @@ func ParseAuthorizedKey(in []byte) (out PublicKey, comment string, options []str
 			rest = nil
 		}
 
-		end = bytes.IndexByte(in, '\r')
-		if end != -1 {
-			in = in[:end]
-		}
+		in = dropCR(in)
 
 		in = trimSpace(in)
 		if len(in) == 0 || in[0] == '#' {
