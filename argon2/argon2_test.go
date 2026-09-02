@@ -24,6 +24,7 @@ var (
 
 func TestArgon2(t *testing.T) {
 	defer func(sse4 bool) { useSSE4 = sse4 }(useSSE4)
+	defer func(lsx bool) { useLSX = lsx }(useLSX)
 
 	if useSSE4 {
 		t.Log("SSE4.1 version")
@@ -31,6 +32,14 @@ func TestArgon2(t *testing.T) {
 		testArgon2d(t)
 		testArgon2id(t)
 		useSSE4 = false
+	}
+
+	if useLSX {
+		t.Log("LSX version")
+		testArgon2i(t)
+		testArgon2d(t)
+		testArgon2id(t)
+		useLSX = false
 	}
 	t.Log("generic version")
 	testArgon2i(t)
