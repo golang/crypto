@@ -629,6 +629,7 @@ func (t *handshakeTransport) writePacket(p []byte) error {
 	if err := t.pushPacket(p); err != nil {
 		t.writeError = err
 		t.writeCond.Broadcast()
+		return err
 	}
 
 	return nil
