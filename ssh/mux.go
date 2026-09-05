@@ -349,7 +349,7 @@ func (m *mux) openChannel(chanType string, extra []byte) (*channel, error) {
 	open := channelOpenMsg{
 		ChanType:         chanType,
 		PeersWindow:      ch.myWindow,
-		MaxPacketSize:    ch.maxIncomingPayload,
+		MaxPacketSize:    channelMaxPacket,
 		TypeSpecificData: extra,
 		PeersID:          ch.localId,
 	}

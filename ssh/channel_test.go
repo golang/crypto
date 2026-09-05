@@ -231,7 +231,7 @@ func TestDiscardedExtendedDataAfterClose(t *testing.T) {
 	}
 
 	// Deliver extended data packets with an unknown type code, enough to
-	// cross the adjustWindow send threshold of 3*maxIncomingPayload.
+	// cross the adjustWindow send threshold of 3*channelMaxPacket.
 	// The window adjust message cannot be sent after the close and
 	// adjustWindow fails with io.EOF: handleData must swallow that
 	// error, since any error it returns terminates the mux read loop

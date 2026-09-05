@@ -1305,7 +1305,7 @@ func TestChannelUndecidedInboundDropsRequests(t *testing.T) {
 	if err := clientMux.sendMessage(channelOpenMsg{
 		ChanType:      "chan",
 		PeersWindow:   ch.myWindow,
-		MaxPacketSize: ch.maxIncomingPayload,
+		MaxPacketSize: channelMaxPacket,
 		PeersID:       ch.localId,
 	}); err != nil {
 		t.Fatalf("send open: %v", err)
@@ -1449,10 +1449,6 @@ func TestNewChannelFullyInitializedWhenPublished(t *testing.T) {
 				}
 				if got := ch.localId; got != id {
 					t.Errorf("channel registered under id %d has localId %d", id, got)
-					return
-				}
-				if got := ch.maxIncomingPayload; got != channelMaxPacket {
-					t.Errorf("channel %d: maxIncomingPayload = %d, want %d", id, got, channelMaxPacket)
 					return
 				}
 			}
