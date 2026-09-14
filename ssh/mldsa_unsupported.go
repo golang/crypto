@@ -12,7 +12,7 @@ import (
 	"fmt"
 )
 
-var mldsaKeyAlgos []string
+var mldsaKeyAlgos, mldsaCertAlgos []string
 
 var errMLDSAUnsupported = fmt.Errorf("ssh: ML-DSA is not available in this build: %w",
 	errors.ErrUnsupported)

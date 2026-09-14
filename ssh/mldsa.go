@@ -21,6 +21,13 @@ var mldsaKeyAlgos = []string{
 	KeyAlgoMLDSA87,
 }
 
+// mldsaCertAlgos are the certificate algorithms for the keys in mldsaKeyAlgos.
+var mldsaCertAlgos = []string{
+	CertAlgoMLDSA44v01Go,
+	CertAlgoMLDSA65v01Go,
+	CertAlgoMLDSA87v01Go,
+}
+
 var errNotMLDSAKey = errors.New("ssh: not an ML-DSA key")
 
 // mldsaParameters returns the ML-DSA parameter set for the given public key

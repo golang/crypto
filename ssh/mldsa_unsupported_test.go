@@ -22,14 +22,18 @@ var mldsaPublicKeySizes = map[string]int{
 }
 
 func TestMLDSAUnsupported(t *testing.T) {
-	if len(mldsaKeyAlgos) != 0 {
-		t.Errorf("mldsaKeyAlgos = %v, want empty", mldsaKeyAlgos)
+	if len(mldsaKeyAlgos) != 0 || len(mldsaCertAlgos) != 0 {
+		t.Errorf("mldsaKeyAlgos = %v, mldsaCertAlgos = %v, want empty", mldsaKeyAlgos, mldsaCertAlgos)
 	}
 
 	supported := SupportedAlgorithms()
 	insecure := InsecureAlgorithms()
 	for algo := range mldsaPublicKeySizes {
 		t.Run(algo, func(t *testing.T) {
+			certAlgo, ok := certificateAlgo(algo)
+			if !ok {
+				t.Fatalf("no certificate algorithm for %s", algo)
+			}
 			for _, tt := range []struct {
 				name  string
 				algos []string
@@ -41,17 +45,28 @@ func TestMLDSAUnsupported(t *testing.T) {
 				{"defaultHostKeyAlgos", defaultHostKeyAlgos},
 				{"defaultPubKeyAuthAlgos", defaultPubKeyAuthAlgos},
 			} {
-				if slices.Contains(tt.algos, algo) {
-					t.Errorf("%s contains %s, but this build can't use it", tt.name, algo)
+				for _, a := range []string{algo, certAlgo} {
+					if slices.Contains(tt.algos, a) {
+						t.Errorf("%s contains %s, but this build can't use it", tt.name, a)
+					}
 				}
 			}
 
+			keyBytes := make([]byte, mldsaPublicKeySizes[algo])
 			blob := Marshal(struct {
 				Name     string
 				KeyBytes []byte
-			}{algo, make([]byte, mldsaPublicKeySizes[algo])})
+			}{algo, keyBytes})
 			if _, err := ParsePublicKey(blob); !errors.Is(err, errors.ErrUnsupported) {
 				t.Errorf("ParsePublicKey: got %v, want %v", err, errors.ErrUnsupported)
+			}
+			certBlob := Marshal(struct {
+				Name     string
+				Nonce    []byte
+				KeyBytes []byte
+			}{certAlgo, make([]byte, 32), keyBytes})
+			if _, err := ParsePublicKey(certBlob); !errors.Is(err, errors.ErrUnsupported) {
+				t.Errorf("ParsePublicKey(certificate): got %v, want %v", err, errors.ErrUnsupported)
 			}
 
 			// Configuring the algorithm must be rejected up front, rather than

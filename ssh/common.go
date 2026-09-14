@@ -258,8 +258,8 @@ type Algorithms struct {
 }
 
 func init() {
-	supportedHostKeyAlgos = slices.Concat(supportedHostKeyAlgos, mldsaKeyAlgos)
-	defaultHostKeyAlgos = slices.Concat(defaultHostKeyAlgos, mldsaKeyAlgos)
+	supportedHostKeyAlgos = slices.Concat(supportedHostKeyAlgos, mldsaCertAlgos, mldsaKeyAlgos)
+	defaultHostKeyAlgos = slices.Concat(defaultHostKeyAlgos, mldsaCertAlgos, mldsaKeyAlgos)
 	supportedPubKeyAuthAlgos = slices.Concat(supportedPubKeyAuthAlgos, mldsaKeyAlgos)
 	defaultPubKeyAuthAlgos = slices.Concat(defaultPubKeyAuthAlgos, mldsaKeyAlgos)
 
@@ -366,7 +366,10 @@ func keyFormatForAlgorithm(sigAlgo string) string {
 		CertAlgoSKED25519v01,
 		KeyAlgoMLDSA44,
 		KeyAlgoMLDSA65,
-		KeyAlgoMLDSA87:
+		KeyAlgoMLDSA87,
+		CertAlgoMLDSA44v01Go,
+		CertAlgoMLDSA65v01Go,
+		CertAlgoMLDSA87v01Go:
 		return sigAlgo
 	default:
 		return ""

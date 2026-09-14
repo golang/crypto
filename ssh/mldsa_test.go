@@ -11,6 +11,7 @@ import (
 	"crypto/mldsa"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/pem"
 	"errors"
 	"net"
@@ -331,14 +332,15 @@ func TestMLDSADefault(t *testing.T) {
 	for _, tt := range []struct {
 		name  string
 		algos []string
+		want  []string
 	}{
-		{"supportedHostKeyAlgos", supportedHostKeyAlgos},
-		{"defaultHostKeyAlgos", defaultHostKeyAlgos},
-		{"supportedPubKeyAuthAlgos", supportedPubKeyAuthAlgos},
-		{"defaultPubKeyAuthAlgos", defaultPubKeyAuthAlgos},
+		{"supportedHostKeyAlgos", supportedHostKeyAlgos, slices.Concat(mldsaCertAlgos, mldsaKeyAlgos)},
+		{"defaultHostKeyAlgos", defaultHostKeyAlgos, slices.Concat(mldsaCertAlgos, mldsaKeyAlgos)},
+		{"supportedPubKeyAuthAlgos", supportedPubKeyAuthAlgos, mldsaKeyAlgos},
+		{"defaultPubKeyAuthAlgos", defaultPubKeyAuthAlgos, mldsaKeyAlgos},
 	} {
-		if tail := tt.algos[len(tt.algos)-len(mldsaKeyAlgos):]; !slices.Equal(tail, mldsaKeyAlgos) {
-			t.Errorf("%s ends with %v, want %v", tt.name, tail, mldsaKeyAlgos)
+		if tail := tt.algos[len(tt.algos)-len(tt.want):]; !slices.Equal(tail, tt.want) {
+			t.Errorf("%s ends with %v, want %v", tt.name, tail, tt.want)
 		}
 	}
 
@@ -446,49 +448,6 @@ func TestMLDSACertificateAuthority(t *testing.T) {
 	}
 }
 
-func TestMLDSACertifiedKeyRejected(t *testing.T) {
-	authority, err := NewSignerFromKey(testPrivateKeys["ed25519"])
-	if err != nil {
-		t.Fatal(err)
-	}
-	subject := mldsaTestSigner(t, KeyAlgoMLDSA65)
-	cert := &Certificate{
-		Key:             subject.PublicKey(),
-		CertType:        UserCert,
-		ValidPrincipals: []string{"testuser"},
-		ValidBefore:     CertTimeInfinity,
-	}
-
-	for _, tt := range []struct {
-		name string
-		fn   func() error
-	}{
-		{"SignCert", func() error { return cert.SignCert(rand.Reader, authority) }},
-		{"NewCertSigner", func() error {
-			_, err := NewCertSigner(cert, subject)
-			return err
-		}},
-		{"CheckCert", func() error {
-			return (&CertChecker{IsUserAuthority: func(PublicKey) bool { return true }}).CheckCert("testuser", cert)
-		}},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			defer func() {
-				if r := recover(); r != nil {
-					t.Fatalf("panicked instead of returning an error: %v", r)
-				}
-			}()
-			err := tt.fn()
-			if err == nil {
-				t.Fatal("certified an ML-DSA key")
-			}
-			if !strings.Contains(err.Error(), "no certificate algorithm defined") {
-				t.Errorf("unexpected error: %v", err)
-			}
-		})
-	}
-}
-
 // The ML-DSA-65 test key of PKIX-SSH, generated with OpenSSL, and its
 // fingerprint as printed by its ssh-keygen.
 const (
@@ -554,5 +513,169 @@ func TestMLDSAPKCS8PrivateKey(t *testing.T) {
 				t.Errorf("Verify: %v", err)
 			}
 		})
+	}
+}
+
+func TestMLDSACertificate(t *testing.T) {
+	authority, err := NewSignerFromKey(testPrivateKeys["ed25519"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, algo := range mldsaAlgorithms {
+		t.Run(algo, func(t *testing.T) {
+			certAlgo, ok := certificateAlgo(algo)
+			if !ok {
+				t.Fatalf("no certificate algorithm for %s", algo)
+			}
+			if !slices.Contains(mldsaCertAlgos, certAlgo) {
+				t.Errorf("%s is not in mldsaCertAlgos", certAlgo)
+			}
+			if supported := SupportedAlgorithms(); !slices.Contains(supported.HostKeys, certAlgo) ||
+				slices.Contains(supported.PublicKeyAuths, certAlgo) {
+				t.Errorf("%s misplaced in SupportedAlgorithms", certAlgo)
+			}
+			subject := mldsaTestSigner(t, algo)
+			cert := &Certificate{
+				Key:             subject.PublicKey(),
+				CertType:        UserCert,
+				KeyId:           "testuser",
+				ValidPrincipals: []string{"testuser"},
+				ValidBefore:     CertTimeInfinity,
+			}
+			if err := cert.SignCert(rand.Reader, authority); err != nil {
+				t.Fatalf("SignCert: %v", err)
+			}
+			if cert.Type() != certAlgo {
+				t.Errorf("Type() = %q, want %q", cert.Type(), certAlgo)
+			}
+
+			// The public key fields must be the plain key blob without its
+			// name: string name, string nonce, string key, uint64 serial.
+			blob := cert.Marshal()
+			name, rest, _ := parseString(blob)
+			_, rest, _ = parseString(rest)
+			keyBytes, rest, ok := parseString(rest)
+			if !ok {
+				t.Fatal("malformed certificate")
+			}
+			_, plain, _ := parseString(subject.PublicKey().Marshal())
+			wantKey, _, _ := parseString(plain)
+			if string(name) != certAlgo || !bytes.Equal(keyBytes, wantKey) {
+				t.Error("unexpected certificate public key fields")
+			}
+			if len(rest) < 8 || binary.BigEndian.Uint64(rest) != cert.Serial {
+				t.Error("serial number doesn't follow the public key")
+			}
+
+			parsed, err := ParsePublicKey(blob)
+			if err != nil {
+				t.Fatalf("ParsePublicKey: %v", err)
+			}
+			parsedCert, ok := parsed.(*Certificate)
+			if !ok {
+				t.Fatalf("ParsePublicKey returned %T, want *Certificate", parsed)
+			}
+			if parsedCert.Key.Type() != algo || !bytes.Equal(parsedCert.Marshal(), blob) {
+				t.Error("certificate round trip changed the certificate")
+			}
+			authorized := MarshalAuthorizedKey(cert)
+			if parsed, _, _, _, err = ParseAuthorizedKey(authorized); err != nil {
+				t.Fatalf("ParseAuthorizedKey: %v", err)
+			}
+			if !bytes.Equal(parsed.Marshal(), blob) {
+				t.Error("authorized_keys round trip changed the certificate")
+			}
+
+			checker := &CertChecker{IsUserAuthority: func(k PublicKey) bool {
+				return bytes.Equal(k.Marshal(), authority.PublicKey().Marshal())
+			}}
+			if err := checker.CheckCert("testuser", parsedCert); err != nil {
+				t.Errorf("CheckCert: %v", err)
+			}
+
+			certSigner, err := NewCertSigner(cert, subject)
+			if err != nil {
+				t.Fatalf("NewCertSigner: %v", err)
+			}
+			if certSigner.PublicKey().Type() != certAlgo {
+				t.Errorf("cert signer type = %q, want %q", certSigner.PublicKey().Type(), certAlgo)
+			}
+			data := []byte("sign me")
+			sig, err := certSigner.Sign(rand.Reader, data)
+			if err != nil {
+				t.Fatalf("Sign: %v", err)
+			}
+			if sig.Format != algo {
+				t.Errorf("signature format = %q, want %q", sig.Format, algo)
+			}
+			if err := parsedCert.Verify(data, sig); err != nil {
+				t.Errorf("Verify: %v", err)
+			}
+		})
+	}
+}
+
+func TestMLDSACertificateClientServer(t *testing.T) {
+	const algo, certAlgo = KeyAlgoMLDSA65, CertAlgoMLDSA65v01Go
+	authority := mldsaTestSigner(t, algo)
+	isAuthority := func(k PublicKey) bool {
+		return bytes.Equal(k.Marshal(), authority.PublicKey().Marshal())
+	}
+
+	certSigner := func(certType uint32, principal string) Signer {
+		key := mldsaTestSigner(t, algo)
+		cert := &Certificate{
+			Key:             key.PublicKey(),
+			CertType:        certType,
+			ValidPrincipals: []string{principal},
+			ValidBefore:     CertTimeInfinity,
+		}
+		if err := cert.SignCert(rand.Reader, authority); err != nil {
+			t.Fatalf("SignCert: %v", err)
+		}
+		signer, err := NewCertSigner(cert, key)
+		if err != nil {
+			t.Fatalf("NewCertSigner: %v", err)
+		}
+		return signer
+	}
+	hostSigner := certSigner(HostCert, "hostname")
+	userSigner := certSigner(UserCert, "testuser")
+
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	checker := &CertChecker{
+		IsUserAuthority: isAuthority,
+		IsHostAuthority: func(k PublicKey, addr string) bool { return isAuthority(k) },
+	}
+	serverConf := &ServerConfig{
+		PublicKeyAuthAlgorithms: []string{algo},
+		PublicKeyCallback:       checker.Authenticate,
+	}
+	serverConf.AddHostKey(hostSigner)
+	serverErr := make(chan error, 1)
+	go func() {
+		_, _, _, err := NewServerConn(c1, serverConf)
+		serverErr <- err
+	}()
+
+	clientConf := &ClientConfig{
+		User:              "testuser",
+		Auth:              []AuthMethod{PublicKeys(userSigner)},
+		HostKeyAlgorithms: []string{certAlgo},
+		HostKeyCallback:   checker.CheckHostKey,
+	}
+	conn, _, _, err := NewClientConn(c2, "hostname:22", clientConf)
+	if err != nil {
+		t.Fatalf("client handshake: %v (server: %v)", err, <-serverErr)
+	}
+	defer conn.Close()
+	if err := <-serverErr; err != nil {
+		t.Errorf("server handshake: %v", err)
 	}
 }

@@ -52,9 +52,7 @@ const (
 	KeyAlgoSKED25519   = "sk-ssh-ed25519@openssh.com"
 
 	// KeyAlgoMLDSA44, KeyAlgoMLDSA65 and KeyAlgoMLDSA87 are the ML-DSA
-	// algorithms of [SSH-MLDSA]. ML-DSA keys can't be used in certificates,
-	// since no certificate algorithm is defined for them, but they can be used
-	// to sign one.
+	// algorithms of [SSH-MLDSA].
 	KeyAlgoMLDSA44 = "ssh-mldsa-44"
 	KeyAlgoMLDSA65 = "ssh-mldsa-65"
 	KeyAlgoMLDSA87 = "ssh-mldsa-87"
@@ -93,7 +91,8 @@ func parsePubKey(in []byte, algo string) (pubKey PublicKey, rest []byte, err err
 		return parseSKEd25519(in)
 	case KeyAlgoMLDSA44, KeyAlgoMLDSA65, KeyAlgoMLDSA87:
 		return parseMLDSA(in, algo)
-	case CertAlgoRSAv01, InsecureCertAlgoDSAv01, CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01, CertAlgoSKECDSA256v01, CertAlgoED25519v01, CertAlgoSKED25519v01:
+	case CertAlgoRSAv01, InsecureCertAlgoDSAv01, CertAlgoECDSA256v01, CertAlgoECDSA384v01, CertAlgoECDSA521v01, CertAlgoSKECDSA256v01, CertAlgoED25519v01, CertAlgoSKED25519v01,
+		CertAlgoMLDSA44v01Go, CertAlgoMLDSA65v01Go, CertAlgoMLDSA87v01Go:
 		cert, err := parseCert(in, certKeyAlgoNames[algo])
 		if err != nil {
 			return nil, nil, err
