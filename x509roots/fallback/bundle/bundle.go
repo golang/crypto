@@ -358,10 +358,11 @@ var unparsedCertificates = []unparsedCertificate{
 		certLength:   1386,
 	},
 	{
-		cn:           "CN=Izenpe.com,O=IZENPE S.A.,C=ES",
-		sha256Hash:   "2530cc8e98321502bad96f9b1fba1b099e2d299e0f4548bb914f363bc0d4531f",
-		certStartOff: 63236,
-		certLength:   1525,
+		cn:            "CN=Izenpe.com,O=IZENPE S.A.,C=ES",
+		sha256Hash:    "2530cc8e98321502bad96f9b1fba1b099e2d299e0f4548bb914f363bc0d4531f",
+		certStartOff:  63236,
+		certLength:    1525,
+		distrustAfter: "2026-04-15T23:59:59Z",
 	},
 	{
 		cn:           "CN=Microsec e-Szigno Root CA 2009,O=Microsec Ltd.,L=Budapest,C=HU,1.2.840.113549.1.9.1=info@e-szigno.hu",
