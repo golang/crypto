@@ -186,6 +186,8 @@ func parseTuples(in []byte) (map[string]string, error) {
 	return tups, nil
 }
 
+var errEmptyPrincipal = errors.New("ssh: empty principal in certificate")
+
 func parseCert(in []byte, privAlgo string) (*Certificate, error) {
 	nonce, rest, ok := parseString(in)
 	if !ok {
@@ -216,6 +218,9 @@ func parseCert(in []byte, privAlgo string) (*Certificate, error) {
 		principal, rest, ok := parseString(principals)
 		if !ok {
 			return nil, errShortRead
+		}
+		if len(principal) == 0 {
+			return nil, errEmptyPrincipal
 		}
 		c.ValidPrincipals = append(c.ValidPrincipals, string(principal))
 		principals = rest
