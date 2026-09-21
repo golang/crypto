@@ -14,6 +14,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -668,6 +669,126 @@ func TestParseDSAYOutOfRange(t *testing.T) {
 				t.Errorf("unexpected error message: got %q, want substring %q", err.Error(), expectedError)
 			}
 		})
+	}
+}
+
+func TestParseDSAPrivateKeyValidation(t *testing.T) {
+	// Valid 1024/160 parameters (values don't need to be a real DSA group,
+	// they only need to pass the checkDSAParams bit-length checks and the
+	// G < P / G > 0 checks).
+	P := new(big.Int).Lsh(big.NewInt(1), 1023)
+	P.SetBit(P, 0, 1)
+	Q := new(big.Int).Lsh(big.NewInt(1), 159)
+	Q.SetBit(Q, 0, 1)
+	G := big.NewInt(2)
+	Y := big.NewInt(5)
+	X := big.NewInt(7)
+
+	type dsaKeyASN1 struct {
+		Version            int
+		P, Q, G, Pub, Priv *big.Int
+	}
+
+	for _, tc := range []struct {
+		name          string
+		P, Q, G, Y, X *big.Int
+		expectedErr   string
+	}{
+		{
+			name: "huge Q",
+			P:    P, Q: new(big.Int).Lsh(big.NewInt(1), 20000), G: G, Y: Y, X: X,
+			expectedErr: "ssh: unsupported DSA sub-prime size",
+		},
+		{
+			name: "P not 1024 bits",
+			P:    new(big.Int).Lsh(big.NewInt(1), 1024),
+			Q:    Q, G: G, Y: Y, X: X,
+			expectedErr: "ssh: unsupported DSA key size",
+		},
+		{
+			name: "Y zero",
+			P:    P, Q: Q, G: G, Y: big.NewInt(0), X: X,
+			expectedErr: "ssh: DSA public value Y out of range",
+		},
+		{
+			name: "Y negative",
+			P:    P, Q: Q, G: G, Y: big.NewInt(-1), X: X,
+			expectedErr: "ssh: DSA public value Y out of range",
+		},
+		{
+			name: "Y equals P",
+			P:    P, Q: Q, G: G, Y: new(big.Int).Set(P), X: X,
+			expectedErr: "ssh: DSA public value Y out of range",
+		},
+		{
+			name: "Y greater than P",
+			P:    P, Q: Q, G: G, Y: new(big.Int).Add(P, big.NewInt(1)), X: X,
+			expectedErr: "ssh: DSA public value Y out of range",
+		},
+		{
+			name: "G equals P",
+			P:    P, Q: Q, G: new(big.Int).Set(P), Y: Y, X: X,
+			expectedErr: "ssh: DSA generator larger than modulus",
+		},
+		{
+			name: "G greater than P",
+			P:    P, Q: Q, G: new(big.Int).Add(P, big.NewInt(1)), Y: Y, X: X,
+			expectedErr: "ssh: DSA generator larger than modulus",
+		},
+		{
+			name: "G zero",
+			P:    P, Q: Q, G: big.NewInt(0), Y: Y, X: X,
+			expectedErr: "ssh: DSA generator must be positive",
+		},
+		{
+			name: "G negative",
+			P:    P, Q: Q, G: big.NewInt(-1), Y: Y, X: X,
+			expectedErr: "ssh: DSA generator must be positive",
+		},
+		{
+			name: "X zero",
+			P:    P, Q: Q, G: G, Y: Y, X: big.NewInt(0),
+			expectedErr: "ssh: DSA private value X out of range",
+		},
+		{
+			name: "X negative",
+			P:    P, Q: Q, G: G, Y: Y, X: big.NewInt(-1),
+			expectedErr: "ssh: DSA private value X out of range",
+		},
+		{
+			name: "X equals Q",
+			P:    P, Q: Q, G: G, Y: Y, X: new(big.Int).Set(Q),
+			expectedErr: "ssh: DSA private value X out of range",
+		},
+		{
+			name: "X greater than Q",
+			P:    P, Q: Q, G: G, Y: Y, X: new(big.Int).Add(Q, big.NewInt(1)),
+			expectedErr: "ssh: DSA private value X out of range",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			der, err := asn1.Marshal(dsaKeyASN1{0, tc.P, tc.Q, tc.G, tc.Y, tc.X})
+			if err != nil {
+				t.Fatalf("asn1.Marshal failed: %v", err)
+			}
+			_, err = ParseDSAPrivateKey(der)
+			if err == nil {
+				t.Fatal("ParseDSAPrivateKey accepted invalid DSA key")
+			}
+			if !strings.Contains(err.Error(), tc.expectedErr) {
+				t.Errorf("unexpected error message: got %q, want substring %q", err.Error(), tc.expectedErr)
+			}
+		})
+	}
+
+	// Valid key should parse successfully.
+	der, err := asn1.Marshal(dsaKeyASN1{0, P, Q, G, Y, X})
+	if err != nil {
+		t.Fatalf("asn1.Marshal failed: %v", err)
+	}
+	_, err = ParseDSAPrivateKey(der)
+	if err != nil {
+		t.Fatalf("ParseDSAPrivateKey rejected valid DSA key: %v", err)
 	}
 }
 
