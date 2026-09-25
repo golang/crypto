@@ -257,6 +257,17 @@ type ServerConfig struct {
 	// after this callback has returned.
 	PreAuthConnCallback func(ServerPreAuthConn)
 
+	// PreAuthUserCallback, if non-nil, is called for each authentication request
+	// before any authentication method is processed, including the initial
+	// "none" request. ConnMetadata.User reports the requested username, which
+	// has not been authenticated and may change between requests.
+	//
+	// Returning nil lets authentication proceed normally. A non-nil error
+	// disconnects the client with SSH_DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT.
+	// The client receives a fixed message, not the callback's error text. The
+	// error is included in the ServerAuthError returned by NewServerConn.
+	PreAuthUserCallback func(ConnMetadata) error
+
 	// ServerVersion is the version identification string to announce in
 	// the public handshake.
 	// If empty, a reasonable default is used.
@@ -728,6 +739,18 @@ userAuthLoop:
 				if err := s.SendAuthBanner(msg); err != nil {
 					return nil, err
 				}
+			}
+		}
+
+		if config.PreAuthUserCallback != nil {
+			if err := config.PreAuthUserCallback(s); err != nil {
+				authErrs = append(authErrs, err)
+				// RFC 4253, section 11.1: SSH_DISCONNECT_HOST_NOT_ALLOWED_TO_CONNECT.
+				discMsg := &disconnectMsg{Reason: 1, Message: "host not allowed to connect"}
+				if err := s.transport.writePacket(Marshal(discMsg)); err != nil {
+					return nil, err
+				}
+				return nil, &ServerAuthError{Errors: authErrs}
 			}
 		}
 
