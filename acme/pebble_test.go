@@ -397,7 +397,7 @@ func testIssuance(t *testing.T, env *environment, challSrv challengeServer, orde
 	if acct.Status != acme.StatusValid {
 		t.Fatalf("expected new account status to be valid, got %v", acct.Status)
 	}
-	log.Printf("registered account: %s", acct.URI)
+	t.Logf("registered account: %s", acct.URI)
 
 	// Create a new order for some example identifiers
 	identifiers := []acme.AuthzID{
@@ -422,7 +422,7 @@ func testIssuance(t *testing.T, env *environment, challSrv challengeServer, orde
 		t.Fatalf("expected new order status to be pending, got %v", order.Status)
 	}
 	orderURL := order.URI
-	log.Printf("created order: %v", orderURL)
+	t.Logf("created order: %v", orderURL)
 
 	// For each pending authz provision a supported challenge type's response
 	// with the test challenge server, and tell the ACME server to verify it.
@@ -530,7 +530,7 @@ func testIssuance(t *testing.T, env *environment, challSrv challengeServer, orde
 	if err != nil {
 		t.Fatalf("failed to verify order %s leaf certificate: %v", orderURL, err)
 	}
-	log.Printf("verified %d path(s) from issued leaf certificate to Pebble root CA", len(paths))
+	t.Logf("verified %d path(s) from issued leaf certificate to Pebble root CA", len(paths))
 
 	// Also verify that the leaf cert is valid for each of the DNS names
 	// and IP addresses from our order's identifiers.
@@ -694,8 +694,8 @@ func startPebbleEnvironment(t *testing.T, config *environmentConfig) environment
 	}
 	configFile.Close()
 
-	log.Printf("pebble dir: %s", pebbleDir)
-	log.Printf("config file: %s", configFile.Name())
+	t.Logf("pebble dir: %s", pebbleDir)
+	t.Logf("config file: %s", configFile.Name())
 
 	// Spawn the Pebble CA server. It answers ACME requests and performs
 	// outbound validations. We configure it to use a mock DNS server that
@@ -724,7 +724,7 @@ func startPebbleEnvironment(t *testing.T, config *environmentConfig) environment
 	waitForServer(t, config.pebbleConfig.ListenAddress)
 	waitForServer(t, fmt.Sprintf("127.0.0.1:%d", config.dnsPort))
 
-	log.Printf("pebble environment ready")
+	t.Log("pebble environment ready")
 
 	// Construct a cert pool that contains the CA certificate used by the ACME
 	// interface's certificate chain. This is separate from the issuing
@@ -836,7 +836,7 @@ func prepareBinaries(t *testing.T, pebbleDir string) string {
 	binDir := t.TempDir()
 
 	build := func(cmd string) {
-		log.Printf("building %s", cmd)
+		t.Logf("building %s", cmd)
 		buildCmd := exec.Command(
 			"go",
 			"build", "-o", filepath.Join(binDir, cmd), "-mod", "mod", "./cmd/"+cmd)
