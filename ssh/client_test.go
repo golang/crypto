@@ -273,6 +273,33 @@ func TestBannerMalformed(t *testing.T) {
 	}
 }
 
+func TestEscapeBanner(t *testing.T) {
+	for _, tt := range []struct {
+		in, want string
+	}{
+		{"Welcome\r\n\tline\n", "Welcome\r\n\tline\n"},
+		{"back\\slash", "back\\slash"},
+		{"\x1b[31mred\x1b[0m", "\ufffd[31mred\ufffd[0m"},
+		{"\x1b]0;title\x07", "\ufffd]0;title\ufffd"},
+		{"nul\x00", "nul\ufffd"},
+		{"a\x7fb", "a\ufffdb"},
+		{"\u009b", "\ufffd"},
+		{"\u2028", "\ufffd"},
+		{"\u0378", "\ufffd"},
+		{"\xff", "\ufffd"},
+		{"\xe2\x82", "\ufffd\ufffd"},
+		{"\xed\xa0\x80", "\ufffd\ufffd\ufffd"},
+		{"\ufffd", "\ufffd"},
+		{"héllo 你好\u3000", "héllo 你好\u3000"},
+		{"\u202e", "\u202e"},
+		{"", ""},
+	} {
+		if got := escapeBanner(tt.in); got != tt.want {
+			t.Errorf("escapeBanner(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestNewClientConn(t *testing.T) {
 	errHostKeyMismatch := errors.New("host key mismatch")
 
