@@ -497,8 +497,9 @@ func ExampleCertificate_SignCert() {
 		log.Fatal("unable to create signer with algorithms: ", err)
 	}
 	certificate := ssh.Certificate{
-		Key:      publicKey,
-		CertType: ssh.UserCert,
+		Key:             publicKey,
+		CertType:        ssh.UserCert,
+		ValidPrincipals: []string{"gopher"},
 	}
 	if err := certificate.SignCert(rand.Reader, mas); err != nil {
 		log.Fatal("unable to sign certificate: ", err)

@@ -1101,9 +1101,10 @@ func TestClientUnsupportedKex(t *testing.T) {
 
 func TestClientLoginCert(t *testing.T) {
 	cert := &Certificate{
-		Key:         testPublicKeys["rsa"],
-		ValidBefore: CertTimeInfinity,
-		CertType:    UserCert,
+		Key:             testPublicKeys["rsa"],
+		ValidPrincipals: []string{"user"},
+		ValidBefore:     CertTimeInfinity,
+		CertType:        UserCert,
 	}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	certSigner, err := NewCertSigner(cert, testSigners["rsa"])
@@ -1163,7 +1164,20 @@ func TestClientLoginCert(t *testing.T) {
 	if err := tryAuth(t, clientConfig); err == nil {
 		t.Errorf("cert login passed with wrong principal")
 	}
+
+	// no principal at all, SignCert rejects it so sign the certificate
+	// directly
 	cert.ValidPrincipals = nil
+	cert.SignatureKey = testSigners["ecdsa"].PublicKey()
+	sig, err := testSigners["ecdsa"].Sign(rand.Reader, cert.bytesForSigning())
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	cert.Signature = sig
+	if err := tryAuth(t, clientConfig); err == nil {
+		t.Errorf("cert login passed without principals")
+	}
+	cert.ValidPrincipals = []string{"user"}
 
 	// added critical option
 	cert.CriticalOptions = map[string]string{"root-access": "yes"}
@@ -1913,8 +1927,9 @@ func TestPickSignatureAlgorithm(t *testing.T) {
 			// Test a signer that uses a certificate algorithm as the public key
 			// type.
 			cert := &Certificate{
-				CertType: UserCert,
-				Key:      signer.PublicKey(),
+				CertType:        UserCert,
+				Key:             signer.PublicKey(),
+				ValidPrincipals: []string{"user"},
 			}
 			cert.SignCert(rand.Reader, signer)
 
@@ -2057,9 +2072,10 @@ func (cb configurablePublicKeyCallback) auth(session []byte, user string, c pack
 
 func TestPublicKeyAndAlgoCompatibility(t *testing.T) {
 	cert := &Certificate{
-		Key:         testPublicKeys["rsa"],
-		ValidBefore: CertTimeInfinity,
-		CertType:    UserCert,
+		Key:             testPublicKeys["rsa"],
+		ValidPrincipals: []string{"user"},
+		ValidBefore:     CertTimeInfinity,
+		CertType:        UserCert,
 	}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	certSigner, err := NewCertSigner(cert, testSigners["rsa"])
@@ -2103,9 +2119,10 @@ func TestClientAuthGPGAgentCompat(t *testing.T) {
 
 func TestCertAuthOpenSSHCompat(t *testing.T) {
 	cert := &Certificate{
-		Key:         testPublicKeys["rsa"],
-		ValidBefore: CertTimeInfinity,
-		CertType:    UserCert,
+		Key:             testPublicKeys["rsa"],
+		ValidPrincipals: []string{"user"},
+		ValidBefore:     CertTimeInfinity,
+		CertType:        UserCert,
 	}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	certSigner, err := NewCertSigner(cert, testSigners["rsa"])

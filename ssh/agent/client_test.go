@@ -265,9 +265,10 @@ func TestAgent(t *testing.T) {
 
 func TestCert(t *testing.T) {
 	cert := &ssh.Certificate{
-		Key:         testPublicKeys["rsa"],
-		ValidBefore: ssh.CertTimeInfinity,
-		CertType:    ssh.UserCert,
+		Key:             testPublicKeys["rsa"],
+		ValidPrincipals: []string{"gopher1"},
+		ValidBefore:     ssh.CertTimeInfinity,
+		CertType:        ssh.UserCert,
 	}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 
@@ -538,9 +539,10 @@ func testAgentLifetime(t *testing.T, agent Agent) {
 		}
 		// Add certs to the agent.
 		cert := &ssh.Certificate{
-			Key:         testPublicKeys[keyType],
-			ValidBefore: ssh.CertTimeInfinity,
-			CertType:    ssh.UserCert,
+			Key:             testPublicKeys[keyType],
+			ValidPrincipals: []string{"gopher1"},
+			ValidBefore:     ssh.CertTimeInfinity,
+			CertType:        ssh.UserCert,
 		}
 		cert.SignCert(rand.Reader, testSigners[keyType])
 		err = agent.Add(AddedKey{

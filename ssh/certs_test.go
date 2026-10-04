@@ -53,9 +53,10 @@ func TestParseCertNestedSignatureKey(t *testing.T) {
 	}
 
 	cert := &Certificate{
-		Key:         signer.PublicKey(),
-		CertType:    UserCert,
-		ValidBefore: CertTimeInfinity,
+		Key:             signer.PublicKey(),
+		CertType:        UserCert,
+		ValidPrincipals: []string{"user"},
+		ValidBefore:     CertTimeInfinity,
 	}
 	if err := cert.SignCert(rand.Reader, signer); err != nil {
 		t.Fatal(err)
@@ -499,6 +500,30 @@ func TestEmptyPrincipal(t *testing.T) {
 	}
 }
 
+func TestCertWithoutPrincipals(t *testing.T) {
+	for _, certType := range []uint32{UserCert, HostCert} {
+		cert := &Certificate{
+			Key:          testPublicKeys["rsa"],
+			ValidBefore:  CertTimeInfinity,
+			CertType:     certType,
+			SignatureKey: testSigners["ecdsa"].PublicKey(),
+		}
+		if err := cert.SignCert(rand.Reader, testSigners["ecdsa"]); err == nil {
+			t.Errorf("SignCert with cert type %d succeeded without principals, want failure", certType)
+		}
+		// SignCert rejects a certificate without principals, so sign the
+		// certificate directly.
+		sig, err := testSigners["ecdsa"].Sign(rand.Reader, cert.bytesForSigning())
+		if err != nil {
+			t.Fatalf("Sign: %v", err)
+		}
+		cert.Signature = sig
+		if err := (&CertChecker{}).CheckCert("hostname.domain", cert); err == nil {
+			t.Errorf("CheckCert with cert type %d succeeded without principals, want failure", certType)
+		}
+	}
+}
+
 type legacyRSASigner struct {
 	Signer
 }
@@ -573,8 +598,9 @@ func TestCertTypes(t *testing.T) {
 
 			priv := m.signer
 			cert := &Certificate{
-				CertType: UserCert,
-				Key:      priv.PublicKey(),
+				CertType:        UserCert,
+				Key:             priv.PublicKey(),
+				ValidPrincipals: []string{"user"},
 			}
 			if err := cert.SignCert(rand.Reader, priv); err != nil {
 				t.Fatalf("error signing certificate: %v", err)
@@ -624,9 +650,10 @@ func TestCertSignWithMultiAlgorithmSigner(t *testing.T) {
 	}
 
 	cert := &Certificate{
-		Key:         testPublicKeys["rsa"],
-		ValidBefore: CertTimeInfinity,
-		CertType:    UserCert,
+		Key:             testPublicKeys["rsa"],
+		ValidPrincipals: []string{"user"},
+		ValidBefore:     CertTimeInfinity,
+		CertType:        UserCert,
 	}
 
 	for _, c := range cases {
@@ -647,9 +674,10 @@ func TestCertSignWithMultiAlgorithmSigner(t *testing.T) {
 
 func TestCertSignWithCertificate(t *testing.T) {
 	cert := &Certificate{
-		Key:         testPublicKeys["rsa"],
-		ValidBefore: CertTimeInfinity,
-		CertType:    UserCert,
+		Key:             testPublicKeys["rsa"],
+		ValidPrincipals: []string{"user"},
+		ValidBefore:     CertTimeInfinity,
+		CertType:        UserCert,
 	}
 	if err := cert.SignCert(rand.Reader, testSigners["ecdsa"]); err != nil {
 		t.Fatalf("SignCert: %v", err)
@@ -664,9 +692,10 @@ func TestCertSignWithCertificate(t *testing.T) {
 	}
 
 	cert1 := &Certificate{
-		Key:         testPublicKeys["ecdsa"],
-		ValidBefore: CertTimeInfinity,
-		CertType:    UserCert,
+		Key:             testPublicKeys["ecdsa"],
+		ValidPrincipals: []string{"user"},
+		ValidBefore:     CertTimeInfinity,
+		CertType:        UserCert,
 	}
 
 	if err := cert1.SignCert(rand.Reader, certSigner); err == nil {

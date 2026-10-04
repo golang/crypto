@@ -416,7 +416,8 @@ func (c *CertChecker) Authenticate(conn ConnMetadata, pubKey PublicKey) (*Permis
 
 // CheckCert checks CriticalOptions, ValidPrincipals, revocation, timestamp and
 // the signature of the certificate. Critical options that are not listed in
-// SupportedCriticalOptions are rejected, as is an empty principal.
+// SupportedCriticalOptions are rejected, as are an empty principal and a
+// certificate with an empty ValidPrincipals.
 func (c *CertChecker) CheckCert(principal string, cert *Certificate) error {
 	if c.IsRevoked != nil && c.IsRevoked(cert) {
 		return fmt.Errorf("ssh: certificate serial %d revoked", cert.Serial)
@@ -431,18 +432,8 @@ func (c *CertChecker) CheckCert(principal string, cert *Certificate) error {
 	if principal == "" {
 		return errors.New("ssh: empty principal")
 	}
-	if len(cert.ValidPrincipals) > 0 {
-		// By default, certs are valid for all users/hosts.
-		found := false
-		for _, p := range cert.ValidPrincipals {
-			if p == principal {
-				found = true
-				break
-			}
-		}
-		if !found {
-			return fmt.Errorf("ssh: principal %q not in the set of valid principals for given certificate: %q", principal, cert.ValidPrincipals)
-		}
+	if !slices.Contains(cert.ValidPrincipals, principal) {
+		return fmt.Errorf("ssh: principal %q not in the set of valid principals for given certificate: %q", principal, cert.ValidPrincipals)
 	}
 
 	clock := c.Clock
@@ -479,8 +470,11 @@ func (c *CertChecker) CheckCert(principal string, cert *Certificate) error {
 // MultiAlgorithmSigner interface the first algorithm in the list is used. This
 // is useful if you want to sign with a specific algorithm. As specified in
 // [SSH-CERTS], Section 2.1.1, authority can't be a [Certificate]. An empty
-// entry in ValidPrincipals is rejected.
+// ValidPrincipals, or an empty entry in it, is rejected.
 func (c *Certificate) SignCert(rand io.Reader, authority Signer) error {
+	if len(c.ValidPrincipals) == 0 {
+		return errors.New("ssh: certificate has no principals")
+	}
 	if slices.Contains(c.ValidPrincipals, "") {
 		return errors.New("ssh: empty principal in certificate")
 	}
