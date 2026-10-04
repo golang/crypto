@@ -181,6 +181,7 @@ type userAuthBannerMsg struct {
 	Message string `sshtype:"53"`
 	// unused, but required to allow message parsing
 	Language string
+	Rest     []byte `ssh:"rest"`
 }
 
 // See RFC 4256, section 3.2
