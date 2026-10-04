@@ -185,10 +185,11 @@ func (c *Client) Discover(ctx context.Context) (Directory, error) {
 		Nonce     string `json:"newNonce"`
 		KeyChange string `json:"keyChange"`
 		Meta      struct {
-			Terms        string   `json:"termsOfService"`
-			Website      string   `json:"website"`
-			CAA          []string `json:"caaIdentities"`
-			ExternalAcct bool     `json:"externalAccountRequired"`
+			Terms        string            `json:"termsOfService"`
+			Website      string            `json:"website"`
+			CAA          []string          `json:"caaIdentities"`
+			ExternalAcct bool              `json:"externalAccountRequired"`
+			Profiles     map[string]string `json:"profiles"`
 		}
 	}
 	if err := json.NewDecoder(res.Body).Decode(&v); err != nil {
@@ -208,6 +209,7 @@ func (c *Client) Discover(ctx context.Context) (Directory, error) {
 		Website:                 v.Meta.Website,
 		CAA:                     v.Meta.CAA,
 		ExternalAccountRequired: v.Meta.ExternalAcct,
+		Profiles:                v.Meta.Profiles,
 	}
 	return *c.dir, nil
 }
@@ -217,6 +219,20 @@ func (c *Client) directoryURL() string {
 		return c.DirectoryURL
 	}
 	return LetsEncryptURL
+}
+
+func (c *Client) validProfile(name string) bool {
+	// profile names are optional, so empty string ("") is valid
+	if name == "" {
+		return true
+	}
+	if len(c.dir.Profiles) == 0 {
+		// no profiles are supported so only valid name is empty string ("")
+		// which is caught above
+		return false
+	}
+	_, has := c.dir.Profiles[name]
+	return has
 }
 
 // CreateCert was part of the old version of ACME. It is incompatible with RFC 8555.
