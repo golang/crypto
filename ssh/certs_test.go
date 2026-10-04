@@ -461,6 +461,44 @@ func TestCertCriticalOptions(t *testing.T) {
 	}
 }
 
+func TestEmptyPrincipal(t *testing.T) {
+	cert := &Certificate{
+		ValidPrincipals: []string{"", "hostname.domain"},
+		Key:             testPublicKeys["rsa"],
+		ValidBefore:     CertTimeInfinity,
+		CertType:        HostCert,
+		SignatureKey:    testSigners["ecdsa"].PublicKey(),
+	}
+	// SignCert rejects an empty principal, so sign the certificate directly.
+	sig, err := testSigners["ecdsa"].Sign(rand.Reader, cert.bytesForSigning())
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	cert.Signature = sig
+	if _, err := ParsePublicKey(cert.Marshal()); err != nil {
+		t.Fatalf("ParsePublicKey: %v", err)
+	}
+
+	checker := &CertChecker{
+		IsHostAuthority: func(p PublicKey, addr string) bool { return true },
+	}
+	if err := checker.CheckCert("", cert); err == nil {
+		t.Error("CheckCert with an empty principal succeeded, want failure")
+	}
+	for _, addr := range []string{":22", ":2022"} {
+		if err := checker.CheckHostKey(addr, nil, cert); err == nil {
+			t.Errorf("CheckHostKey(%q) succeeded, want failure", addr)
+		}
+	}
+	if err := checker.CheckCert("hostname.domain", cert); err != nil {
+		t.Errorf("CheckCert(hostname.domain): %v", err)
+	}
+
+	if err := cert.SignCert(rand.Reader, testSigners["ecdsa"]); err == nil {
+		t.Error("SignCert with an empty principal succeeded, want failure")
+	}
+}
+
 type legacyRSASigner struct {
 	Signer
 }
