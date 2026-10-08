@@ -308,6 +308,7 @@ salsa20_256:
 	SGTU	$256, R6, R11
 	BEQ     R11, R0, loop256
 	BEQ	R6, R0, ret
+	JMP	loop256		// regenerate a fresh keystream for the tail
 
 less_than_256:
 	VXORV	V30, V30, V30	// V30=0
