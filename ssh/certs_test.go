@@ -10,6 +10,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"math/big"
@@ -71,6 +72,56 @@ func TestParseCertNestedSignatureKey(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid for certificates") {
 		t.Errorf("ParsePublicKey: got error %q, want it to mention the signature key is invalid for certificates", err)
+	}
+}
+
+func TestParseCertEmptyValidPrincipal(t *testing.T) {
+	signer, err := NewSignerFromKey(testPrivateKeys["ed25519"])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert := &Certificate{
+		Key:             signer.PublicKey(),
+		CertType:        UserCert,
+		ValidPrincipals: []string{""},
+		ValidBefore:     CertTimeInfinity,
+	}
+	if err := cert.SignCert(rand.Reader, signer); err != nil {
+		t.Fatal(err)
+	}
+
+	blob := cert.Marshal()
+
+	_, err = ParsePublicKey(blob)
+	if err == nil {
+		t.Fatal("ParsePublicKey: expected error for certificate with an empty valid principal, got nil")
+	}
+	if !errors.Is(err, errEmptyPrincipal) {
+		t.Errorf("ParsePublicKey: got error %q, want %q", err, errEmptyPrincipal)
+	}
+}
+
+func TestParseCertNilValidPrincipals(t *testing.T) {
+	signer, err := NewSignerFromKey(testPrivateKeys["ed25519"])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cert := &Certificate{
+		Key:             signer.PublicKey(),
+		CertType:        UserCert,
+		ValidPrincipals: nil,
+		ValidBefore:     CertTimeInfinity,
+	}
+	if err := cert.SignCert(rand.Reader, signer); err != nil {
+		t.Fatal(err)
+	}
+
+	blob := cert.Marshal()
+
+	if _, err := ParsePublicKey(blob); err != nil {
+		t.Fatalf("ParsePublicKey: unexpected error for certificate with nil ValidPrincipals (valid for all): %v", err)
 	}
 }
 
