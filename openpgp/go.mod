@@ -3,6 +3,4 @@ module golang.org/x/crypto/openpgp
 
 go 1.26.0
 
-require golang.org/x/crypto v0.0.0-00010101000000-000000000000
-
-replace golang.org/x/crypto => ../
+require golang.org/x/crypto v0.58.1-0.20261009181718-2f1f834330b2
