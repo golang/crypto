@@ -406,7 +406,10 @@ func findCommon(what string, client []string, server []string, isClient bool) (s
 	for _, c := range client {
 		for _, s := range server {
 			if c == s {
-				return c, nil
+				if isClient {
+					return c, nil
+				}
+				return s, nil
 			}
 		}
 	}
