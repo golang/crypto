@@ -36,6 +36,13 @@ const (
 	Size128 = 16
 )
 
+// The maximum number of bytes that can be passed to hashBlocks(). The limit
+// exists because implementations that rely on assembly routines are not
+// preemptible, so one call would otherwise hold every P in a stop-the-world
+// for as long as the input is.
+const maxAsmIters = 1024
+const maxAsmSize = BlockSize * maxAsmIters // 64KiB
+
 var errKeySize = errors.New("blake2s: invalid key size")
 
 var iv = [8]uint32{
@@ -100,6 +107,11 @@ func checkSum(sum *[Size]byte, hashSize int, data []byte) {
 		n := length &^ (BlockSize - 1)
 		if length == n {
 			n -= BlockSize
+		}
+		for n > maxAsmSize {
+			hashBlocks(&h, &c, 0, data[:maxAsmSize])
+			data = data[maxAsmSize:]
+			n -= maxAsmSize
 		}
 		hashBlocks(&h, &c, 0, data[:n])
 		data = data[n:]
@@ -209,6 +221,11 @@ func (d *digest) Write(p []byte) (n int, err error) {
 		nn := length &^ (BlockSize - 1)
 		if length == nn {
 			nn -= BlockSize
+		}
+		for nn > maxAsmSize {
+			hashBlocks(&d.h, &d.c, 0, p[:maxAsmSize])
+			p = p[maxAsmSize:]
+			nn -= maxAsmSize
 		}
 		hashBlocks(&d.h, &d.c, 0, p[:nn])
 		p = p[nn:]
