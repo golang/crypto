@@ -221,6 +221,9 @@ type subsystemRequestMsg struct {
 // RequestSubsystem requests the association of a subsystem with the session on the remote host.
 // A subsystem is a predefined command that runs in the background when the ssh session is initiated
 func (s *Session) RequestSubsystem(subsystem string) error {
+	if s.started {
+		return errors.New("ssh: session already started")
+	}
 	msg := subsystemRequestMsg{
 		Subsystem: subsystem,
 	}
@@ -228,7 +231,10 @@ func (s *Session) RequestSubsystem(subsystem string) error {
 	if err == nil && !ok {
 		err = errors.New("ssh: subsystem request failed")
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return s.start()
 }
 
 // RFC 4254 Section 6.7.
