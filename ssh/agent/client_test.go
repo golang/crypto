@@ -527,7 +527,7 @@ func testKeyringAgentLifetime(t *testing.T) {
 }
 
 func testAgentLifetime(t *testing.T, agent Agent) {
-	for _, keyType := range []string{"rsa", "dsa", "ecdsa"} {
+	for _, keyType := range []string{"rsa", "ecdsa", "ed25519"} {
 		// Add private keys to the agent.
 		err := agent.Add(AddedKey{
 			PrivateKey:   testPrivateKeys[keyType],

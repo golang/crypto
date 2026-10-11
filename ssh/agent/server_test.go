@@ -6,10 +6,10 @@ package agent
 
 import (
 	"crypto"
+	"crypto/dsa"
 	"crypto/rand"
 	"fmt"
 	"io"
-	"math/big"
 	pseudorand "math/rand"
 	"reflect"
 	"strings"
@@ -246,72 +246,27 @@ func addKeyToAgent(key crypto.PrivateKey) error {
 	return verifyKey(sshAgent)
 }
 
-func TestParseDSAKeyHugeQ(t *testing.T) {
-	P := new(big.Int).Lsh(big.NewInt(1), 1023)
-	Q := new(big.Int).Lsh(big.NewInt(1), 20000) // very large
-	// G and Y: dummy values, just needs to be < P to pass that specific check.
-	G := big.NewInt(2)
-	Y := big.NewInt(5)
-
-	req := ssh.Marshal(dsaKeyMsg{
-		Type: ssh.InsecureKeyAlgoDSA,
-		P:    P,
-		Q:    Q,
-		G:    G,
-		Y:    Y,
-		X:    big.NewInt(1),
-	})
-
-	_, err := parseDSAKey(req)
-	if err == nil {
-		t.Fatal("parseDSAKey accepted a DSA key with large Q")
+func TestDSAKeyUnsupported(t *testing.T) {
+	s := &server{NewKeyring()}
+	for _, algo := range []string{ssh.InsecureKeyAlgoDSA, ssh.InsecureCertAlgoDSAv01} {
+		req := ssh.Marshal(struct {
+			Type string `sshtype:"17|25"`
+			Rest []byte `ssh:"rest"`
+		}{Type: algo})
+		if err := s.insertIdentity(req); err == nil {
+			t.Errorf("server accepted a %s key", algo)
+		}
 	}
 
-	expectedError := "unsupported DSA sub-prime size"
-	if !strings.Contains(err.Error(), expectedError) {
-		t.Errorf("unexpected error message: got %q, want substring %q", err.Error(), expectedError)
+	priv := &dsa.PrivateKey{}
+	if err := NewKeyring().Add(AddedKey{PrivateKey: priv}); err == nil {
+		t.Error("keyring accepted a DSA key")
 	}
-}
 
-func TestParseDSAKeyYOutOfRange(t *testing.T) {
-	// Valid 1024/160 parameters (values don't need to be a real DSA group,
-	// they only need to pass the checkDSAParams bit-length checks and the
-	// G < P / G > 0 checks).
-	P := new(big.Int).Lsh(big.NewInt(1), 1023)
-	P.SetBit(P, 0, 1) // make P odd so it can pass as a prime candidate shape
-	Q := new(big.Int).Lsh(big.NewInt(1), 159)
-	Q.SetBit(Q, 0, 1)
-	G := big.NewInt(2)
-
-	for _, tc := range []struct {
-		name string
-		Y    *big.Int
-	}{
-		{"Y_zero", big.NewInt(0)},
-		{"Y_negative", big.NewInt(-1)},
-		{"Y_equals_P", new(big.Int).Set(P)},
-		{"Y_greater_than_P", new(big.Int).Add(P, big.NewInt(1))},
-		{"Y_much_greater_than_P", new(big.Int).Lsh(big.NewInt(1), 20000)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			req := ssh.Marshal(dsaKeyMsg{
-				Type: ssh.InsecureKeyAlgoDSA,
-				P:    P,
-				Q:    Q,
-				G:    G,
-				Y:    tc.Y,
-				X:    big.NewInt(1),
-			})
-
-			_, err := parseDSAKey(req)
-			if err == nil {
-				t.Fatalf("parseDSAKey accepted a DSA key with Y=%s (P=%s)", tc.Y, P)
-			}
-			expectedError := "DSA public value Y out of range"
-			if !strings.Contains(err.Error(), expectedError) {
-				t.Errorf("unexpected error message: got %q, want substring %q", err.Error(), expectedError)
-			}
-		})
+	agent, cleanup := startKeyringAgent(t)
+	defer cleanup()
+	if err := agent.Add(AddedKey{PrivateKey: priv}); err == nil {
+		t.Error("client sent a DSA key")
 	}
 }
 

@@ -22,11 +22,9 @@ import (
 // field.
 const (
 	CertAlgoRSAv01 = "ssh-rsa-cert-v01@openssh.com"
-	// Deprecated: DSA is only supported at insecure key sizes, and was removed
-	// from major implementations.
+	// Deprecated: DSA is no longer supported.
 	CertAlgoDSAv01 = InsecureCertAlgoDSAv01
-	// Deprecated: DSA is only supported at insecure key sizes, and was removed
-	// from major implementations.
+	// Deprecated: DSA is no longer supported.
 	InsecureCertAlgoDSAv01 = "ssh-dss-cert-v01@openssh.com"
 	CertAlgoECDSA256v01    = "ecdsa-sha2-nistp256-cert-v01@openssh.com"
 	CertAlgoECDSA384v01    = "ecdsa-sha2-nistp384-cert-v01@openssh.com"
@@ -525,19 +523,18 @@ func (c *Certificate) SignCert(rand io.Reader, authority Signer) error {
 //
 // This map must be kept in sync with the one in agent/client.go.
 var certKeyAlgoNames = map[string]string{
-	CertAlgoRSAv01:         KeyAlgoRSA,
-	CertAlgoRSASHA256v01:   KeyAlgoRSASHA256,
-	CertAlgoRSASHA512v01:   KeyAlgoRSASHA512,
-	InsecureCertAlgoDSAv01: InsecureKeyAlgoDSA,
-	CertAlgoECDSA256v01:    KeyAlgoECDSA256,
-	CertAlgoECDSA384v01:    KeyAlgoECDSA384,
-	CertAlgoECDSA521v01:    KeyAlgoECDSA521,
-	CertAlgoSKECDSA256v01:  KeyAlgoSKECDSA256,
-	CertAlgoED25519v01:     KeyAlgoED25519,
-	CertAlgoSKED25519v01:   KeyAlgoSKED25519,
-	CertAlgoMLDSA44v01Go:   KeyAlgoMLDSA44,
-	CertAlgoMLDSA65v01Go:   KeyAlgoMLDSA65,
-	CertAlgoMLDSA87v01Go:   KeyAlgoMLDSA87,
+	CertAlgoRSAv01:        KeyAlgoRSA,
+	CertAlgoRSASHA256v01:  KeyAlgoRSASHA256,
+	CertAlgoRSASHA512v01:  KeyAlgoRSASHA512,
+	CertAlgoECDSA256v01:   KeyAlgoECDSA256,
+	CertAlgoECDSA384v01:   KeyAlgoECDSA384,
+	CertAlgoECDSA521v01:   KeyAlgoECDSA521,
+	CertAlgoSKECDSA256v01: KeyAlgoSKECDSA256,
+	CertAlgoED25519v01:    KeyAlgoED25519,
+	CertAlgoSKED25519v01:  KeyAlgoSKED25519,
+	CertAlgoMLDSA44v01Go:  KeyAlgoMLDSA44,
+	CertAlgoMLDSA65v01Go:  KeyAlgoMLDSA65,
+	CertAlgoMLDSA87v01Go:  KeyAlgoMLDSA87,
 }
 
 // underlyingAlgo returns the signature algorithm associated with algo (which is

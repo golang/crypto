@@ -981,21 +981,21 @@ func TestAuthMethodInvalidPublicKey(t *testing.T) {
 	config := &ClientConfig{
 		User: "testuser",
 		Auth: []AuthMethod{
-			PublicKeys(testSigners["dsa"]),
+			PublicKeys(testSigners["ed25519"]),
 		},
 	}
 
 	if err := tryAuth(t, config); err == nil {
-		t.Fatalf("dsa private key should not have authenticated with rsa public key")
+		t.Fatalf("ed25519 private key should not have authenticated with rsa public key")
 	}
 }
 
 // the client should authenticate with the second key
-func TestAuthMethodRSAandDSA(t *testing.T) {
+func TestAuthMethodEd25519AndRSA(t *testing.T) {
 	config := &ClientConfig{
 		User: "testuser",
 		Auth: []AuthMethod{
-			PublicKeys(testSigners["dsa"], testSigners["rsa"]),
+			PublicKeys(testSigners["ed25519"], testSigners["rsa"]),
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	}
@@ -1138,7 +1138,7 @@ func TestClientLoginCert(t *testing.T) {
 	cert.Serial = 1
 
 	// sign with wrong key
-	cert.SignCert(rand.Reader, testSigners["dsa"])
+	cert.SignCert(rand.Reader, testSigners["ed25519"])
 	if err := tryAuth(t, clientConfig); err == nil {
 		t.Errorf("cert login passed with non-authoritative key")
 	}
@@ -1411,7 +1411,7 @@ func TestClientAuthMaxAuthTries(t *testing.T) {
 func TestClientAuthMaxAuthTriesPublicKey(t *testing.T) {
 	signers := []Signer{}
 	for i := 0; i < 6+5; i++ {
-		signers = append(signers, testSigners["dsa"])
+		signers = append(signers, testSigners["ed25519"])
 	}
 
 	validConfig := &ClientConfig{
@@ -1432,7 +1432,7 @@ func TestClientAuthMaxAuthTriesPublicKey(t *testing.T) {
 	invalidConfig := &ClientConfig{
 		User: "testuser",
 		Auth: []AuthMethod{
-			PublicKeys(slices.Concat(signers, []Signer{testSigners["dsa"], testSigners["rsa"]})...),
+			PublicKeys(slices.Concat(signers, []Signer{testSigners["ed25519"], testSigners["rsa"]})...),
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	}

@@ -352,7 +352,6 @@ func TestHostKeyCheck(t *testing.T) {
 
 	// change the keys.
 	hostDB.keys[ssh.KeyAlgoRSA][25]++
-	hostDB.keys[ssh.InsecureKeyAlgoDSA][25]++
 	hostDB.keys[ssh.KeyAlgoECDSA256][25]++
 
 	test := clientTest{

@@ -184,7 +184,8 @@ type ServerConfig struct {
 	// authentication algorithms. Note that this should not include certificate
 	// types since those use the underlying algorithm. This list is sent to the
 	// client if it supports the server-sig-algs extension. Order is irrelevant.
-	// If unspecified then a default set of algorithms is used.
+	// If unspecified then a default set of algorithms is used. Unsupported
+	// algorithms are ignored.
 	PublicKeyAuthAlgorithms []string
 
 	hostKeys []Signer
@@ -361,12 +362,14 @@ func NewServerConn(c net.Conn, config *ServerConfig) (*ServerConn, <-chan NewCha
 	if len(fullConf.PublicKeyAuthAlgorithms) == 0 {
 		fullConf.PublicKeyAuthAlgorithms = defaultPubKeyAuthAlgos
 	} else {
-		for _, algo := range fullConf.PublicKeyAuthAlgorithms {
-			if !slices.Contains(SupportedAlgorithms().PublicKeyAuths, algo) && !slices.Contains(InsecureAlgorithms().PublicKeyAuths, algo) {
-				c.Close()
-				return nil, nil, nil, fmt.Errorf("ssh: unsupported public key authentication algorithm %s", algo)
-			}
+		algos := slices.DeleteFunc(slices.Clone(fullConf.PublicKeyAuthAlgorithms), func(algo string) bool {
+			return !slices.Contains(supportedPubKeyAuthAlgos, algo) && !slices.Contains(insecurePubKeyAuthAlgos, algo)
+		})
+		if len(algos) == 0 {
+			c.Close()
+			return nil, nil, nil, errors.New("ssh: no supported public key authentication algorithms")
 		}
+		fullConf.PublicKeyAuthAlgorithms = algos
 	}
 
 	s := &connection{

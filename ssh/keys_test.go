@@ -14,6 +14,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"encoding/asn1"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/pem"
@@ -32,8 +33,6 @@ func rawKey(pub PublicKey) interface{} {
 	switch k := pub.(type) {
 	case *rsaPublicKey:
 		return (*rsa.PublicKey)(k)
-	case *dsaPublicKey:
-		return (*dsa.PublicKey)(k)
 	case *ecdsaPublicKey:
 		return (*ecdsa.PublicKey)(k)
 	case ed25519PublicKey:
@@ -545,23 +544,71 @@ func TestParseEncryptedPrivateKeyExcessiveBcryptRounds(t *testing.T) {
 	}
 }
 
-func TestParseDSA(t *testing.T) {
-	// We actually exercise the ParsePrivateKey codepath here, as opposed to
-	// using the ParseRawPrivateKey+NewSignerFromKey path that testdata_test.go
-	// uses.
-	s, err := ParsePrivateKey(testdata.PEMBytes["dsa"])
-	if err != nil {
-		t.Fatalf("ParsePrivateKey returned error: %s", err)
+func TestDSAUnsupported(t *testing.T) {
+	dsaPEM := []byte(`-----BEGIN DSA PRIVATE KEY-----
+MIIBuwIBAAKBgQD6PDSEyXiI9jfNs97WuM46MSDCYlOqWw80ajN16AohtBncs1YB
+lHk//dQOvCYOsYaE+gNix2jtoRjwXhDsc25/IqQbU1ahb7mB8/rsaILRGIbA5WH3
+EgFtJmXFovDz3if6F6TzvhFpHgJRmLYVR8cqsezL3hEZOvvs2iH7MorkxwIVAJHD
+nD82+lxh2fb4PMsIiaXudAsBAoGAQRf7Q/iaPRn43ZquUhd6WwvirqUj+tkIu6eV
+2nZWYmXLlqFQKEy4Tejl7Wkyzr2OSYvbXLzo7TNxLKoWor6ips0phYPPMyXld14r
+juhT24CrhOzuLMhDduMDi032wDIZG4Y+K7ElU8Oufn8Sj5Wge8r6ANmmVgmFfynr
+FhdYCngCgYEA3ucGJ93/Mx4q4eKRDxcWD3QzWyqpbRVRRV1Vmih9Ha/qC994nJFz
+DQIdjxDIT2Rk2AGzMqFEB68Zc3O+Wcsmz5eWWzEwFxaTwOGWTyDqsDRLm3fD+QYj
+nOwuxb0Kce+gWI8voWcqC9cyRm09jGzu2Ab3Bhtpg8JJ8L7gS3MRZK4CFEx4UAfY
+Fmsr0W6fHB9nhS4/UXM8
+-----END DSA PRIVATE KEY-----
+`)
+	if _, err := ParseRawPrivateKey(dsaPEM); err == nil {
+		t.Error("ParseRawPrivateKey accepted a DSA key")
+	}
+	if _, err := ParsePrivateKey(dsaPEM); err == nil {
+		t.Error("ParsePrivateKey accepted a DSA key")
 	}
 
-	data := []byte("sign me")
-	sig, err := s.Sign(rand.Reader, data)
-	if err != nil {
-		t.Fatalf("dsa.Sign: %v", err)
+	block, _ := pem.Decode(dsaPEM)
+	if _, err := ParseDSAPrivateKey(block.Bytes); err == nil {
+		t.Error("ParseDSAPrivateKey accepted a DSA key")
 	}
 
-	if err := s.PublicKey().Verify(data, sig); err != nil {
-		t.Errorf("Verify failed: %v", err)
+	var k struct {
+		Version       int
+		P, Q, G, Y, X *big.Int
+	}
+	if _, err := asn1.Unmarshal(block.Bytes, &k); err != nil {
+		t.Fatal(err)
+	}
+	priv := &dsa.PrivateKey{
+		PublicKey: dsa.PublicKey{
+			Parameters: dsa.Parameters{P: k.P, Q: k.Q, G: k.G},
+			Y:          k.Y,
+		},
+		X: k.X,
+	}
+	if _, err := NewSignerFromKey(priv); err == nil {
+		t.Error("NewSignerFromKey accepted a DSA key")
+	}
+	if _, err := NewPublicKey(&priv.PublicKey); err == nil {
+		t.Error("NewPublicKey accepted a DSA key")
+	}
+
+	pub := Marshal(struct {
+		Name       string
+		P, Q, G, Y *big.Int
+	}{InsecureKeyAlgoDSA, priv.P, priv.Q, priv.G, priv.Y})
+	if _, err := ParsePublicKey(pub); err == nil {
+		t.Error("ParsePublicKey accepted a DSA key")
+	}
+	authorizedKey := InsecureKeyAlgoDSA + " " + base64.StdEncoding.EncodeToString(pub)
+	if _, _, _, _, err := ParseAuthorizedKey([]byte(authorizedKey)); err == nil {
+		t.Error("ParseAuthorizedKey accepted a DSA key")
+	}
+
+	cert := Marshal(struct {
+		Name string
+		Rest []byte `ssh:"rest"`
+	}{InsecureCertAlgoDSAv01, pub})
+	if _, err := ParsePublicKey(cert); err == nil {
+		t.Error("ParsePublicKey accepted a DSA certificate")
 	}
 }
 
@@ -602,72 +649,6 @@ func TestMarshalParsePublicKey(t *testing.T) {
 	}
 	if !reflect.DeepEqual(actPub, pub) {
 		t.Errorf("got %v, expected %v", actPub, pub)
-	}
-}
-
-func TestParseDSAHugeQ(t *testing.T) {
-	P := new(big.Int).Lsh(big.NewInt(1), 1023)
-	Q := new(big.Int).Lsh(big.NewInt(1), 20000) // very large
-	// G and Y: Dummy values, just needs to be < P to pass that specific check
-	G := big.NewInt(2)
-	Y := big.NewInt(5)
-
-	rawKey := struct {
-		P, Q, G, Y *big.Int
-	}{
-		P: P,
-		Q: Q,
-		G: G,
-		Y: Y,
-	}
-
-	inputBytes := Marshal(&rawKey)
-
-	_, _, err := parseDSA(inputBytes)
-	if err == nil {
-		t.Fatal("parseDSA accepted a DSA key with large Q")
-	}
-
-	expectedError := "ssh: unsupported DSA sub-prime size"
-	if !strings.Contains(err.Error(), expectedError) {
-		t.Errorf("unexpected error message: got %q, want substring %q", err.Error(), expectedError)
-	}
-}
-
-func TestParseDSAYOutOfRange(t *testing.T) {
-	// Valid 1024/160 parameters (values don't need to be a real DSA group,
-	// they only need to pass the checkDSAParams bit-length checks and the
-	// G < P / G > 0 checks).
-	P := new(big.Int).Lsh(big.NewInt(1), 1023)
-	P.SetBit(P, 0, 1) // make P odd so it can pass as a prime candidate shape
-	Q := new(big.Int).Lsh(big.NewInt(1), 159)
-	Q.SetBit(Q, 0, 1)
-	G := big.NewInt(2)
-
-	for _, tc := range []struct {
-		name string
-		Y    *big.Int
-	}{
-		{"Y_zero", big.NewInt(0)},
-		{"Y_negative", big.NewInt(-1)},
-		{"Y_equals_P", new(big.Int).Set(P)},
-		{"Y_greater_than_P", new(big.Int).Add(P, big.NewInt(1))},
-		{"Y_much_greater_than_P", new(big.Int).Lsh(big.NewInt(1), 20000)},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			rawKey := struct {
-				P, Q, G, Y *big.Int
-			}{P: P, Q: Q, G: G, Y: tc.Y}
-
-			_, _, err := parseDSA(Marshal(&rawKey))
-			if err == nil {
-				t.Fatalf("parseDSA accepted a DSA key with Y=%s (P=%s)", tc.Y, P)
-			}
-			expectedError := "DSA public value Y out of range"
-			if !strings.Contains(err.Error(), expectedError) {
-				t.Errorf("unexpected error message: got %q, want substring %q", err.Error(), expectedError)
-			}
-		})
 	}
 }
 

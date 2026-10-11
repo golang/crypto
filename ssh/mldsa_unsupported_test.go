@@ -69,8 +69,7 @@ func TestMLDSAUnsupported(t *testing.T) {
 				t.Errorf("ParsePublicKey(certificate): got %v, want %v", err, errors.ErrUnsupported)
 			}
 
-			// Configuring the algorithm must be rejected up front, rather than
-			// failing once a client tries to use it.
+			// A configuration with only unavailable algorithms is rejected.
 			c1, c2, err := netPipe()
 			if err != nil {
 				t.Fatalf("netPipe: %v", err)
@@ -85,8 +84,8 @@ func TestMLDSAUnsupported(t *testing.T) {
 			}
 			conf.AddHostKey(testSigners["ed25519"])
 			if _, _, _, err := NewServerConn(c1, conf); err == nil ||
-				!strings.Contains(err.Error(), "unsupported public key authentication algorithm") {
-				t.Errorf("NewServerConn: got %v, want an unsupported algorithm error", err)
+				!strings.Contains(err.Error(), "no supported public key authentication algorithms") {
+				t.Errorf("NewServerConn: got %v, want a no supported algorithms error", err)
 			}
 		})
 	}

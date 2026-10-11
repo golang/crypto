@@ -30,7 +30,7 @@ func TestClientAuthRestrictedPublicKeyAlgos(t *testing.T) {
 		wantError bool
 	}{
 		{"rsa", testSigners["rsa"], false},
-		{"dsa", testSigners["dsa"], true},
+		{"ecdsa", testSigners["ecdsa"], true},
 		{"ed25519", testSigners["ed25519"], true},
 	} {
 		c1, c2, err := netPipe()
@@ -280,6 +280,70 @@ func TestNewServerConnValidationErrors(t *testing.T) {
 	}
 }
 
+// recordExtensionsAuth records the extensions received from the server.
+type recordExtensionsAuth struct {
+	AuthMethod
+	extensions map[string][]byte
+}
+
+func (a *recordExtensionsAuth) auth(session []byte, user string, c packetConn, rand io.Reader, extensions map[string][]byte) (authResult, []string, error) {
+	a.extensions = extensions
+	return a.AuthMethod.auth(session, user, c, rand, extensions)
+}
+
+func TestPublicKeyAuthAlgorithmsIgnoreUnsupported(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PublicKeyAuthAlgorithms: []string{KeyAlgoRSASHA256, InsecureKeyAlgoDSA, "unsupported@example.com"},
+		PublicKeyCallback: func(ConnMetadata, PublicKey) (*Permissions, error) {
+			return nil, nil
+		},
+	}
+	serverConf.AddHostKey(testSigners["ecdsap256"])
+
+	serverErr := make(chan error, 1)
+	go func() {
+		_, _, _, err := NewServerConn(c1, serverConf)
+		serverErr <- err
+	}()
+
+	auth := &recordExtensionsAuth{AuthMethod: PublicKeys(testSigners["rsa"])}
+	clientConf := &ClientConfig{
+		User:            "user",
+		Auth:            []AuthMethod{auth},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+	if _, _, _, err := NewClientConn(c2, "", clientConf); err != nil {
+		t.Fatalf("NewClientConn: %v", err)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatalf("NewServerConn: %v", err)
+	}
+	if got, want := string(auth.extensions["server-sig-algs"]), KeyAlgoRSASHA256; got != want {
+		t.Errorf("got server-sig-algs %q, want %q", got, want)
+	}
+
+	serverConf = &ServerConfig{
+		PublicKeyAuthAlgorithms: []string{InsecureKeyAlgoDSA, "unsupported@example.com"},
+	}
+	c := &markerConn{}
+	if _, _, _, err := NewServerConn(c, serverConf); err == nil {
+		t.Fatal("NewServerConn with only unsupported public key auth algorithms succeeded")
+	}
+	if !c.isClosed() {
+		t.Fatal("NewServerConn with only unsupported public key auth algorithms left connection open")
+	}
+	if c.isUsed() {
+		t.Fatal("NewServerConn with only unsupported public key auth algorithms used connection")
+	}
+}
+
 func TestBannerError(t *testing.T) {
 	serverConfig := &ServerConfig{
 		BannerCallback: func(ConnMetadata) string {
@@ -365,7 +429,7 @@ func TestPublicKeyCallbackLastSeen(t *testing.T) {
 		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
 			lastSeenKey = key
 			fmt.Printf("seen %#v\n", key)
-			if _, ok := key.(*dsaPublicKey); !ok {
+			if _, ok := key.(*ecdsaPublicKey); !ok {
 				return nil, errors.New("nope")
 			}
 			return nil, nil
@@ -382,7 +446,7 @@ func TestPublicKeyCallbackLastSeen(t *testing.T) {
 	clientConf := ClientConfig{
 		User: "user",
 		Auth: []AuthMethod{
-			PublicKeys(testSigners["rsa"], testSigners["dsa"], testSigners["ed25519"]),
+			PublicKeys(testSigners["rsa"], testSigners["ecdsa"], testSigners["ed25519"]),
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	}
@@ -393,10 +457,10 @@ func TestPublicKeyCallbackLastSeen(t *testing.T) {
 	}
 	<-done
 
-	expectedPublicKey := testSigners["dsa"].PublicKey().Marshal()
+	expectedPublicKey := testSigners["ecdsa"].PublicKey().Marshal()
 	lastSeenMarshalled := lastSeenKey.Marshal()
 	if !bytes.Equal(lastSeenMarshalled, expectedPublicKey) {
-		t.Errorf("unexpected key: got %#v, want %#v", lastSeenKey, testSigners["dsa"].PublicKey())
+		t.Errorf("unexpected key: got %#v, want %#v", lastSeenKey, testSigners["ecdsa"].PublicKey())
 	}
 }
 
