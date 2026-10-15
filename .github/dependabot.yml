@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"
+    directories:
+      - "/"
+      - "/**"
+    schedule:
+      interval: "weekly"
+    # This repo is a fork/mirror of golang.org/x/crypto. The golang.org/x/*
+    # dependencies (notably x/net, which upstream pins via "// tagx:ignore" to
+    # avoid the golang.org/x release dependency cycle) are managed to match
+    # upstream, not by Dependabot. Disable version updates and ignore x/* so
+    # Dependabot stops proposing bumps that diverge from upstream.
+    open-pull-requests-limit: 0
+    ignore:
+      - dependency-name: "golang.org/x/*"
