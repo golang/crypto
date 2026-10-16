@@ -346,6 +346,27 @@ func TestUint8LengthPrefixedNested(t *testing.T) {
 	}
 }
 
+func TestUint32LengthPrefixedSimple(t *testing.T) {
+	var b Builder
+	b.AddUint32LengthPrefixed(func(c *Builder) {
+		c.AddUint8(23)
+		c.AddUint8(42)
+	})
+	if err := builderBytesEq(&b, 0, 0, 0, 2, 23, 42); err != nil {
+		t.Error(err)
+	}
+	var s, out String = String(b.BytesOrPanic()), nil
+	if !s.ReadUint32LengthPrefixed(&out) {
+		t.Error("read failed")
+	}
+	if len(out) != 2 || out[0] != 23 || out[1] != 42 {
+		t.Error("read incorrect value")
+	}
+	if len(s) != 0 {
+		t.Error("incorrect source length")
+	}
+}
+
 func TestPreallocatedBuffer(t *testing.T) {
 	var buf [5]byte
 	b := NewBuilder(buf[0:0])
