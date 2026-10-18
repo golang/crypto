@@ -166,7 +166,8 @@ func parseAuthorizedKey(in []byte) (out PublicKey, comment string, err error) {
 // can be called repeatedly to parse multiple entries.
 //
 // If no entries were found in the input then err will be io.EOF. Otherwise a
-// non-nil err value indicates a parse error.
+// non-nil err value indicates a parse error, and rest contains the input
+// following the invalid entry.
 func ParseKnownHosts(in []byte) (marker string, hosts []string, pubKey PublicKey, comment string, rest []byte, err error) {
 	for len(in) > 0 {
 		end := bytes.IndexByte(in, '\n')
@@ -197,7 +198,7 @@ func ParseKnownHosts(in []byte) (marker string, hosts []string, pubKey PublicKey
 		// number of fields.
 		keyFields := asciiFields(in)
 		if len(keyFields) < 3 {
-			return "", nil, nil, "", nil, errors.New("ssh: invalid entry in known_hosts data")
+			return "", nil, nil, "", rest, errors.New("ssh: invalid entry in known_hosts data")
 		}
 
 		// keyFields[0] is either "@cert-authority", "@revoked" or a comma separated
@@ -217,10 +218,10 @@ func ParseKnownHosts(in []byte) (marker string, hosts []string, pubKey PublicKey
 
 		key := bytes.Join(keyFields[2:], []byte(" "))
 		if pubKey, comment, err = parseAuthorizedKey(key); err != nil {
-			return "", nil, nil, "", nil, err
+			return "", nil, nil, "", rest, err
 		}
 		if pubKey.Type() != wantType {
-			return "", nil, nil, "", nil, fmt.Errorf("ssh: known hosts key type mismatch: human-readable type %q, encoded type %q", wantType, pubKey.Type())
+			return "", nil, nil, "", rest, fmt.Errorf("ssh: known hosts key type mismatch: human-readable type %q, encoded type %q", wantType, pubKey.Type())
 		}
 
 		return marker, strings.Split(hosts, ","), pubKey, comment, rest, nil

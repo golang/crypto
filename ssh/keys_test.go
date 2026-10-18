@@ -1035,6 +1035,24 @@ var knownHostsParseTests = []struct {
 		"", "", nil, "",
 	},
 	{
+		"localhost ssh-rsa aabbccdd\nnext line",
+		"short read",
+
+		"", "", nil, "next line",
+	},
+	{
+		"localhost ssh-ed25519 {RSAPUB}\nnext line",
+		"key type mismatch",
+
+		"", "", nil, "next line",
+	},
+	{
+		"localhost ssh-rsa\nnext line",
+		"invalid entry",
+
+		"", "", nil, "next line",
+	},
+	{
 		// Declared key type does not match the type embedded in the blob.
 		"localhost ssh-ed25519 {RSAPUB}",
 		"key type mismatch",
@@ -1117,6 +1135,9 @@ func TestKnownHostsParsing(t *testing.T) {
 				t.Errorf("#%d: unexpectedly failed with %q", i, err)
 			} else if !strings.Contains(err.Error(), test.err) {
 				t.Errorf("#%d: expected error containing %q, but got %q", i, test.err, err)
+			}
+			if rest := string(rest); rest != test.rest {
+				t.Errorf("#%d: expected remaining input to be %q, but got %q", i, test.rest, rest)
 			}
 			continue
 		} else if len(test.err) != 0 {
