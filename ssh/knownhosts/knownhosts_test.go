@@ -19,6 +19,7 @@ import (
 )
 
 const edKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIGBAarftlLeoyf+v+nVchEZII/vna2PCV8FaX4vsF5BX"
+const dsaKeyStr = "ssh-dss AAAAB3NzaC1kc3MAAACBAP1/U4EddRIpUt9KnC7s5Of2EbdSPO9EAMMeP4C2USZpRV1AIlH7WT2NWPq/xfW6MPbLm1Vs14E7gB00b/JmYLdrmVClpJ+f6AR7ECLCT7up1/63xhv4O1fnxqimFQ8E+4P208UewwI1VBNaFpEy9nXzrith1yrv8iIDGZ3RSAHHAAAAFQCXYFCPFSMLzLKSuYKi64QL8Fgc9QAAAIEA9+GghdabPd7LvKtcNrhXuXmUr7v6OuqC+VdMCz0HgmdRWVeOutRZT+ZxBxCBgLRJFnEj6EwoFhO3zwkyjMim4TwWeotUfI0o4KOuHiuzpnWRbqN/C/ohNWLx+2J6ASQ7zKTxvqhRkImog9/hWuWfBpKLZl6Ae1UlZAFMO/7PSSoAAACBAPZwRh7RHMh3DL1qX3E2xOxvV8UMqqaw4u1z3G81b/6rkFbKjjQS/2zU1W0r3jSKt0P+xUjRZbpbBSHy6ZA8Xb2Ow/k1q0Z+RgjN0hXBpPMH1eD41i/QFsjj7b+Kg/ot8GlhFGH7X3kfQ/Vnh+BA3ieCbg2YkwBPqfABwg0Ow+wq"
 const alternateEdKeyStr = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIIXffBYeYL+WVzVru8npl5JHt2cjlr4ornFTWzoij9sx"
 const ecKeyStr = "ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBNLCu01+wpXe3xB5olXCN4SqU2rQu0qjSRKJO4Bg+JRCPU+ENcgdA5srTU8xYDz/GEa4dzK5ldPw4J/gZgSXCMs="
 
@@ -475,11 +476,8 @@ func TestIssue36126(t *testing.T) {
 func TestUnicodeSpace(t *testing.T) {
 	line := fmt.Sprintf("server.org %s  %s", edKey.Type(), base64.StdEncoding.EncodeToString(edKey.Marshal()))
 
-	db := newHostKeyDB()
-	err := db.Read(bytes.NewBufferString(line), "testdb")
-
-	if err == nil {
-		t.Fatal("Read succeeded on line with Unicode space, expected error due to strict ASCII parsing")
+	if _, _, _, err := parseLine([]byte(line)); err == nil {
+		t.Fatal("parseLine succeeded on line with Unicode space, expected error due to strict ASCII parsing")
 	}
 }
 
@@ -513,10 +511,9 @@ func TestUnicodeSpaceTrimming(t *testing.T) {
 func TestKeyTypeMismatch(t *testing.T) {
 	line := fmt.Sprintf("server.org ssh-rsa %s", base64.StdEncoding.EncodeToString(edKey.Marshal()))
 
-	db := newHostKeyDB()
-	err := db.Read(bytes.NewBufferString(line), "testdb")
+	_, _, _, err := parseLine([]byte(line))
 	if err == nil {
-		t.Fatal("Read succeeded on line with key type mismatch, expected error")
+		t.Fatal("parseLine succeeded on line with key type mismatch, expected error")
 	}
 
 	expectedErr := `knownhosts: key type mismatch: found "ssh-ed25519", want "ssh-rsa"`
@@ -527,10 +524,9 @@ func TestKeyTypeMismatch(t *testing.T) {
 
 func TestMultipleMarkers(t *testing.T) {
 	lineDouble := fmt.Sprintf("@cert-authority @revoked server.org %s %s", edKey.Type(), base64.StdEncoding.EncodeToString(edKey.Marshal()))
-	db := newHostKeyDB()
-	err := db.Read(bytes.NewBufferString(lineDouble), "testdb")
+	_, _, _, err := parseLine([]byte(lineDouble))
 	if err == nil {
-		t.Fatal("Read succeeded on line with multiple markers, expected error")
+		t.Fatal("parseLine succeeded on line with multiple markers, expected error")
 	}
 	expectedError := "unexpected marker"
 	if !strings.Contains(err.Error(), expectedError) {
@@ -538,9 +534,9 @@ func TestMultipleMarkers(t *testing.T) {
 	}
 
 	lineUnknown := fmt.Sprintf("@unknown-marker server.org %s %s", edKey.Type(), base64.StdEncoding.EncodeToString(edKey.Marshal()))
-	err = db.Read(bytes.NewBufferString(lineUnknown), "testdb")
+	_, _, _, err = parseLine([]byte(lineUnknown))
 	if err == nil {
-		t.Fatal("Read succeeded on line with unknown marker, expected error")
+		t.Fatal("parseLine succeeded on line with unknown marker, expected error")
 	}
 	if !strings.Contains(err.Error(), expectedError) {
 		t.Errorf("got error %q, want it to contain %q", err.Error(), expectedError)
@@ -550,15 +546,72 @@ func TestMultipleMarkers(t *testing.T) {
 func TestUnknownMarker(t *testing.T) {
 	line := fmt.Sprintf("@unknown-marker server.org %s %s", edKey.Type(), base64.StdEncoding.EncodeToString(edKey.Marshal()))
 
-	db := newHostKeyDB()
-	err := db.Read(bytes.NewBufferString(line), "testdb")
-
+	_, _, _, err := parseLine([]byte(line))
 	if err == nil {
-		t.Fatal("Read succeeded on line with unknown marker, expected error")
+		t.Fatal("parseLine succeeded on line with unknown marker, expected error")
 	}
 
 	expectedError := "unexpected marker"
 	if !strings.Contains(err.Error(), expectedError) {
 		t.Errorf("got error %q, want it to contain %q", err.Error(), expectedError)
+	}
+}
+
+func TestReadSkipsInvalidLines(t *testing.T) {
+	edKeyBlob := base64.StdEncoding.EncodeToString(edKey.Marshal())
+	invalid := []string{
+		"server.org",
+		"server.org ssh-ed25519",
+		"server.org ssh-ed25519 !!!",
+		"server.org ssh-rsa " + edKeyBlob,
+		"server.org ssh-unknown " + edKeyBlob,
+		"@unknown-marker server.org " + edKeyStr,
+		"@cert-authority @revoked server.org " + edKeyStr,
+		"@revoked * " + dsaKeyStr,
+		"@cert-authority * " + dsaKeyStr,
+		"server.org " + dsaKeyStr,
+		"|1|bad|hash " + edKeyStr,
+		"[server.org " + edKeyStr,
+	}
+	input := strings.Join(invalid, "\n") + "\nserver.org " + edKeyStr + "\n"
+
+	db := newHostKeyDB()
+	if err := db.Read(strings.NewReader(input), "testdb"); err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(db.revoked) != 0 {
+		t.Errorf("got %d revoked keys, want 0", len(db.revoked))
+	}
+	if len(db.lines) != 1 {
+		t.Fatalf("got %d lines, want 1", len(db.lines))
+	}
+	if got, want := db.lines[0].knownKey.Line, len(invalid)+1; got != want {
+		t.Errorf("got line %d, want %d", got, want)
+	}
+	if err := db.check("server.org:22", testAddr, edKey); err != nil {
+		t.Errorf("check: %v", err)
+	}
+}
+
+func TestReadNoValidLines(t *testing.T) {
+	input := "# comment\n\nserver.org " + dsaKeyStr + "\nserver.org ssh-ed25519 !!!\n"
+
+	db := newHostKeyDB()
+	err := db.Read(strings.NewReader(input), "testdb")
+	if err == nil {
+		t.Fatal("Read succeeded with no valid lines, expected error")
+	}
+	if want := "knownhosts: testdb: no valid entries, line 3: "; !strings.HasPrefix(err.Error(), want) {
+		t.Errorf("got error %q, want prefix %q", err.Error(), want)
+	}
+
+	db = newHostKeyDB()
+	if err := db.Read(strings.NewReader("# comment\n\n"), "testdb"); err != nil {
+		t.Errorf("Read of file without entries: %v", err)
+	}
+
+	db = newHostKeyDB()
+	if err := db.Read(strings.NewReader("@revoked * "+edKeyStr+"\n"+input), "testdb"); err != nil {
+		t.Errorf("Read with a valid revoked line: %v", err)
 	}
 }
