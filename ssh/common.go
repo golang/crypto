@@ -406,7 +406,12 @@ func findCommon(what string, client []string, server []string, isClient bool) (s
 	for _, c := range client {
 		for _, s := range server {
 			if c == s {
-				return c, nil
+				// Return the name from the local list, not the peer's, which
+				// would keep the peer's whole name list alive (see parseNameList).
+				if isClient {
+					return c, nil
+				}
+				return s, nil
 			}
 		}
 	}
