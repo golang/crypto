@@ -2219,3 +2219,58 @@ func TestKeyboardInteractiveAuthEarlyFail(t *testing.T) {
 		t.Errorf("expected PasswordCallback() to be called")
 	}
 }
+
+// TestHandleBannerResponseMalformed verifies that malformed banner messages
+// are ignored instead of failing the handshake. See RFC 4252, Section 5.4:
+// the banner is informational and has no effect on the authentication
+// outcome. See also golang/go#81647.
+func TestHandleBannerResponseMalformed(t *testing.T) {
+	missingLanguageTag := []byte{msgUserAuthBanner,
+		0, 0, 0, 7, 'W', 'e', 'l', 'c', 'o', 'm', 'e',
+	}
+	truncatedMessage := []byte{msgUserAuthBanner,
+		0, 0, 0, 10, 'h', 'i', // declares 10 bytes, contains 2
+	}
+	trailingBytes := Marshal(&userAuthBannerMsg{
+		Message:  "Welcome",
+		Language: "en",
+	})
+	trailingBytes = append(trailingBytes, 'e', 'x', 't', 'r', 'a')
+
+	for _, tc := range []struct {
+		name   string
+		packet []byte
+	}{
+		{"trailing bytes after language tag", trailingBytes},
+		{"missing language tag", missingLanguageTag},
+		{"truncated message string", truncatedMessage},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := handleBannerResponse(nil, tc.packet); err != nil {
+				t.Errorf("handleBannerResponse() = %v, want nil", err)
+			}
+		})
+	}
+}
+
+// TestHandleBannerResponseCallback verifies that a well-formed banner message
+// is still delivered to the configured BannerCallback.
+func TestHandleBannerResponseCallback(t *testing.T) {
+	var banners []string
+	tr := &handshakeTransport{
+		bannerCallback: func(banner string) error {
+			banners = append(banners, banner)
+			return nil
+		},
+	}
+	packet := Marshal(&userAuthBannerMsg{
+		Message:  "Welcome",
+		Language: "en",
+	})
+	if err := handleBannerResponse(tr, packet); err != nil {
+		t.Fatalf("handleBannerResponse() = %v, want nil", err)
+	}
+	if len(banners) != 1 || banners[0] != "Welcome" {
+		t.Errorf("banners = %q, want [Welcome]", banners)
+	}
+}
