@@ -205,7 +205,8 @@ func TestSSHCLIControlClientConn(t *testing.T) {
 	}
 	defer os.RemoveAll(dir)
 	csPath := filepath.Join(dir, "c")
-	cmd := testenv.Command(t, sshCLI, "-vvv", "-i", keyPrivPath, "-o", "StrictHostKeyChecking=no",
+	cmd := testenv.Command(t, sshCLI, "-F", "none", "-vvv", "-i", keyPrivPath,
+		"-o", "StrictHostKeyChecking=no", "-o", "IdentityAgent=none",
 		"-p", port, "-o", "ControlPath="+csPath, "-o", "ControlMaster=yes", "-N", "testcontrolproxy@127.0.0.1")
 	var output bytes.Buffer
 	cmd.Stdout = &output
