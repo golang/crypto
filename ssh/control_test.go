@@ -220,6 +220,9 @@ func TestControlClientTransport(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			if algs := conn.(AlgorithmsConnMetadata).Algorithms(); algs != (NegotiatedAlgorithms{}) {
+				t.Errorf("got algorithms %+v, want zero value", algs)
+			}
 			client := NewClient(conn, chans, reqs)
 
 			done := make(chan response, 1)

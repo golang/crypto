@@ -1295,6 +1295,120 @@ func TestNegotiatedAlgorithms(t *testing.T) {
 	}
 }
 
+// rekeyPair returns a connected client and server. rekey forces a key
+// exchange initiated by the client and returns once it has completed on both
+// sides.
+func rekeyPair(t *testing.T, clientConf *ClientConfig) (client *Client, server *ServerConn, rekey func()) {
+	t.Helper()
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	t.Cleanup(func() {
+		c1.Close()
+		c2.Close()
+	})
+
+	serverConf := &ServerConfig{NoClientAuth: true}
+	serverConf.AddHostKey(testSigners["ecdsa"])
+	serverErr := make(chan error, 1)
+	go func() {
+		var reqs <-chan *Request
+		var err error
+		server, _, reqs, err = NewServerConn(c1, serverConf)
+		if err == nil {
+			go DiscardRequests(reqs)
+		}
+		serverErr <- err
+	}()
+
+	hostKeyChecked := make(chan struct{}, 1)
+	clientConf.User = "test"
+	clientConf.HostKeyCallback = func(string, net.Addr, PublicKey) error {
+		hostKeyChecked <- struct{}{}
+		return nil
+	}
+	conn, chans, reqs, err := NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("NewClientConn: %v", err)
+	}
+	if err := <-serverErr; err != nil {
+		t.Fatalf("NewServerConn: %v", err)
+	}
+	<-hostKeyChecked
+	client = NewClient(conn, chans, reqs)
+	t.Cleanup(func() { client.Close() })
+
+	rekey = func() {
+		t.Helper()
+		conn.(*connection).transport.(*handshakeTransport).requestKeyExchange()
+		<-hostKeyChecked
+		// The request is queued until the key exchange completes, and the
+		// server reads it after completing its side.
+		if _, _, err := client.SendRequest("test@golang.org", true, nil); err != nil {
+			t.Fatalf("SendRequest: %v", err)
+		}
+	}
+	return client, server, rekey
+}
+
+func TestNegotiatedAlgorithmsRekey(t *testing.T) {
+	client, server, rekey := rekeyPair(t, &ClientConfig{
+		Config: Config{
+			Ciphers: []string{CipherAES128GCM, CipherAES256GCM},
+		},
+	})
+
+	checkCipher := func(want string) {
+		t.Helper()
+		clientAlgs := client.Conn.(AlgorithmsConnMetadata).Algorithms()
+		serverAlgs := server.Conn.(AlgorithmsConnMetadata).Algorithms()
+		if clientAlgs.Read.Cipher != want || clientAlgs.Write.Cipher != want {
+			t.Errorf("client ciphers: got read %q, write %q, want %q",
+				clientAlgs.Read.Cipher, clientAlgs.Write.Cipher, want)
+		}
+		if !reflect.DeepEqual(clientAlgs, serverAlgs) {
+			t.Errorf("client algorithms %+v differ from server algorithms %+v", clientAlgs, serverAlgs)
+		}
+	}
+	checkCipher(CipherAES128GCM)
+
+	tr := client.Conn.(*connection).transport.(*handshakeTransport)
+	tr.mu.Lock()
+	tr.config.Ciphers = []string{CipherAES256GCM}
+	tr.mu.Unlock()
+	rekey()
+	checkCipher(CipherAES256GCM)
+}
+
+func TestNegotiatedAlgorithmsConcurrentRekey(t *testing.T) {
+	client, server, rekey := rekeyPair(t, &ClientConfig{})
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			for _, conn := range []Conn{client.Conn, server.Conn} {
+				if algs := conn.(AlgorithmsConnMetadata).Algorithms(); algs.KeyExchange == "" {
+					t.Errorf("empty key exchange algorithm in %+v", algs)
+				}
+			}
+		}
+	}()
+
+	for range 5 {
+		rekey()
+	}
+	close(stop)
+	<-done
+}
+
 func TestAlgorithmNegotiationError(t *testing.T) {
 	c1, c2, err := netPipe()
 	if err != nil {
