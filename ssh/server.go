@@ -204,7 +204,9 @@ type ServerConfig struct {
 	// MaxAuthTries specifies the maximum number of authentication attempts
 	// permitted per connection. If set to a negative number, the number of
 	// attempts are unlimited. If set to zero, the number of attempts are limited
-	// to 6.
+	// to 6. Rejected public key queries count towards this limit only after
+	// exceeding a dedicated budget (also controlled by this option). This helps
+	// legitimate clients with multiple keys not hit the limit.
 	MaxAuthTries int
 
 	// PasswordCallback, if non-nil, is called when a user
@@ -660,6 +662,7 @@ func (s *connection) serverAuthenticate(config *ServerConfig) (*Permissions, err
 
 	authFailures := 0
 	authAttempts := 0
+	pubKeyQueryFailures := 0
 	noneAuthCount := 0
 	var authErrs []error
 	var calledBannerCallback bool
@@ -845,6 +848,10 @@ userAuthLoop:
 					continue userAuthLoop
 				}
 				authErr = candidate.result
+				pubKeyQueryFailures++
+				if pubKeyQueryFailures <= config.MaxAuthTries {
+					authFailures--
+				}
 			} else {
 				sig, payload, ok := parseSignature(payload)
 				if !ok || len(payload) > 0 {

@@ -1406,17 +1406,18 @@ func TestClientAuthMaxAuthTries(t *testing.T) {
 }
 
 // Test if authentication attempts are correctly limited on server
-// when more public keys are provided then MaxAuthTries
+// when more public keys are provided then MaxAuthTries. The first
+// MaxAuthTries rejected keys, 6 by default, are not counted.
 func TestClientAuthMaxAuthTriesPublicKey(t *testing.T) {
 	signers := []Signer{}
-	for i := 0; i < 6; i++ {
+	for i := 0; i < 6+5; i++ {
 		signers = append(signers, testSigners["dsa"])
 	}
 
 	validConfig := &ClientConfig{
 		User: "testuser",
 		Auth: []AuthMethod{
-			PublicKeys(append([]Signer{testSigners["rsa"]}, signers...)...),
+			PublicKeys(slices.Concat(signers, []Signer{testSigners["rsa"]})...),
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	}
@@ -1431,7 +1432,7 @@ func TestClientAuthMaxAuthTriesPublicKey(t *testing.T) {
 	invalidConfig := &ClientConfig{
 		User: "testuser",
 		Auth: []AuthMethod{
-			PublicKeys(append(signers, testSigners["rsa"])...),
+			PublicKeys(slices.Concat(signers, []Signer{testSigners["dsa"], testSigners["rsa"]})...),
 		},
 		HostKeyCallback: InsecureIgnoreHostKey(),
 	}
@@ -1446,6 +1447,59 @@ func TestClientAuthMaxAuthTriesPublicKey(t *testing.T) {
 			// OK.
 		} else {
 			t.Fatalf("client: got %s, want %s", err, expectedErr)
+		}
+	}
+}
+
+func TestClientAuthMaxAuthTriesPublicKeyQueries(t *testing.T) {
+	serverConfig := &ServerConfig{
+		MaxAuthTries: 2,
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("pubkey not acceptable")
+		},
+	}
+	serverConfig.AddHostKey(testSigners["rsa"])
+
+	expectedErr := fmt.Errorf("ssh: handshake failed: %v", &disconnectMsg{
+		Reason:  2,
+		Message: "too many authentication failures",
+	})
+
+	// 2 rejected queries are not counted, the next one is the first failure.
+	for rejected := 3; rejected < 5; rejected++ {
+		var signers []Signer
+		for i := 0; i < rejected; i++ {
+			signers = append(signers, testSigners["ecdsa"])
+		}
+		clientConfig := &ClientConfig{
+			User: "testuser",
+			Auth: []AuthMethod{
+				PublicKeys(append(signers, testSigners["rsa"])...),
+			},
+			HostKeyCallback: InsecureIgnoreHostKey(),
+		}
+
+		c1, c2, err := netPipe()
+		if err != nil {
+			t.Fatalf("netPipe: %v", err)
+		}
+		defer c1.Close()
+		defer c2.Close()
+
+		go newServer(c1, serverConfig)
+		_, _, _, cliErr := NewClientConn(c2, "", clientConfig)
+
+		if rejected >= 2*serverConfig.MaxAuthTries {
+			if cliErr == nil {
+				t.Fatalf("client: got no error with %d rejected keys, want %s", rejected, expectedErr)
+			} else if cliErr.Error() != expectedErr.Error() {
+				t.Fatalf("client: got %s with %d rejected keys, want %s", cliErr, rejected, expectedErr)
+			}
+		} else if cliErr != nil {
+			t.Fatalf("client: got %s with %d rejected keys, want no error", cliErr, rejected)
 		}
 	}
 }
