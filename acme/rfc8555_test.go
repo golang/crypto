@@ -376,10 +376,16 @@ func TestRFC_Register(t *testing.T) {
 			t.Error("head.JWK is empty")
 		}
 
-		var req struct{ Contact []string }
+		var req struct {
+			Contact     []string
+			TermsAgreed bool `json:"termsOfServiceAgreed"`
+		}
 		decodeJWSRequest(t, &req, bytes.NewReader(b))
 		if len(req.Contact) != 1 || req.Contact[0] != email {
 			t.Errorf("req.Contact = %q; want [%q]", req.Contact, email)
+		}
+		if !req.TermsAgreed {
+			t.Error("req.TermsAgreed = false; want true")
 		}
 	})
 	s.start()
@@ -413,8 +419,8 @@ func TestRFC_Register(t *testing.T) {
 	if !reflect.DeepEqual(acct, okAccount) {
 		t.Errorf("acct = %+v; want %+v", acct, okAccount)
 	}
-	if !didPrompt {
-		t.Error("tos prompt wasn't called")
+	if didPrompt {
+		t.Error("tos prompt was called; SecureG fork should auto-accept ToS")
 	}
 	if v := cl.accountKID(ctx); v != KeyID(okAccount.URI) {
 		t.Errorf("account kid = %q; want %q", v, okAccount.URI)
@@ -550,8 +556,8 @@ func TestRFC_RegisterExternalAccountBinding(t *testing.T) {
 	if !reflect.DeepEqual(acct, okAccount) {
 		t.Errorf("acct = %+v; want %+v", acct, okAccount)
 	}
-	if !didPrompt {
-		t.Error("tos prompt wasn't called")
+	if didPrompt {
+		t.Error("tos prompt was called; SecureG fork should auto-accept ToS")
 	}
 	if v := cl.accountKID(ctx); v != KeyID(okAccount.URI) {
 		t.Errorf("account kid = %q; want %q", v, okAccount.URI)

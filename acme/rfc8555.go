@@ -54,11 +54,7 @@ func (c *Client) registerRFC(ctx context.Context, acct *Account, prompt func(tos
 	}{
 		Contact: acct.Contact,
 	}
-
-	if c.dir.Terms != "" {
-		req.TermsAgreed = prompt(c.dir.Terms)
-	}
-	// SecureG's Boulder auto agree for ToS
+	// SecureG's Boulder: always accept ToS; prompt is intentionally not consulted.
 	req.TermsAgreed = true
 
 	// set 'externalAccountBinding' field if requested

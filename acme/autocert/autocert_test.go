@@ -195,13 +195,13 @@ func TestGetCertificate(t *testing.T) {
 			disableALPN: true,
 		},
 		{
+			// The SecureG fork always accepts ToS, so a nil Prompt is allowed.
 			name:   "nilPrompt",
 			hello:  clientHelloInfo("example.org", algECDSA),
 			domain: "example.org",
 			prepare: func(t *testing.T, man *Manager, s *acmetest.CAServer) {
 				man.Prompt = nil
 			},
-			expectError: "missing Manager.Prompt",
 		},
 		{
 			name:   "trailingDot",

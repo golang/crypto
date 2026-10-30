@@ -431,10 +431,6 @@ type orderNotAfterOpt time.Time
 
 func (orderNotAfterOpt) privateOrderOpt() {}
 
-type orderProfileOpt string
-
-func (orderProfileOpt) privateOrderOpt() {}
-
 func (o orderProfileOpt) profileName() ProfileName { return ProfileName(o) }
 
 // Authorization encodes an authorization response.
