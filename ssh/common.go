@@ -258,6 +258,11 @@ type Algorithms struct {
 }
 
 func init() {
+	supportedHostKeyAlgos = slices.Concat(supportedHostKeyAlgos, mldsaCertAlgos, mldsaKeyAlgos)
+	defaultHostKeyAlgos = slices.Concat(defaultHostKeyAlgos, mldsaCertAlgos, mldsaKeyAlgos)
+	supportedPubKeyAuthAlgos = slices.Concat(supportedPubKeyAuthAlgos, mldsaKeyAlgos)
+	defaultPubKeyAuthAlgos = slices.Concat(defaultPubKeyAuthAlgos, mldsaKeyAlgos)
+
 	if fips140.Enabled() {
 		defaultHostKeyAlgos = slices.DeleteFunc(defaultHostKeyAlgos, func(algo string) bool {
 			_, err := hashFunc(underlyingAlgo(algo))
@@ -280,6 +285,10 @@ func hashFunc(format string) (crypto.Hash, error) {
 		return crypto.SHA512, nil
 	case KeyAlgoED25519:
 		// KeyAlgoED25519 doesn't pre-hash.
+		return 0, nil
+	case KeyAlgoMLDSA44, KeyAlgoMLDSA65, KeyAlgoMLDSA87:
+		// ML-DSA doesn't pre-hash. This case is not build tagged, availability
+		// is decided by mldsaKeyAlgos.
 		return 0, nil
 	case KeyAlgoRSA, InsecureKeyAlgoDSA:
 		if fips140.Enabled() {
@@ -354,7 +363,13 @@ func keyFormatForAlgorithm(sigAlgo string) string {
 		CertAlgoECDSA521v01,
 		CertAlgoSKECDSA256v01,
 		CertAlgoED25519v01,
-		CertAlgoSKED25519v01:
+		CertAlgoSKED25519v01,
+		KeyAlgoMLDSA44,
+		KeyAlgoMLDSA65,
+		KeyAlgoMLDSA87,
+		CertAlgoMLDSA44v01Go,
+		CertAlgoMLDSA65v01Go,
+		CertAlgoMLDSA87v01Go:
 		return sigAlgo
 	default:
 		return ""
@@ -391,7 +406,12 @@ func findCommon(what string, client []string, server []string, isClient bool) (s
 	for _, c := range client {
 		for _, s := range server {
 			if c == s {
-				return c, nil
+				// Return the name from the local list, not the peer's, which
+				// would keep the peer's whole name list alive (see parseNameList).
+				if isClient {
+					return c, nil
+				}
+				return s, nil
 			}
 		}
 	}
@@ -419,7 +439,7 @@ type AlgorithmNegotiationError struct {
 }
 
 func (a *AlgorithmNegotiationError) Error() string {
-	return fmt.Sprintf("ssh: no common algorithm for %s; we offered: %v, peer offered: %v",
+	return fmt.Sprintf("ssh: no common algorithm for %s; we offered: %q, peer offered: %q",
 		a.What, a.SupportedAlgorithms, a.RequestedAlgorithms)
 }
 
@@ -544,7 +564,7 @@ func (c *Config) SetDefaults() {
 	if c.Rand == nil {
 		c.Rand = rand.Reader
 	}
-	if c.Ciphers == nil {
+	if len(c.Ciphers) == 0 {
 		c.Ciphers = defaultCiphers
 	}
 	var ciphers []string
@@ -556,7 +576,7 @@ func (c *Config) SetDefaults() {
 	}
 	c.Ciphers = ciphers
 
-	if c.KeyExchanges == nil {
+	if len(c.KeyExchanges) == 0 {
 		c.KeyExchanges = defaultKexAlgos
 	}
 	var kexs []string
@@ -571,7 +591,7 @@ func (c *Config) SetDefaults() {
 	}
 	c.KeyExchanges = kexs
 
-	if c.MACs == nil {
+	if len(c.MACs) == 0 {
 		c.MACs = defaultMACs
 	}
 	var macs []string

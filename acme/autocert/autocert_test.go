@@ -513,6 +513,33 @@ func TestGetCertificate_failedAttempt(t *testing.T) {
 	}
 }
 
+// TestGetCertificate_concurrent guards against a data race on certState
+// fields between the goroutine performing the ACME work for a domain and
+// the other goroutines waiting on the result. See golang/go#80119.
+func TestGetCertificate_concurrent(t *testing.T) {
+	// An unreachable directory URL makes the owner goroutine fail
+	// quickly inside createCert, so its writes overlap with the
+	// non-owner goroutines reaching the same code path.
+	m := &Manager{
+		Prompt: AcceptTOS,
+		Client: &acme.Client{DirectoryURL: "http://127.0.0.1:1/"},
+	}
+	defer m.stopRenew()
+
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 64; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			m.GetCertificate(clientHelloInfo(exampleDomain, algECDSA))
+		}()
+	}
+	close(start)
+	wg.Wait()
+}
+
 func TestRevokeFailedAuthz(t *testing.T) {
 	ca := acmetest.NewCAServer(t)
 	// Make the authz unfulfillable on the client side, so it will be left

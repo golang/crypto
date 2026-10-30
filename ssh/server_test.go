@@ -6,11 +6,17 @@ package ssh
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net"
 	"reflect"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -157,6 +163,52 @@ func TestMaxAuthTriesNoneMethod(t *testing.T) {
 		if !errors.Is(err, ErrNoAuth) {
 			t.Errorf("go error: %v; want: %v", err, ErrNoAuth)
 		}
+	}
+}
+
+func TestMaxAuthServerAttempts(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	invocations := 0
+	clientConf := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			invocations++
+			return PublicKeys(testSigners["rsa"]), nil
+		},
+	}
+
+	go NewServerConn(c1, alwaysPartialPubKeyServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err == nil {
+		t.Fatal("expected the server to disconnect after exceeding the attempts cap")
+	}
+	// The error must be the server's disconnect, not the client-side
+	// "too many authentication attempts (N), aborting" bound. The
+	// disconnect format is set by disconnectMsg.Error().
+	if !strings.Contains(err.Error(), "ssh: disconnect") ||
+		!strings.Contains(err.Error(), "too many authentication attempts") {
+		t.Fatalf("expected server disconnect, got: %v", err)
+	}
+	// Server-side request sequence per AuthCallback iteration:
+	//   1 "none"       (initial, before any AuthCallback)
+	//   2 pubkey query (AuthCallback #k, server returns OK)
+	//   3 pubkey signed (AuthCallback #k, server returns partial)
+	// So after k complete callbacks the server has processed 1+2k requests.
+	// The (k+1)-th callback's query is processed as request number 2(k+1);
+	// the subsequent signed request is rejected by the cap check
+	// (authAttempts >= maxAuthServerAttempts), so 2(k+1) = maxAuthServerAttempts
+	// and invocations = maxAuthServerAttempts / 2.
+	expected := maxAuthServerAttempts / 2
+	if invocations != expected {
+		t.Errorf("AuthCallback invoked %d times; want %d", invocations, expected)
 	}
 }
 
@@ -492,6 +544,62 @@ func TestVerifiedPublicKeyCallback(t *testing.T) {
 	<-done
 }
 
+func TestVerifiedPublicKeyCallbackSignatureFormat(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	var gotSignatureAlgorithm string
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			return nil, nil
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			gotSignatureAlgorithm = signatureAlgorithm
+			return permissions, nil
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	serverDone := make(chan error, 1)
+	go func() {
+		conn, _, _, err := NewServerConn(c1, serverConf)
+		if err == nil {
+			conn.Close()
+		}
+		serverDone <- err
+	}()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			// The selected algorithm and signature format differ for
+			// compatibility with old RSA clients.
+			configurablePublicKeyCallback{
+				signer:          testSigners["rsa"].(AlgorithmSigner),
+				signatureAlgo:   KeyAlgoRSASHA256,
+				signatureFormat: KeyAlgoRSA,
+			},
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	clientConn, _, _, clientErr := NewClientConn(c2, "", clientConf)
+	if clientErr == nil {
+		clientConn.Close()
+	}
+	serverErr := <-serverDone
+	if clientErr != nil || serverErr != nil {
+		t.Fatalf("connection failed: client error: %v; server error: %v", clientErr, serverErr)
+	}
+	if gotSignatureAlgorithm != KeyAlgoRSA {
+		t.Errorf("signature algorithm = %q; want verified signature format %q", gotSignatureAlgorithm, KeyAlgoRSA)
+	}
+}
+
 func TestVerifiedPublicCallbackPartialSuccess(t *testing.T) {
 	c1, c2, err := netPipe()
 	if err != nil {
@@ -526,12 +634,18 @@ func TestVerifiedPublicCallbackPartialSuccess(t *testing.T) {
 	serverConf.AddHostKey(testSigners["rsa"])
 
 	clientConf := ClientConfig{
-		User: "user",
-		Auth: []AuthMethod{
-			PublicKeys(testSigners["rsa"]),
-			Password(clientPassword),
-		},
+		User:            "user",
+		Auth:            nil,
 		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			if slices.Contains(ctx.AllowedMethods, "publickey") && !slices.Contains(ctx.PartialSuccessMethods, "publickey") {
+				return PublicKeys(testSigners["rsa"]), nil
+			}
+			if slices.Contains(ctx.AllowedMethods, "password") && slices.Contains(ctx.PartialSuccessMethods, "publickey") {
+				return Password(clientPassword), nil
+			}
+			return nil, nil
+		},
 	}
 
 	go NewServerConn(c1, serverConf)
@@ -661,6 +775,145 @@ func TestVerifiedPubKeyCallbackError(t *testing.T) {
 	_, _, _, err = NewClientConn(c2, "", &clientConf)
 	if err == nil {
 		t.Fatal("client login succeed with VerifiedPublicKeyCallback returning an error")
+	}
+}
+
+func TestVerifiedPubKeyCallbackSourceAddress(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			return nil, nil
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			return &Permissions{
+				CriticalOptions: map[string]string{
+					sourceAddressCriticalOption: "192.168.99.99",
+				},
+			}, nil
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err == nil {
+		t.Fatal("client login succeed with VerifiedPublicKeyCallback returning mismatching source-address")
+	}
+}
+
+func TestAuthCallbacksSourceAddress(t *testing.T) {
+	permsWithSourceAddress := func(sourceAddress string) *Permissions {
+		return &Permissions{
+			CriticalOptions: map[string]string{
+				sourceAddressCriticalOption: sourceAddress,
+			},
+		}
+	}
+	methods := []struct {
+		name         string
+		serverConfig func(sourceAddress string) *ServerConfig
+		clientAuth   []AuthMethod
+	}{
+		{
+			name: "password",
+			serverConfig: func(sourceAddress string) *ServerConfig {
+				return &ServerConfig{
+					PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+						return permsWithSourceAddress(sourceAddress), nil
+					},
+				}
+			},
+			clientAuth: []AuthMethod{Password(clientPassword)},
+		},
+		{
+			name: "keyboard-interactive",
+			serverConfig: func(sourceAddress string) *ServerConfig {
+				return &ServerConfig{
+					KeyboardInteractiveCallback: func(conn ConnMetadata, challenge KeyboardInteractiveChallenge) (*Permissions, error) {
+						return permsWithSourceAddress(sourceAddress), nil
+					},
+				}
+			},
+			clientAuth: []AuthMethod{
+				KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+					return nil, nil
+				}),
+			},
+		},
+		{
+			name: "none",
+			serverConfig: func(sourceAddress string) *ServerConfig {
+				return &ServerConfig{
+					NoClientAuth: true,
+					NoClientAuthCallback: func(conn ConnMetadata) (*Permissions, error) {
+						return permsWithSourceAddress(sourceAddress), nil
+					},
+				}
+			},
+		},
+	}
+	for _, method := range methods {
+		for _, tc := range []struct {
+			name          string
+			sourceAddress string
+			wantErr       bool
+		}{
+			{"mismatching", "192.168.99.99", true},
+			{"matching", "127.0.0.0/8,::1/128", false},
+			{"present but empty", "", true},
+		} {
+			t.Run(method.name+"/"+tc.name, func(t *testing.T) {
+				clientConf := &ClientConfig{
+					User:            "user",
+					Auth:            method.clientAuth,
+					HostKeyCallback: InsecureIgnoreHostKey(),
+				}
+				serverAuthErrors, err := doClientServerAuth(t, method.serverConfig(tc.sourceAddress), clientConf)
+				if tc.wantErr {
+					if err == nil {
+						t.Fatalf("client login succeeded with %s callback returning mismatching source-address", method.name)
+					}
+					var sourceAddressErrors int
+					for _, err := range serverAuthErrors {
+						if err != nil && strings.Contains(err.Error(), "source-address restriction") {
+							sourceAddressErrors++
+						}
+					}
+					if sourceAddressErrors == 0 {
+						t.Fatalf("no server auth error mentions the source-address restriction, got %v", serverAuthErrors)
+					}
+				} else if err != nil {
+					t.Fatalf("client login failed with matching source-address: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestCheckSourceAddressNonIP(t *testing.T) {
+	for _, addr := range []net.Addr{
+		&net.UnixAddr{Name: "/run/test.sock", Net: "unix"},
+		&net.UnixAddr{},
+		nil,
+	} {
+		if err := checkSourceAddress(addr, "127.0.0.0/8,::1/128"); err == nil {
+			t.Errorf("source-address check succeeded for non-IP remote address %v", addr)
+		}
 	}
 }
 
@@ -808,6 +1061,60 @@ func TestVerifiedPublicKeyCallbackOnly(t *testing.T) {
 	<-done
 }
 
+func TestPartialSuccessWithNonNilPerms(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				// Intentionally return non-nil Permissions along with a
+				// PartialSuccessError. Since permissions are reset between
+				// authentication steps, this constitutes invalid library usage
+				// and the server is expected to reject the connection.
+				return &Permissions{Extensions: map[string]string{"permit-port-forwarding": ""}}, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PasswordCallback: func(conn ConnMetadata, password []byte) (*Permissions, error) {
+							if string(password) == clientPassword {
+								return nil, nil
+							}
+							return nil, nil
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	clientConf := ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+			Password(clientPassword),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", &clientConf)
+	if err == nil {
+		t.Fatal("authentication succeeded unexpectedly; server should have rejected non-nil Permissions combined with PartialSuccessError")
+	}
+}
+
 type markerConn struct {
 	closed uint32
 	used   uint32
@@ -850,3 +1157,126 @@ func (*markerConn) RemoteAddr() net.Addr { return nil }
 func (*markerConn) SetDeadline(t time.Time) error      { return nil }
 func (*markerConn) SetReadDeadline(t time.Time) error  { return nil }
 func (*markerConn) SetWriteDeadline(t time.Time) error { return nil }
+
+// skTestSigner is a Signer that produces SK-ECDSA signatures over
+// user-auth data, simulating a FIDO/U2F authenticator. The flags
+// byte (UP and other bits) is caller-controlled so tests can exercise
+// the server's user-presence enforcement and its opt-out paths. This
+// is test-only: the real Signer is hardware-backed.
+type skTestSigner struct {
+	priv        *ecdsa.PrivateKey
+	pub         PublicKey
+	flags       byte
+	application string
+}
+
+func (s *skTestSigner) PublicKey() PublicKey { return s.pub }
+
+func (s *skTestSigner) Sign(r io.Reader, data []byte) (*Signature, error) {
+	h := sha256.New()
+	h.Write([]byte(s.application))
+	appDigest := h.Sum(nil)
+	h.Reset()
+	h.Write(data)
+	dataDigest := h.Sum(nil)
+	var counter uint32 = 1
+	blob := struct {
+		ApplicationDigest []byte `ssh:"rest"`
+		Flags             byte
+		Counter           uint32
+		MessageDigest     []byte `ssh:"rest"`
+	}{appDigest, s.flags, counter, dataDigest}
+	h.Reset()
+	h.Write(Marshal(blob))
+	digest := h.Sum(nil)
+	x, y, err := ecdsa.Sign(r, s.priv, digest)
+	if err != nil {
+		return nil, err
+	}
+	return &Signature{
+		Format: KeyAlgoSKECDSA256,
+		Blob:   Marshal(struct{ R, S *big.Int }{x, y}),
+		Rest: Marshal(struct {
+			Flags   byte
+			Counter uint32
+		}{s.flags, counter}),
+	}, nil
+}
+
+// TestServerAuthSKUserPresence drives the full userAuthLoop with an SK
+// public-key client and verifies the server's wiring of the UP check
+// and its two opt-out paths: the per-key Permissions.Extensions route
+// and (via cert) the cert-level route. It also confirms that non-SK
+// clients are unaffected by the new code path.
+func TestServerAuthSKUserPresence(t *testing.T) {
+	userKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skPub := &skECDSAPublicKey{application: "ssh:", PublicKey: userKey.PublicKey}
+
+	runAuth := func(t *testing.T, signer Signer, perms *Permissions) error {
+		t.Helper()
+		c1, c2, err := netPipe()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer c1.Close()
+		defer c2.Close()
+
+		serverConf := &ServerConfig{
+			PublicKeyCallback: func(ConnMetadata, PublicKey) (*Permissions, error) {
+				return perms, nil
+			},
+		}
+		serverConf.AddHostKey(testSigners["ecdsa"])
+
+		serverErr := make(chan error, 1)
+		go func() {
+			_, _, _, err := NewServerConn(c1, serverConf)
+			serverErr <- err
+		}()
+
+		clientConf := &ClientConfig{
+			User:            "user",
+			Auth:            []AuthMethod{PublicKeys(signer)},
+			HostKeyCallback: InsecureIgnoreHostKey(),
+		}
+		_, _, _, clientErr := NewClientConn(c2, "", clientConf)
+		<-serverErr
+		return clientErr
+	}
+
+	optOut := &Permissions{Extensions: map[string]string{noTouchRequiredExtension: ""}}
+
+	t.Run("UP=1, default perms accepts", func(t *testing.T) {
+		s := &skTestSigner{priv: userKey, pub: skPub, flags: flagUserPresence, application: "ssh:"}
+		if err := runAuth(t, s, nil); err != nil {
+			t.Errorf("expected auth to succeed: %v", err)
+		}
+	})
+	t.Run("UP=0, default perms rejects", func(t *testing.T) {
+		s := &skTestSigner{priv: userKey, pub: skPub, flags: 0, application: "ssh:"}
+		if err := runAuth(t, s, nil); err == nil {
+			t.Error("expected auth to fail with UP=0")
+		}
+	})
+	t.Run("UP=0, perms opt-out accepts", func(t *testing.T) {
+		s := &skTestSigner{priv: userKey, pub: skPub, flags: 0, application: "ssh:"}
+		if err := runAuth(t, s, optOut); err != nil {
+			t.Errorf("expected auth to succeed with opt-out: %v", err)
+		}
+	})
+	t.Run("UP=0, perms CriticalOptions does NOT opt out", func(t *testing.T) {
+		s := &skTestSigner{priv: userKey, pub: skPub, flags: 0, application: "ssh:"}
+		critOnly := &Permissions{CriticalOptions: map[string]string{noTouchRequiredExtension: ""}}
+		if err := runAuth(t, s, critOnly); err == nil {
+			t.Error("no-touch-required in CriticalOptions must not waive UP")
+		}
+	})
+	t.Run("non-SK RSA signer unaffected", func(t *testing.T) {
+		if err := runAuth(t, testSigners["rsa"], nil); err != nil {
+			t.Errorf("plain RSA auth must still work: %v", err)
+		}
+	})
+}

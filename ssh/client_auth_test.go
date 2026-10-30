@@ -7,10 +7,12 @@ package ssh
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/rsa"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"math/big"
 	"net"
 	"os"
 	"runtime"
@@ -166,6 +168,723 @@ func TestClientAuthThirdKey(t *testing.T) {
 	}
 	if err := tryAuth(t, config); err != nil {
 		t.Fatalf("unable to dial remote side: %s", err)
+	}
+}
+
+// invalidRSASigner offers an RSA public key the server cannot parse: its public
+// exponent is even, which parseRSA rejects regardless of any key size limit.
+// The key is intentionally invalid for a structural reason rather than for its
+// size, so the test stays meaningful even if the accepted modulus size changes.
+// Its Sign method is never reached, because the key is rejected during the
+// initial public key query.
+type invalidRSASigner struct{}
+
+func (invalidRSASigner) PublicKey() PublicKey {
+	n := new(big.Int).Lsh(big.NewInt(1), 2048)
+	pub, err := NewPublicKey(&rsa.PublicKey{N: n, E: 2}) // incorrect exponent.
+	if err != nil {
+		panic(err)
+	}
+	return pub
+}
+
+func (invalidRSASigner) Sign(rand io.Reader, data []byte) (*Signature, error) {
+	return nil, errors.New("ssh: invalid test key must not be used to sign")
+}
+
+func TestClientAuthInvalidPublicKey(t *testing.T) {
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			PublicKeys(invalidRSASigner{}, testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+	if err := tryAuth(t, config); err != nil {
+		t.Fatalf("client auth failed but should have fallen back to a valid key: %s", err)
+	}
+}
+
+// partialSuccessPublicKeyAndKbdInteractiveServer returns a server config
+// where the rsa key gets partial success and the server offers both publickey
+// and keyboard-interactive as next methods. The VerifiedPublicKeyCallback
+// tracks state so that the same key only triggers partial success once,
+// avoiding an impossible auth loop.
+func partialSuccessPublicKeyAndKbdInteractiveServer() *ServerConfig {
+	rsaDone := false
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if !rsaDone && bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				rsaDone = true
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+							if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+								return nil, nil
+							}
+							return nil, errors.New("invalid credentials")
+						},
+						KeyboardInteractiveCallback: func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error) {
+							answers, err := client("", "", []string{"token: "}, []bool{true})
+							if err != nil {
+								return nil, err
+							}
+							if len(answers) == 1 && answers[0] == "correct-token" {
+								return nil, nil
+							}
+							return nil, errors.New("invalid token")
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	return serverConf
+}
+
+// partialSuccessMultiKeyServer returns a server config that requires two
+// public keys in sequence: the first key (rsa) triggers partial success
+// requiring a second key (ecdsa) to complete authentication.
+func partialSuccessMultiKeyServer() *ServerConfig {
+	firstKeyDone := false
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			if bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if !firstKeyDone && bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				firstKeyDone = true
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+							if bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+								return nil, nil
+							}
+							return nil, errors.New("invalid credentials")
+						},
+					},
+				}
+			}
+			if firstKeyDone && bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	return serverConf
+}
+
+func TestStaticMultiKeyPartialSuccess(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"], testSigners["ecdsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, partialSuccessMultiKeyServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func TestStaticPartialSuccess(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+			KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+				return []string{"correct-token"}, nil
+			}),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, partialSuccessPublicKeyAndKbdInteractiveServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+// partialSuccessKeyAThenKeyBServer returns a server config where keyA (rsa)
+// gets partial success and the server offers BOTH publickey and
+// keyboard-interactive. keyB (ecdsa) then completes auth successfully.
+func partialSuccessKeyAThenKeyBServer() *ServerConfig {
+	keyADone := false
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			if bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if !keyADone && bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				keyADone = true
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+							if bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+								return nil, nil
+							}
+							return nil, errors.New("invalid credentials")
+						},
+						KeyboardInteractiveCallback: func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error) {
+							answers, err := client("", "", []string{"token: "}, []bool{true})
+							if err != nil {
+								return nil, err
+							}
+							if len(answers) == 1 && answers[0] == "correct-token" {
+								return nil, nil
+							}
+							return nil, errors.New("invalid token")
+						},
+					},
+				}
+			}
+			if keyADone && bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	return serverConf
+}
+
+func TestStaticPartialSuccessKeyAThenKeyB(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"], testSigners["ecdsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, partialSuccessKeyAThenKeyBServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+// partialSuccessMultiKeyThenKbdInteractiveServer returns a server config
+// that strictly requires keyA (rsa) AND keyB (ecdsa) as public keys before
+// allowing keyboard-interactive. After keyA, ONLY publickey is offered
+// (for keyB). After keyB, ONLY keyboard-interactive is offered.
+func partialSuccessMultiKeyThenKbdInteractiveServer() *ServerConfig {
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+							if bytes.Equal(key.Marshal(), testPublicKeys["ecdsa"].Marshal()) {
+								return nil, &PartialSuccessError{
+									Next: ServerAuthCallbacks{
+										KeyboardInteractiveCallback: func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error) {
+											answers, err := client("", "", []string{"token: "}, []bool{true})
+											if err != nil {
+												return nil, err
+											}
+											if len(answers) == 1 && answers[0] == "correct-token" {
+												return nil, nil
+											}
+											return nil, errors.New("invalid token")
+										},
+									},
+								}
+							}
+							return nil, errors.New("invalid credentials")
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	return serverConf
+}
+
+func TestStaticMultiKeyPartialThenKbdInteractive(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"], testSigners["ecdsa"]),
+			KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+				return []string{"correct-token"}, nil
+			}),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	go NewServerConn(c1, partialSuccessMultiKeyThenKbdInteractiveServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func TestAuthMethodDynamic(t *testing.T) {
+	config := &ClientConfig{
+		User:            "testuser",
+		Auth:            nil,
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			if len(ctx.Metadata.SessionID()) == 0 {
+				t.Error("empty sessionID")
+			}
+			if ctx.Algorithms.HostKey == "" {
+				t.Error("empty Host Key")
+			}
+			if slices.Contains(ctx.AllowedMethods, "password") {
+				return Password(clientPassword), nil
+			}
+			return nil, errors.New("auth callback error")
+		},
+	}
+
+	if err := tryAuth(t, config); err != nil {
+		t.Fatalf("unable to dial remote side: %s", err)
+	}
+}
+
+func TestAuthCallbackError(t *testing.T) {
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			Password(clientPassword),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			return nil, errors.New("auth callback error")
+		},
+	}
+
+	if err := tryAuth(t, config); err == nil {
+		t.Fatal("authentication unexpectedly succeeded after AuthCallback returned an error")
+	}
+}
+
+func TestAuthCallbackPartialSuccess(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			if slices.Contains(ctx.AllowedMethods, "publickey") && !slices.Contains(ctx.PartialSuccessMethods, "publickey") {
+				return PublicKeys(testSigners["rsa"]), nil
+			}
+			if slices.Contains(ctx.PartialSuccessMethods, "publickey") && slices.Contains(ctx.AllowedMethods, "keyboard-interactive") {
+				return KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+					return []string{"correct-token"}, nil
+				}), nil
+			}
+			return nil, fmt.Errorf("unexpected auth state: allowed=%v partial=%v", ctx.AllowedMethods, ctx.PartialSuccessMethods)
+		},
+	}
+
+	go NewServerConn(c1, partialSuccessPublicKeyAndKbdInteractiveServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func TestAuthCallbackMultiKeyPartialSuccess(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			if slices.Contains(ctx.AllowedMethods, "publickey") && !slices.Contains(ctx.PartialSuccessMethods, "publickey") {
+				return PublicKeys(testSigners["rsa"]), nil
+			}
+			if slices.Contains(ctx.PartialSuccessMethods, "publickey") && slices.Contains(ctx.AllowedMethods, "publickey") {
+				return PublicKeys(testSigners["ecdsa"]), nil
+			}
+			return nil, fmt.Errorf("unexpected auth state: allowed=%v partial=%v", ctx.AllowedMethods, ctx.PartialSuccessMethods)
+		},
+	}
+
+	go NewServerConn(c1, partialSuccessMultiKeyServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func TestAuthCallbackMultiKeyPartialThenKbdInteractive(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			partialCount := len(ctx.PartialSuccessMethods)
+			if partialCount == 0 && slices.Contains(ctx.AllowedMethods, "publickey") {
+				return PublicKeys(testSigners["rsa"]), nil
+			}
+			if partialCount == 1 && slices.Contains(ctx.AllowedMethods, "publickey") {
+				return PublicKeys(testSigners["ecdsa"]), nil
+			}
+			if partialCount >= 2 && slices.Contains(ctx.AllowedMethods, "keyboard-interactive") {
+				return KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+					return []string{"correct-token"}, nil
+				}), nil
+			}
+			return nil, fmt.Errorf("unexpected auth state: allowed=%v partial=%v tried=%v",
+				ctx.AllowedMethods, ctx.PartialSuccessMethods, ctx.TriedMethods)
+		},
+	}
+
+	go NewServerConn(c1, partialSuccessMultiKeyThenKbdInteractiveServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func TestAuthCallbackPartialSuccessKeyAThenKeyB(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			if len(ctx.PartialSuccessMethods) == 0 && slices.Contains(ctx.AllowedMethods, "publickey") {
+				return PublicKeys(testSigners["rsa"]), nil
+			}
+			if len(ctx.PartialSuccessMethods) == 1 && slices.Contains(ctx.AllowedMethods, "publickey") {
+				return PublicKeys(testSigners["ecdsa"]), nil
+			}
+			return nil, fmt.Errorf("unexpected auth state: allowed=%v partial=%v",
+				ctx.AllowedMethods, ctx.PartialSuccessMethods)
+		},
+	}
+
+	go NewServerConn(c1, partialSuccessKeyAThenKeyBServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func TestAuthCallbackPartialSuccessWithStaticAuth(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(testSigners["rsa"]),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			if slices.Contains(ctx.PartialSuccessMethods, "publickey") && slices.Contains(ctx.AllowedMethods, "keyboard-interactive") {
+				return KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+					return []string{"correct-token"}, nil
+				}), nil
+			}
+			return nil, nil
+		},
+	}
+
+	go NewServerConn(c1, partialSuccessPublicKeyAndKbdInteractiveServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func partialSuccessPubKeyForbiddenAfterPartialServer(maxTries int) *ServerConfig {
+	serverConf := &ServerConfig{
+		PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, nil
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		VerifiedPublicKeyCallback: func(conn ConnMetadata, key PublicKey, permissions *Permissions, signatureAlgorithm string) (*Permissions, error) {
+			if bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+				return nil, &PartialSuccessError{
+					Next: ServerAuthCallbacks{
+						PublicKeyCallback: func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+							return nil, errors.New("legacy public key authentication is forbidden")
+						},
+						KeyboardInteractiveCallback: func(conn ConnMetadata, client KeyboardInteractiveChallenge) (*Permissions, error) {
+							answers, err := client("", "", []string{"token: "}, []bool{true})
+							if err != nil {
+								return nil, err
+							}
+							if len(answers) == 1 && answers[0] == "correct-token" {
+								return nil, nil
+							}
+							return nil, errors.New("invalid token")
+						},
+					},
+				}
+			}
+			return nil, errors.New("invalid credentials")
+		},
+		MaxAuthTries: maxTries,
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	return serverConf
+}
+
+func TestAuthCallbackPartialSuccessWithStaticMultiKey(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	clientConf := &ClientConfig{
+		User: "user",
+		Auth: []AuthMethod{
+			PublicKeys(
+				testSigners["rsa"],
+				testSigners["ecdsa"],
+				testSigners["ed25519"],
+			),
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			if slices.Contains(ctx.PartialSuccessMethods, "publickey") && slices.Contains(ctx.AllowedMethods, "keyboard-interactive") {
+				return KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+					return []string{"correct-token"}, nil
+				}), nil
+			}
+			return nil, nil
+		},
+	}
+
+	go NewServerConn(c1, partialSuccessPubKeyForbiddenAfterPartialServer(2))
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+}
+
+func TestAuthCallbackPartialSuccessShortCircuit(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := partialSuccessPubKeyForbiddenAfterPartialServer(2)
+
+	pubkeyAttempts := 0
+	clientConf := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			if slices.Contains(ctx.AllowedMethods, "publickey") && !slices.Contains(ctx.PartialSuccessMethods, "publickey") {
+				pubkeyAttempts++
+				return PublicKeys(testSigners["rsa"], testSigners["ecdsa"], testSigners["ed25519"]), nil
+			}
+			if slices.Contains(ctx.PartialSuccessMethods, "publickey") && slices.Contains(ctx.AllowedMethods, "keyboard-interactive") {
+				return KeyboardInteractive(func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+					return []string{"correct-token"}, nil
+				}), nil
+			}
+			return nil, fmt.Errorf("unexpected auth state: allowed=%v partial=%v tried=%v",
+				ctx.AllowedMethods, ctx.PartialSuccessMethods, ctx.TriedMethods)
+		},
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err != nil {
+		t.Fatalf("client login error: %s", err)
+	}
+	if pubkeyAttempts != 1 {
+		t.Errorf("expected publickey to be attempted once before short-circuit, got %d", pubkeyAttempts)
+	}
+}
+
+func TestAuthCallbackTriedLoopBound(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{
+		MaxAuthTries: -1,
+		PasswordCallback: func(conn ConnMetadata, pass []byte) (*Permissions, error) {
+			return nil, errors.New("password rejected")
+		},
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+
+	invocations := 0
+	clientConf := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			invocations++
+			return Password("wrong"), nil
+		},
+	}
+
+	go NewServerConn(c1, serverConf)
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err == nil {
+		t.Fatal("expected the client to abort after exceeding the attempts cap")
+	}
+	if !strings.Contains(err.Error(), "too many authentication attempts") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if invocations != maxAuthClientTried {
+		t.Errorf("AuthCallback invoked %d times; expected %d",
+			invocations, maxAuthClientTried)
+	}
+}
+
+func alwaysPartialPubKeyServer() *ServerConfig {
+	var alwaysPartial func(ConnMetadata, PublicKey) (*Permissions, error)
+	alwaysPartial = func(conn ConnMetadata, key PublicKey) (*Permissions, error) {
+		if !bytes.Equal(key.Marshal(), testPublicKeys["rsa"].Marshal()) {
+			return nil, errors.New("invalid credentials")
+		}
+		return nil, &PartialSuccessError{
+			Next: ServerAuthCallbacks{
+				PublicKeyCallback: alwaysPartial,
+			},
+		}
+	}
+	serverConf := &ServerConfig{
+		MaxAuthTries:      -1,
+		PublicKeyCallback: alwaysPartial,
+	}
+	serverConf.AddHostKey(testSigners["rsa"])
+	return serverConf
+}
+
+func TestAuthCallbackPartialSuccessLoopBound(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	invocations := 0
+	clientConf := &ClientConfig{
+		User:            "user",
+		HostKeyCallback: InsecureIgnoreHostKey(),
+		AuthCallback: func(ctx *ClientAuthContext) (AuthMethod, error) {
+			invocations++
+			return PublicKeys(testSigners["rsa"]), nil
+		},
+	}
+
+	go NewServerConn(c1, alwaysPartialPubKeyServer())
+
+	_, _, _, err = NewClientConn(c2, "", clientConf)
+	if err == nil {
+		t.Fatal("expected the client to abort after exceeding the attempts cap")
+	}
+	if !strings.Contains(err.Error(), "too many authentication attempts") {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if invocations != maxAuthClientTried {
+		t.Errorf("AuthCallback invoked %d times; expected %d",
+			invocations, maxAuthClientTried)
 	}
 }
 
@@ -382,9 +1101,10 @@ func TestClientUnsupportedKex(t *testing.T) {
 
 func TestClientLoginCert(t *testing.T) {
 	cert := &Certificate{
-		Key:         testPublicKeys["rsa"],
-		ValidBefore: CertTimeInfinity,
-		CertType:    UserCert,
+		Key:             testPublicKeys["rsa"],
+		ValidPrincipals: []string{"user"},
+		ValidBefore:     CertTimeInfinity,
+		CertType:        UserCert,
 	}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	certSigner, err := NewCertSigner(cert, testSigners["rsa"])
@@ -444,7 +1164,20 @@ func TestClientLoginCert(t *testing.T) {
 	if err := tryAuth(t, clientConfig); err == nil {
 		t.Errorf("cert login passed with wrong principal")
 	}
+
+	// no principal at all, SignCert rejects it so sign the certificate
+	// directly
 	cert.ValidPrincipals = nil
+	cert.SignatureKey = testSigners["ecdsa"].PublicKey()
+	sig, err := testSigners["ecdsa"].Sign(rand.Reader, cert.bytesForSigning())
+	if err != nil {
+		t.Fatalf("Sign: %v", err)
+	}
+	cert.Signature = sig
+	if err := tryAuth(t, clientConfig); err == nil {
+		t.Errorf("cert login passed without principals")
+	}
+	cert.ValidPrincipals = []string{"user"}
 
 	// added critical option
 	cert.CriticalOptions = map[string]string{"root-access": "yes"}
@@ -971,6 +1704,74 @@ func TestAuthMethodGSSAPIWithMIC(t *testing.T) {
 	}
 }
 
+type maliciousGSSAPIWithMICAuthMethod struct{}
+
+func (maliciousGSSAPIWithMICAuthMethod) method() string {
+	// Reuse an advertised auth method name so the client attempts this
+	// AuthMethod even when gssapi-with-mic is not advertised.
+	return "password"
+}
+
+func (maliciousGSSAPIWithMICAuthMethod) auth(session []byte, user string, c packetConn, rand io.Reader, _ map[string][]byte) (authResult, []string, error) {
+	req := &userAuthRequestMsg{
+		User:    user,
+		Service: serviceSSH,
+		Method:  "gssapi-with-mic",
+	}
+	req.Payload = appendU32(req.Payload, 1)
+	req.Payload = appendString(req.Payload, string(krb5OID))
+	if err := c.writePacket(Marshal(req)); err != nil {
+		return authFailure, nil, err
+	}
+
+	packet, err := c.readPacket()
+	if err != nil {
+		return authFailure, nil, err
+	}
+	switch packet[0] {
+	case msgUserAuthFailure:
+		var msg userAuthFailureMsg
+		if err := Unmarshal(packet, &msg); err != nil {
+			return authFailure, nil, err
+		}
+		if msg.PartialSuccess {
+			return authPartialSuccess, msg.Methods, nil
+		}
+		return authFailure, msg.Methods, nil
+	default:
+		return authFailure, nil, unexpectedMessageError(msgUserAuthFailure, packet[0])
+	}
+}
+
+func TestGSSAPIWithMICPartialConfigRejectedAtRuntime(t *testing.T) {
+	config := &ClientConfig{
+		User: "testuser",
+		Auth: []AuthMethod{
+			maliciousGSSAPIWithMICAuthMethod{},
+		},
+		HostKeyCallback: InsecureIgnoreHostKey(),
+	}
+
+	clientErr, serverErrs := tryAuthBothSides(t, config, &GSSAPIWithMICConfig{
+		Server: &FakeServer{},
+	})
+
+	if clientErr == nil || !strings.Contains(clientErr.Error(), "ssh: unable to authenticate") {
+		t.Fatalf("client got %v, want authentication failure", clientErr)
+	}
+
+	found := false
+	for _, err := range serverErrs {
+		if err != nil && strings.Contains(err.Error(), "ssh: gssapi-with-mic auth not configured") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("server auth errors = %v, want gssapi-with-mic auth not configured", serverErrs)
+	}
+}
+
 func TestCompatibleAlgoAndSignatures(t *testing.T) {
 	type testcase struct {
 		algo       string
@@ -1126,8 +1927,9 @@ func TestPickSignatureAlgorithm(t *testing.T) {
 			// Test a signer that uses a certificate algorithm as the public key
 			// type.
 			cert := &Certificate{
-				CertType: UserCert,
-				Key:      signer.PublicKey(),
+				CertType:        UserCert,
+				Key:             signer.PublicKey(),
+				ValidPrincipals: []string{"user"},
 			}
 			cert.SignCert(rand.Reader, signer)
 
@@ -1270,9 +2072,10 @@ func (cb configurablePublicKeyCallback) auth(session []byte, user string, c pack
 
 func TestPublicKeyAndAlgoCompatibility(t *testing.T) {
 	cert := &Certificate{
-		Key:         testPublicKeys["rsa"],
-		ValidBefore: CertTimeInfinity,
-		CertType:    UserCert,
+		Key:             testPublicKeys["rsa"],
+		ValidPrincipals: []string{"user"},
+		ValidBefore:     CertTimeInfinity,
+		CertType:        UserCert,
 	}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	certSigner, err := NewCertSigner(cert, testSigners["rsa"])
@@ -1316,9 +2119,10 @@ func TestClientAuthGPGAgentCompat(t *testing.T) {
 
 func TestCertAuthOpenSSHCompat(t *testing.T) {
 	cert := &Certificate{
-		Key:         testPublicKeys["rsa"],
-		ValidBefore: CertTimeInfinity,
-		CertType:    UserCert,
+		Key:             testPublicKeys["rsa"],
+		ValidPrincipals: []string{"user"},
+		ValidBefore:     CertTimeInfinity,
+		CertType:        UserCert,
 	}
 	cert.SignCert(rand.Reader, testSigners["ecdsa"])
 	certSigner, err := NewCertSigner(cert, testSigners["rsa"])

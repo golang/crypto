@@ -7,6 +7,7 @@ package ssh
 import (
 	"bytes"
 	"crypto"
+	"crypto/des"
 	"crypto/rand"
 	"encoding/binary"
 	"io"
@@ -39,6 +40,50 @@ func TestPacketCiphers(t *testing.T) {
 	for mac := range macModes {
 		t.Run("mac="+mac,
 			func(t *testing.T) { testPacketCipher(t, defaultCipher, mac) })
+	}
+}
+
+// TestCBCEtMMinimalPacket checks that a packet as small as the ones OpenSSH
+// sends is accepted. OpenSSH computes the padding for EtM MACs so that the
+// encrypted portion alone is block aligned, and does not enforce the 16 bytes
+// minimum packet size, so with a 8 bytes block size a single byte payload is
+// sent as a 12 bytes packet.
+func TestCBCEtMMinimalPacket(t *testing.T) {
+	kr := &kexResult{Hash: crypto.SHA1}
+	algs := DirectionAlgorithms{Cipher: InsecureCipherTripleDESCBC, MAC: HMACSHA256ETM, compression: compressionNone}
+	writer, err := newPacketCipher(clientKeys, algs, kr)
+	if err != nil {
+		t.Fatalf("newPacketCipher: %v", err)
+	}
+	reader, err := newPacketCipher(clientKeys, algs, kr)
+	if err != nil {
+		t.Fatalf("newPacketCipher: %v", err)
+	}
+	cbc := writer.(*cbcCipher)
+
+	payload := []byte{msgRequestFailure}
+	// blockSize - (padding length byte + payload) % blockSize
+	paddingLength := des.BlockSize - (1+len(payload))%des.BlockSize
+	length := 1 + len(payload) + paddingLength
+	packet := make([]byte, 4+length)
+	binary.BigEndian.PutUint32(packet, uint32(length))
+	packet[4] = byte(paddingLength)
+	copy(packet[5:], payload)
+	if _, err := io.ReadFull(rand.Reader, packet[5+len(payload):]); err != nil {
+		t.Fatalf("ReadFull: %v", err)
+	}
+	cbc.encrypter.CryptBlocks(packet[4:], packet[4:])
+	cbc.mac.Reset()
+	cbc.mac.Write(make([]byte, 4)) // sequence number 0
+	cbc.mac.Write(packet)
+	packet = cbc.mac.Sum(packet)
+
+	got, err := reader.readCipherPacket(0, bytes.NewReader(packet))
+	if err != nil {
+		t.Fatalf("readCipherPacket: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Errorf("got payload %v, want %v", got, payload)
 	}
 }
 

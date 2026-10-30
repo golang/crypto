@@ -35,16 +35,28 @@ func TestReadVersion(t *testing.T) {
 }
 
 func TestReadVersionError(t *testing.T) {
-	longVersion := strings.Repeat("SSH-2.0-bla", 50)[:253]
-	multiLineVersion := strings.Repeat("ignored\r\n", 50) + "SSH-2.0-bla\r\n"
+	tooLongVersion := strings.Repeat("SSH-2.0-bla", 60) + "\r\n"
+	multiLine := strings.Repeat("ignored\r\n", 50)
+	tooManyLines := strings.Repeat("ignored\r\n", 2000)
+	tooLongLine := strings.Repeat("blah ", 100) + "\r\n"
 	cases := []string{
-		longVersion + "too-long\r\n",
-		multiLineVersion,
+		tooLongVersion,
+		multiLine + tooLongVersion,
+		tooManyLines + "SSH-2.0-bla\r\n",
+		tooLongLine + "SSH-2.0-bla\r\n",
 	}
 	for _, in := range cases {
 		if _, err := readVersion(bytes.NewBufferString(in)); err == nil {
 			t.Errorf("readVersion(%q) should have failed", in)
 		}
+	}
+}
+
+func TestIgnorePreVersion(t *testing.T) {
+	longishLine := strings.Repeat("blah ", 30) + "\r\n"
+	multiLineVersion := strings.Repeat(longishLine, 100) + "SSH-2.0-bla\r\n"
+	if _, err := readVersion(bytes.NewBufferString(multiLineVersion)); err != nil {
+		t.Errorf("readVersion() got error %v, expected success", err)
 	}
 }
 

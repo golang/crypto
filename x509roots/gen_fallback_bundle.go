@@ -33,7 +33,7 @@ var unparsedCertificates = []unparsedCertificate{
 `
 
 var (
-	certDataURL  = flag.String("certdata-url", "https://hg.mozilla.org/mozilla-central/raw-file/tip/security/nss/lib/ckfw/builtins/certdata.txt", "URL to the raw certdata.txt file to parse (certdata-path overrides this, if provided)")
+	certDataURL  = flag.String("certdata-url", "https://raw.githubusercontent.com/mozilla/nss/refs/heads/master/lib/ckfw/builtins/certdata.txt", "URL to the raw certdata.txt file to parse (certdata-path overrides this, if provided)")
 	certDataPath = flag.String("certdata-path", "", "Path to the NSS certdata.txt file to parse (this overrides certdata-url, if provided)")
 	output       = flag.String("output", "fallback/bundle/bundle.go", "Path to file to write output to")
 	derOutput    = flag.String("deroutput", "fallback/bundle/bundle.der", "Path to file to write output to (DER certificate bundle)")

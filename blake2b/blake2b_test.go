@@ -14,6 +14,8 @@ import (
 	"testing"
 )
 
+var _ hash.XOF = (*xof)(nil)
+
 func fromHex(s string) []byte {
 	b, err := hex.DecodeString(s)
 	if err != nil {

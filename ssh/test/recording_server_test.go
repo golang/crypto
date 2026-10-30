@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -210,6 +211,16 @@ func (test *serverTest) run(t *testing.T, write bool) {
 	}
 }
 
+func removeMLDSA(algos []string) []string {
+	return slices.DeleteFunc(algos, func(algo string) bool {
+		switch algo {
+		case ssh.KeyAlgoMLDSA44, ssh.KeyAlgoMLDSA65, ssh.KeyAlgoMLDSA87:
+			return true
+		}
+		return false
+	})
+}
+
 func recordingsServerConfig() *ssh.ServerConfig {
 	config := &ssh.ServerConfig{
 		PublicKeyCallback: func(conn ssh.ConnMetadata, key ssh.PublicKey) (*ssh.Permissions, error) {
@@ -222,6 +233,11 @@ func recordingsServerConfig() *ssh.ServerConfig {
 	if config.KeyExchanges[0] == ssh.KeyExchangeMLKEM768X25519 {
 		config.KeyExchanges = config.KeyExchanges[1:]
 	}
+	// OpenSSH doesn't implement the ML-DSA algorithms, so don't advertise them
+	// in the ext-info message, which is part of the recorded flows.
+	config.PublicKeyAuthAlgorithms = removeMLDSA(append(
+		ssh.SupportedAlgorithms().PublicKeyAuths,
+		ssh.InsecureAlgorithms().PublicKeyAuths...))
 	config.AddHostKey(testSigners["rsa"])
 	return config
 }

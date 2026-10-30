@@ -19,7 +19,7 @@ func TestBundle(t *testing.T) {
 			continue
 		}
 
-		if unparsed.cn != cert.Subject.String() {
+		if !subjectsEqual(unparsed.cn, cert.Subject.String()) {
 			t.Errorf("unparsedCertificates[%v].cn = %q; want = %q", i, unparsed.cn, cert.Subject.String())
 		}
 

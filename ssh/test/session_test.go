@@ -309,18 +309,18 @@ HLcvWM4Y6bFzbGEAAAA0U3RhdGljIFJTQSBrZXkgZm9yIGdvbGFuZy5vcmcveC9jcnlwdG
 	// enabled
 	server := newServerForConfig(t, "MaxAuthTries", map[string]string{})
 
-	// Connect to server, expect failure, that PublicKeysCallback is called
-	// and that PasswordCallback is not called.
-	publicKeysCallbackCalled := false
+	// Connect to server, expect failure, that PasswordCallback is called
+	// and that PublicKeysCallback is not called.
+	passwordCallbackCalled := false
 	config := clientConfig()
 	config.Auth = []ssh.AuthMethod{
-		ssh.PublicKeysCallback(func() ([]ssh.Signer, error) {
-			publicKeysCallbackCalled = true
-			return []ssh.Signer{signer}, nil
-		}),
 		ssh.PasswordCallback(func() (string, error) {
-			t.Errorf("unexpected call to PasswordCallback()")
+			passwordCallbackCalled = true
 			return "notaverygoodpassword", nil
+		}),
+		ssh.PublicKeysCallback(func() ([]ssh.Signer, error) {
+			t.Errorf("unexpected call to PublicKeysCallback()")
+			return []ssh.Signer{signer}, nil
 		}),
 	}
 	client, err := server.TryDial(config)
@@ -328,7 +328,7 @@ HLcvWM4Y6bFzbGEAAAA0U3RhdGljIFJTQSBrZXkgZm9yIGdvbGFuZy5vcmcveC9jcnlwdG
 		t.Errorf("expected TryDial() to fail")
 		_ = client.Close()
 	}
-	if !publicKeysCallbackCalled {
-		t.Errorf("expected PublicKeysCallback() to be called")
+	if !passwordCallbackCalled {
+		t.Errorf("expected PasswordCallback() to be called")
 	}
 }

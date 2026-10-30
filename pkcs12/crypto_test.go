@@ -13,6 +13,46 @@ import (
 
 var sha1WithTripleDES = asn1.ObjectIdentifier([]int{1, 2, 840, 113549, 1, 12, 1, 3})
 
+func TestPbDecrypterForIterationLimit(t *testing.T) {
+	pass, _ := bmpString("Sesame open")
+
+	tests := []struct {
+		name       string
+		iterations int
+		wantErr    bool
+	}{
+		{"at limit", maxIterations, false},
+		{"over limit", maxIterations + 1, true},
+		{"negative", -1, true},
+		{"max int", 1<<31 - 1, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			params, _ := asn1.Marshal(pbeParams{
+				Salt:       []byte{1, 2, 3, 4, 5, 6, 7, 8},
+				Iterations: tt.iterations,
+			})
+			alg := pkix.AlgorithmIdentifier{
+				Algorithm: sha1WithTripleDES,
+				Parameters: asn1.RawValue{
+					FullBytes: params,
+				},
+			}
+			_, _, err := pbDecrypterFor(alg, pass)
+			if tt.wantErr {
+				if _, ok := err.(NotImplementedError); !ok {
+					t.Errorf("iterations=%d: got %v, want NotImplementedError", tt.iterations, err)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("iterations=%d: unexpected error: %v", tt.iterations, err)
+				}
+			}
+		})
+	}
+}
+
 func TestPbDecrypterFor(t *testing.T) {
 	params, _ := asn1.Marshal(pbeParams{
 		Salt:       []byte{1, 2, 3, 4, 5, 6, 7, 8},
