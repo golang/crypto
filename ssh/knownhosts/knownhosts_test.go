@@ -267,6 +267,12 @@ func TestWildcardMatch(t *testing.T) {
 		{"a*b*z", "axxbxxbxxxz", true},
 		{"a*b*z", "axxbxxzxxxz", true},
 		{"a*b*z", "axxbxxzxxx", false},
+		{"server*", "server", true},
+		{"*server", "server", true},
+		{"*", "", true},
+		{"*", "anything", true},
+		{"a*", "a", true},
+		{"*a", "a", true},
 	} {
 		got := wildcardMatch([]byte(c.pat), []byte(c.str))
 		if got != c.want {
