@@ -8,6 +8,7 @@
 package ocsp
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -277,6 +278,25 @@ func getOIDFromHashAlgorithm(target crypto.Hash) asn1.ObjectIdentifier {
 	}
 	return nil
 }
+func issuerHashes(hashFunc crypto.Hash, issuer *x509.Certificate) (issuerNameHash, issuerKeyHash []byte, err error) {
+	var publicKeyInfo struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(issuer.RawSubjectPublicKeyInfo, &publicKeyInfo); err != nil {
+		return nil, nil, err
+	}
+
+	h := hashFunc.New()
+	h.Write(publicKeyInfo.PublicKey.RightAlign())
+	issuerKeyHash = h.Sum(nil)
+
+	h.Reset()
+	h.Write(issuer.RawSubject)
+	issuerNameHash = h.Sum(nil)
+
+	return issuerNameHash, issuerKeyHash, nil
+}
 
 // This is the exposed reflection of the internal OCSP structures.
 
@@ -470,18 +490,20 @@ func ParseRequest(bytes []byte) (*Request, error) {
 //
 // Invalid responses and parse failures will result in a ParseError.
 // Error responses will result in a ResponseError.
-func ParseResponse(bytes []byte, issuer *x509.Certificate) (*Response, error) {
-	return ParseResponseForCert(bytes, nil, issuer)
+func ParseResponse(der []byte, issuer *x509.Certificate) (*Response, error) {
+	return ParseResponseForCert(der, nil, issuer)
 }
 
 // ParseResponseForCert acts identically to ParseResponse, except it supports
 // parsing responses that contain multiple statuses. If the response contains
 // multiple statuses and cert is not nil, then ParseResponseForCert will return
-// the first status which contains a matching serial, otherwise it will return an
-// error. If cert is nil, then the first status in the response will be returned.
-func ParseResponseForCert(bytes []byte, cert, issuer *x509.Certificate) (*Response, error) {
+// the first status whose serial matches cert and, if issuer is not nil, whose
+// issuer name hash and issuer key hash also match issuer. Otherwise it will
+// return an error. If cert is nil, then the first status in the response will
+// be returned.
+func ParseResponseForCert(der []byte, cert, issuer *x509.Certificate) (*Response, error) {
 	var resp responseASN1
-	rest, err := asn1.Unmarshal(bytes, &resp)
+	rest, err := asn1.Unmarshal(der, &resp)
 	if err != nil {
 		return nil, err
 	}
@@ -516,11 +538,30 @@ func ParseResponseForCert(bytes []byte, cert, issuer *x509.Certificate) (*Respon
 	} else {
 		match := false
 		for _, resp := range basicResp.TBSResponseData.Responses {
-			if cert.SerialNumber.Cmp(resp.CertID.SerialNumber) == 0 {
+			if cert.SerialNumber.Cmp(resp.CertID.SerialNumber) != 0 {
+				continue
+			}
+			if issuer == nil {
 				singleResp = resp
 				match = true
 				break
 			}
+
+			hashFunc := getHashAlgorithmFromOID(resp.CertID.HashAlgorithm.Algorithm)
+			if hashFunc == 0 {
+				continue
+			}
+			issuerNameHash, issuerKeyHash, err := issuerHashes(hashFunc, issuer)
+			if err != nil {
+				return nil, err
+			}
+			if !bytes.Equal(resp.CertID.NameHash, issuerNameHash) || !bytes.Equal(resp.CertID.IssuerKeyHash, issuerKeyHash) {
+				continue
+			}
+
+			singleResp = resp
+			match = true
+			break
 		}
 		if !match {
 			return nil, ParseError("no response matching the supplied certificate")
@@ -528,7 +569,7 @@ func ParseResponseForCert(bytes []byte, cert, issuer *x509.Certificate) (*Respon
 	}
 
 	ret := &Response{
-		Raw:                bytes,
+		Raw:                der,
 		TBSResponseData:    basicResp.TBSResponseData.Raw,
 		Signature:          basicResp.Signature.RightAlign(),
 		SignatureAlgorithm: getSignatureAlgorithmFromOID(basicResp.SignatureAlgorithm.Algorithm),
@@ -647,22 +688,10 @@ func CreateRequest(cert, issuer *x509.Certificate, opts *RequestOptions) ([]byte
 	if !hashFunc.Available() {
 		return nil, x509.ErrUnsupportedAlgorithm
 	}
-	h := opts.hash().New()
-
-	var publicKeyInfo struct {
-		Algorithm pkix.AlgorithmIdentifier
-		PublicKey asn1.BitString
-	}
-	if _, err := asn1.Unmarshal(issuer.RawSubjectPublicKeyInfo, &publicKeyInfo); err != nil {
+	issuerNameHash, issuerKeyHash, err := issuerHashes(hashFunc, issuer)
+	if err != nil {
 		return nil, err
 	}
-
-	h.Write(publicKeyInfo.PublicKey.RightAlign())
-	issuerKeyHash := h.Sum(nil)
-
-	h.Reset()
-	h.Write(issuer.RawSubject)
-	issuerNameHash := h.Sum(nil)
 
 	req := &Request{
 		HashAlgorithm:  hashFunc,
@@ -688,14 +717,6 @@ func CreateRequest(cert, issuer *x509.Certificate, opts *RequestOptions) ([]byte
 //
 // The ProducedAt date is automatically set to the current date, to the nearest minute.
 func CreateResponse(issuer, responderCert *x509.Certificate, template Response, priv crypto.Signer) ([]byte, error) {
-	var publicKeyInfo struct {
-		Algorithm pkix.AlgorithmIdentifier
-		PublicKey asn1.BitString
-	}
-	if _, err := asn1.Unmarshal(issuer.RawSubjectPublicKeyInfo, &publicKeyInfo); err != nil {
-		return nil, err
-	}
-
 	if template.IssuerHash == 0 {
 		template.IssuerHash = crypto.SHA1
 	}
@@ -707,13 +728,10 @@ func CreateResponse(issuer, responderCert *x509.Certificate, template Response, 
 	if !template.IssuerHash.Available() {
 		return nil, fmt.Errorf("issuer hash algorithm %v not linked into binary", template.IssuerHash)
 	}
-	h := template.IssuerHash.New()
-	h.Write(publicKeyInfo.PublicKey.RightAlign())
-	issuerKeyHash := h.Sum(nil)
-
-	h.Reset()
-	h.Write(issuer.RawSubject)
-	issuerNameHash := h.Sum(nil)
+	issuerNameHash, issuerKeyHash, err := issuerHashes(template.IssuerHash, issuer)
+	if err != nil {
+		return nil, err
+	}
 
 	innerResponse := singleResponse{
 		CertID: certID{
