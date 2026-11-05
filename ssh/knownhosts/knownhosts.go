@@ -80,9 +80,6 @@ func wildcardMatch(pat []byte, str []byte) bool {
 		if len(pat) == 0 {
 			return len(str) == 0
 		}
-		if len(str) == 0 {
-			return false
-		}
 
 		if pat[0] == '*' {
 			if len(pat) == 1 {
@@ -94,6 +91,10 @@ func wildcardMatch(pat []byte, str []byte) bool {
 					return true
 				}
 			}
+			return false
+		}
+
+		if len(str) == 0 {
 			return false
 		}
 
