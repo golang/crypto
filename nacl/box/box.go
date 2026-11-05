@@ -72,6 +72,13 @@ func GenerateKey(rand io.Reader) (publicKey, privateKey *[32]byte, err error) {
 	return
 }
 
+// GeneratePublicKey generates a public key from existing private key.
+func GeneratePublicKey(privateKey *[32]byte) (publicKey *[32]byte) {
+	publicKey = new([32]byte)
+	curve25519.ScalarBaseMult(publicKey, privateKey)
+	return
+}
+
 var zeros [16]byte
 
 // Precompute calculates the shared key between peersPublicKey and privateKey
