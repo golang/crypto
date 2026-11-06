@@ -30,23 +30,31 @@ type chanList struct {
 	// amount. This helps distinguish otherwise identical
 	// server/client muxes
 	offset uint32
+
+	// closed is set by dropAll; no channel is added afterwards.
+	closed bool
 }
 
 // add stores the given channel and assigns its localId while holding the
 // lock, so that getChan can never return a channel whose localId is not yet
-// initialized.
-func (c *chanList) add(ch *channel) {
+// initialized. It reports whether the channel was added; after dropAll it is
+// not, since nothing would ever close it.
+func (c *chanList) add(ch *channel) bool {
 	c.Lock()
 	defer c.Unlock()
+	if c.closed {
+		return false
+	}
 	for i := range c.chans {
 		if c.chans[i] == nil {
 			c.chans[i] = ch
 			ch.localId = uint32(i) + c.offset
-			return
+			return true
 		}
 	}
 	c.chans = append(c.chans, ch)
 	ch.localId = uint32(len(c.chans)-1) + c.offset
+	return true
 }
 
 // getChan returns the channel for the given ID.
@@ -83,6 +91,7 @@ func (c *chanList) dropAll() []*channel {
 		r = append(r, ch)
 	}
 	c.chans = nil
+	c.closed = true
 	return r
 }
 
@@ -345,6 +354,10 @@ func (m *mux) OpenChannel(chanType string, extra []byte) (Channel, <-chan *Reque
 
 func (m *mux) openChannel(chanType string, extra []byte) (*channel, error) {
 	ch := m.newChannel(chanType, channelOutbound, extra)
+	if ch == nil {
+		// The mux has shut down.
+		return nil, m.Wait()
+	}
 
 	open := channelOpenMsg{
 		ChanType:         chanType,

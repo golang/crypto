@@ -242,6 +242,44 @@ func TestMuxChannelCloseWriteUnblock(t *testing.T) {
 	reader.Close()
 }
 
+// deadConn is a packetConn whose reads fail once fail is closed and whose
+// writes still succeed, like a TCP connection whose peer has gone away.
+type deadConn struct {
+	fail chan struct{}
+}
+
+func (c *deadConn) readPacket() ([]byte, error) {
+	<-c.fail
+	return nil, io.EOF
+}
+
+func (c *deadConn) writePacket([]byte) error { return nil }
+
+func (c *deadConn) Close() error { return nil }
+
+func TestMuxOpenChannelAfterClose(t *testing.T) {
+	conn := &deadConn{fail: make(chan struct{})}
+	mux := newMux(conn)
+	close(conn.fail)
+	if err := mux.Wait(); err != io.EOF {
+		t.Fatalf("Wait: got %v, want io.EOF", err)
+	}
+
+	errc := make(chan error, 1)
+	go func() {
+		_, _, err := mux.OpenChannel("chan", nil)
+		errc <- err
+	}()
+	select {
+	case err := <-errc:
+		if err != io.EOF {
+			t.Errorf("openChannel: got %v, want io.EOF", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("openChannel blocked after the mux was closed")
+	}
+}
+
 func TestMuxConnectionCloseWriteUnblock(t *testing.T) {
 	reader, writer, mux := channelPair(t)
 	defer reader.Close()

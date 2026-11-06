@@ -537,7 +537,9 @@ func (m *mux) newChannel(chanType string, direction channelDirection, extraData 
 		mux:              m,
 		packetPool:       make(map[uint32][]byte),
 	}
-	m.chanList.add(ch)
+	if !m.chanList.add(ch) {
+		return nil
+	}
 	return ch
 }
 
