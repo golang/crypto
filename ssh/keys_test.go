@@ -69,6 +69,14 @@ func TestParsePublicKeyWithSigningAlgoAsKeyFormat(t *testing.T) {
 	if !strings.Contains(err.Error(), `signature algorithm "rsa-sha2-256" isn't a key format`) {
 		t.Errorf(`got %v, expected 'signature algorithm "rsa-sha2-256" isn't a key format'`, err)
 	}
+
+	_, _, err = parsePubKey(nil, SigAlgoWebAuthnSKECDSA256)
+	if err == nil {
+		t.Fatal("parsing a public key using SigAlgoWebAuthnSKECDSA256 as the key format succeeded unexpectedly")
+	}
+	if !strings.Contains(err.Error(), `signature algorithm "webauthn-sk-ecdsa-sha2-nistp256@openssh.com" isn't a key format`) {
+		t.Errorf("got %v, expected isn't a key format error for %q", err, SigAlgoWebAuthnSKECDSA256)
+	}
 }
 
 func TestUnsupportedCurves(t *testing.T) {
@@ -1337,6 +1345,196 @@ func TestSKUserPresence(t *testing.T) {
 	}
 	if err := pk.Verify(h.data, h.sign(t, flagUserPresence|0x04)); err != nil {
 		t.Errorf("Verify UP|UV with noTouchRequired failed: %v", err)
+	}
+}
+
+// signWebAuthnSK produces a WebAuthn signature over data with an SK key,
+// simulating a web browser using a FIDO authenticator. Only the fields that
+// tests need to control are parameters.
+func signWebAuthnSK(rand io.Reader, ecKey *ecdsa.PrivateKey, app string, data []byte, flags byte, origin, clientData, extensions string) (*Signature, error) {
+	h := sha256.New()
+	h.Write([]byte(app))
+	appDigest := h.Sum(nil)
+
+	h.Reset()
+	h.Write([]byte(clientData))
+	clientDataDigest := h.Sum(nil)
+
+	var counter uint32 = 42
+	blob := struct {
+		ApplicationDigest []byte `ssh:"rest"`
+		Flags             byte
+		Counter           uint32
+		Extensions        []byte `ssh:"rest"`
+		MessageDigest     []byte `ssh:"rest"`
+	}{
+		appDigest,
+		flags,
+		counter,
+		[]byte(extensions),
+		clientDataDigest,
+	}
+	h.Reset()
+	h.Write(Marshal(blob))
+	digest := h.Sum(nil)
+
+	r, s, err := ecdsa.Sign(rand, ecKey, digest)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Signature{
+		Format: SigAlgoWebAuthnSKECDSA256,
+		Blob:   Marshal(struct{ R, S *big.Int }{r, s}),
+		Rest: Marshal(webAuthnSKFields{
+			Flags:      flags,
+			Counter:    counter,
+			Origin:     origin,
+			ClientData: clientData,
+			Extensions: extensions,
+		}),
+	}, nil
+}
+
+func TestWebAuthnSKVerify(t *testing.T) {
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const app = "ssh:example.com"
+	const origin = "https://example.com"
+	data := []byte("ssh-webauthn-challenge-payload")
+	challenge := base64.RawURLEncoding.EncodeToString(data)
+	validClientData := fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"%s"}`, challenge, origin)
+
+	pk := &skECDSAPublicKey{
+		application: app,
+		PublicKey:   ecKey.PublicKey,
+	}
+
+	sign := func(t *testing.T, flags byte, origin, clientData, extensions string) *Signature {
+		t.Helper()
+		sig, err := signWebAuthnSK(rand.Reader, ecKey, app, data, flags, origin, clientData, extensions)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return sig
+	}
+
+	// Valid WebAuthn assertion with UP=1 and no extensions.
+	sig := sign(t, flagUserPresence, origin, validClientData, "")
+	if err := pk.Verify(data, sig); err != nil {
+		t.Fatalf("Verify valid WebAuthn signature failed: %v", err)
+	}
+
+	// Round-trip through parseSignature to verify wire unmarshaling of Rest.
+	wireSig := Marshal(struct{ Sig []byte }{Marshal(sig)})
+	parsedSig, rest, ok := parseSignature(wireSig)
+	if !ok || len(rest) != 0 {
+		t.Fatalf("parseSignature failed: ok=%v, len(rest)=%d", ok, len(rest))
+	}
+	if err := pk.Verify(data, parsedSig); err != nil {
+		t.Fatalf("Verify parsed WebAuthn signature failed: %v", err)
+	}
+
+	// Like OpenSSH, only the type, challenge and origin members of clientData
+	// are checked. Any origin without a quote is accepted, and the remaining
+	// members, including crossOrigin, are ignored.
+	for _, tc := range []struct{ origin, clientDataFormat string }{
+		{"http://localhost:8080", `{"type":"webauthn.get","challenge":"%s","origin":"%s","crossOrigin":false}`},
+		{"https://example.com", `{"type":"webauthn.get","challenge":"%s","origin":"%s","crossOrigin":true}`},
+		{"android:apk-key-hash:cG9seWZpbGxpbmc", `{"type":"webauthn.get","challenge":"%s","origin":"%s"}`},
+	} {
+		clientData := fmt.Sprintf(tc.clientDataFormat, challenge, tc.origin)
+		sigExtra := sign(t, flagUserPresence, tc.origin, clientData, "")
+		if err := pk.Verify(data, sigExtra); err != nil {
+			t.Errorf("Verify with clientData %s failed: %v", clientData, err)
+		}
+	}
+
+	// Valid WebAuthn assertion with ED (0x80) flag and non-empty extensions.
+	sigExt := sign(t, flagUserPresence|0x80, origin, validClientData, "\xa1\x62ext\xf5")
+	if err := pk.Verify(data, sigExt); err != nil {
+		t.Errorf("Verify with extensions failed: %v", err)
+	}
+
+	// Missing UP flag (UP=0) fails unless noTouchRequired is set.
+	sigNoUP := sign(t, 0, origin, validClientData, "")
+	if err := pk.Verify(data, sigNoUP); !errors.Is(err, errSKMissingUserPresence) {
+		t.Errorf("UP=0: expected errSKMissingUserPresence, got %v", err)
+	}
+	if err := skKeyWithoutUP(pk).Verify(data, sigNoUP); err != nil {
+		t.Errorf("UP=0 with noTouchRequired failed: %v", err)
+	}
+
+	// Negative cases for WebAuthn clientData and flags validation.
+	negCases := []struct {
+		name       string
+		flags      byte
+		origin     string
+		clientData string
+		extensions string
+	}{
+		{
+			name:       "AT flag set in assertion",
+			flags:      flagUserPresence | 0x40,
+			origin:     origin,
+			clientData: validClientData,
+		},
+		{
+			name:       "ED flag set with empty extensions",
+			flags:      flagUserPresence | 0x80,
+			origin:     origin,
+			clientData: validClientData,
+			extensions: "",
+		},
+		{
+			name:       "ED flag clear with non-empty extensions",
+			flags:      flagUserPresence,
+			origin:     origin,
+			clientData: validClientData,
+			extensions: "\xa0",
+		},
+		{
+			name:       "quote in origin",
+			flags:      flagUserPresence,
+			origin:     `https://example.com"evil`,
+			clientData: fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"https://example.com"evil"}`, challenge),
+		},
+		{
+			name:       "wrong webauthn type",
+			flags:      flagUserPresence,
+			origin:     origin,
+			clientData: fmt.Sprintf(`{"type":"webauthn.create","challenge":"%s","origin":"%s"}`, challenge, origin),
+		},
+		{
+			name:       "wrong challenge",
+			flags:      flagUserPresence,
+			origin:     origin,
+			clientData: fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"%s"}`, base64.RawURLEncoding.EncodeToString([]byte("wrong")), origin),
+		},
+		{
+			name:       "reordered clientData keys",
+			flags:      flagUserPresence,
+			origin:     origin,
+			clientData: fmt.Sprintf(`{"origin":"%s","type":"webauthn.get","challenge":"%s"}`, origin, challenge),
+		},
+		{
+			name:       "wrong origin",
+			flags:      flagUserPresence,
+			origin:     origin,
+			clientData: fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"https://evil.example"}`, challenge),
+		},
+	}
+
+	for _, tc := range negCases {
+		t.Run(tc.name, func(t *testing.T) {
+			badSig := sign(t, tc.flags, tc.origin, tc.clientData, tc.extensions)
+			if err := pk.Verify(data, badSig); err == nil {
+				t.Errorf("Verify succeeded unexpectedly for %s", tc.name)
+			}
+		})
 	}
 }
 
