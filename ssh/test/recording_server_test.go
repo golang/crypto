@@ -211,10 +211,16 @@ func (test *serverTest) run(t *testing.T, write bool) {
 	}
 }
 
-func removeMLDSA(algos []string) []string {
+// removeUnusedPubKeyAuthAlgos removes the public key authentication
+// algorithms that the OpenSSH client never uses: it doesn't implement the
+// ML-DSA algorithms, and WebAuthn signatures are only produced by web
+// browsers. They are not advertised in the ext-info message, which is part
+// of the recorded flows, so that the flows don't need to be re-recorded when
+// such algorithms are added.
+func removeUnusedPubKeyAuthAlgos(algos []string) []string {
 	return slices.DeleteFunc(algos, func(algo string) bool {
 		switch algo {
-		case ssh.KeyAlgoMLDSA44, ssh.KeyAlgoMLDSA65, ssh.KeyAlgoMLDSA87:
+		case ssh.KeyAlgoMLDSA44, ssh.KeyAlgoMLDSA65, ssh.KeyAlgoMLDSA87, ssh.SigAlgoWebAuthnSKECDSA256:
 			return true
 		}
 		return false
@@ -233,9 +239,7 @@ func recordingsServerConfig() *ssh.ServerConfig {
 	if config.KeyExchanges[0] == ssh.KeyExchangeMLKEM768X25519 {
 		config.KeyExchanges = config.KeyExchanges[1:]
 	}
-	// OpenSSH doesn't implement the ML-DSA algorithms, so don't advertise them
-	// in the ext-info message, which is part of the recorded flows.
-	config.PublicKeyAuthAlgorithms = removeMLDSA(append(
+	config.PublicKeyAuthAlgorithms = removeUnusedPubKeyAuthAlgos(append(
 		ssh.SupportedAlgorithms().PublicKeyAuths,
 		ssh.InsecureAlgorithms().PublicKeyAuths...))
 	config.AddHostKey(testSigners["rsa"])
