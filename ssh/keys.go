@@ -100,7 +100,7 @@ func parsePubKey(in []byte, algo string) (pubKey PublicKey, rest []byte, err err
 			algo, keyFormat)
 	}
 
-	return nil, nil, fmt.Errorf("ssh: unknown key algorithm: %v", algo)
+	return nil, nil, fmt.Errorf("ssh: unknown key algorithm: %q", algo)
 }
 
 // trimSpace removes leading and trailing ASCII space and tab.
@@ -547,7 +547,7 @@ func (r *rsaPublicKey) Marshal() []byte {
 func (r *rsaPublicKey) Verify(data []byte, sig *Signature) error {
 	supportedAlgos := algorithmsForKeyFormat(r.Type())
 	if !slices.Contains(supportedAlgos, sig.Format) {
-		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, r.Type())
+		return fmt.Errorf("ssh: signature type %q for key type %q", sig.Format, r.Type())
 	}
 	hash, err := hashFunc(sig.Format)
 	if err != nil {
@@ -659,7 +659,7 @@ func (k ed25519PublicKey) Marshal() []byte {
 
 func (k ed25519PublicKey) Verify(b []byte, sig *Signature) error {
 	if sig.Format != k.Type() {
-		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, k.Type())
+		return fmt.Errorf("ssh: signature type %q for key type %q", sig.Format, k.Type())
 	}
 	if l := len(k); l != ed25519.PublicKeySize {
 		return fmt.Errorf("ssh: invalid size %d for Ed25519 public key", l)
@@ -738,7 +738,7 @@ func (k *ecdsaPublicKey) Marshal() []byte {
 
 func (k *ecdsaPublicKey) Verify(data []byte, sig *Signature) error {
 	if sig.Format != k.Type() {
-		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, k.Type())
+		return fmt.Errorf("ssh: signature type %q for key type %q", sig.Format, k.Type())
 	}
 	hash, err := hashFunc(sig.Format)
 	if err != nil {
@@ -859,7 +859,7 @@ func (k *skECDSAPublicKey) Marshal() []byte {
 
 func (k *skECDSAPublicKey) Verify(data []byte, sig *Signature) error {
 	if sig.Format != k.Type() {
-		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, k.Type())
+		return fmt.Errorf("ssh: signature type %q for key type %q", sig.Format, k.Type())
 	}
 	hash, err := hashFunc(sig.Format)
 	if err != nil {
@@ -970,7 +970,7 @@ func (k *skEd25519PublicKey) Marshal() []byte {
 
 func (k *skEd25519PublicKey) Verify(data []byte, sig *Signature) error {
 	if sig.Format != k.Type() {
-		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, k.Type())
+		return fmt.Errorf("ssh: signature type %q for key type %q", sig.Format, k.Type())
 	}
 	if l := len(k.PublicKey); l != ed25519.PublicKeySize {
 		return fmt.Errorf("invalid size %d for Ed25519 public key", l)

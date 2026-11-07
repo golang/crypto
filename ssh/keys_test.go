@@ -71,6 +71,53 @@ func TestParsePublicKeyWithSigningAlgoAsKeyFormat(t *testing.T) {
 	}
 }
 
+func TestParsePublicKeyUnknownAlgoSanitized(t *testing.T) {
+	in := Marshal(struct{ Algo string }{"evil\x1b[31m\r\n"})
+	_, err := ParsePublicKey(in)
+	if err == nil {
+		t.Fatal("parsing a public key with an unknown algorithm succeeded unexpectedly")
+	}
+	if want := `ssh: unknown key algorithm: "evil\x1b[31m\r\n"`; err.Error() != want {
+		t.Errorf("got %q, want %q", err, want)
+	}
+}
+
+func TestVerifySignatureFormatSanitized(t *testing.T) {
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys := map[string]PublicKey{
+		"sk-ecdsa":   &skECDSAPublicKey{PublicKey: ecKey.PublicKey},
+		"sk-ed25519": &skEd25519PublicKey{PublicKey: edPub},
+		"cert":       testSigners["cert"].PublicKey(),
+	}
+	for name, k := range testPublicKeys {
+		keys[name] = k
+	}
+
+	const format = "evil\x1b[31m\r\n"
+	for name, k := range keys {
+		t.Run(name, func(t *testing.T) {
+			err := k.Verify([]byte("data"), &Signature{Format: format})
+			if err == nil {
+				t.Fatal("Verify succeeded unexpectedly")
+			}
+			got := err.Error()
+			if !strings.Contains(got, `"evil\x1b[31m\r\n"`) {
+				t.Errorf("got %q, want it to contain the quoted signature format", got)
+			}
+			if bad := "\n\r\x1b"; strings.ContainsAny(got, bad) {
+				t.Errorf("got %q, want none of %q", got, bad)
+			}
+		})
+	}
+}
+
 func TestUnsupportedCurves(t *testing.T) {
 	raw, err := ecdsa.GenerateKey(elliptic.P224(), rand.Reader)
 	if err != nil {
