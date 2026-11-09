@@ -438,8 +438,6 @@ func (s *Session) wait(reqs <-chan *Request) error {
 				return err
 			}
 
-			// The strings are kept verbatim for the accessors and
-			// quoted when formatted by Waitmsg.String.
 			wm.signal = sigval.Signal
 			wm.msg = sigval.Error
 			wm.lang = sigval.Lang

@@ -1344,3 +1344,47 @@ func TestServerAuthSKUserPresence(t *testing.T) {
 		}
 	})
 }
+
+func TestServerQuotesRequestedService(t *testing.T) {
+	c1, c2, err := netPipe()
+	if err != nil {
+		t.Fatalf("netPipe: %v", err)
+	}
+	defer c1.Close()
+	defer c2.Close()
+
+	serverConf := &ServerConfig{NoClientAuth: true}
+	serverConf.AddHostKey(testSigners["ecdsa"])
+	errc := make(chan error, 1)
+	go func() {
+		_, _, _, err := NewServerConn(c1, serverConf)
+		errc <- err
+	}()
+
+	clientConf := &ClientConfig{HostKeyCallback: InsecureIgnoreHostKey()}
+	clientConf.SetDefaults()
+	v := []byte(packageVersion)
+	if _, err := c2.Write(append(v, '\r', '\n')); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	serverVersion, err := readVersion(c2)
+	if err != nil {
+		t.Fatalf("readVersion: %v", err)
+	}
+	tr := newClientTransport(newTransport(c2, clientConf.Rand, true), v, serverVersion, clientConf, "addr", c2.RemoteAddr())
+	defer tr.Close()
+	if err := tr.waitSession(); err != nil {
+		t.Fatalf("waitSession: %v", err)
+	}
+	if err := tr.writePacket(Marshal(&serviceRequestMsg{"evil\x1b[2J"})); err != nil {
+		t.Fatalf("writePacket: %v", err)
+	}
+
+	err = <-errc
+	if err == nil {
+		t.Fatal("NewServerConn succeeded, want error")
+	}
+	if strings.ContainsRune(err.Error(), '\x1b') || !strings.Contains(err.Error(), `"evil\x1b[2J"`) {
+		t.Errorf("error = %q, want the requested service quoted", err)
+	}
+}
