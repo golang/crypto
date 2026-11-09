@@ -437,7 +437,7 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 		return nil, err
 	}
 	if serviceRequest.Service != serviceUserAuth {
-		return nil, errors.New("ssh: requested service '" + serviceRequest.Service + "' before authenticating")
+		return nil, fmt.Errorf("ssh: requested service %q before authenticating", serviceRequest.Service)
 	}
 	serviceAccept := serviceAcceptMsg{
 		Service: serviceUserAuth,
