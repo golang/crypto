@@ -175,7 +175,8 @@ func skKeyWithoutUP(pubKey PublicKey) PublicKey {
 	return &c
 }
 
-// ServerConfig holds server specific configuration data.
+// ServerConfig holds server specific configuration data. It must not be
+// modified after having been passed to an SSH function.
 type ServerConfig struct {
 	// Config contains configuration shared between client and server.
 	Config
