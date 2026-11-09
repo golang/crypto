@@ -242,6 +242,97 @@ func TestMuxChannelCloseWriteUnblock(t *testing.T) {
 	reader.Close()
 }
 
+// shutdownConn is a packetConn whose reads fail once readErr is closed. Close
+// closes closing and blocks until release is closed; writes fail after Close
+// returns.
+type shutdownConn struct {
+	readErr chan struct{}
+	closing chan struct{}
+	release chan struct{}
+	onWrite func(p []byte)
+
+	once   sync.Once
+	mu     sync.Mutex
+	closed bool
+}
+
+func newShutdownConn() *shutdownConn {
+	return &shutdownConn{
+		readErr: make(chan struct{}),
+		closing: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+}
+
+func (c *shutdownConn) readPacket() ([]byte, error) {
+	<-c.readErr
+	return nil, io.EOF
+}
+
+func (c *shutdownConn) writePacket(p []byte) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return io.EOF
+	}
+	if c.onWrite != nil {
+		c.onWrite(p)
+	}
+	return nil
+}
+
+func (c *shutdownConn) Close() error {
+	c.once.Do(func() { close(c.closing) })
+	<-c.release
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
+	return nil
+}
+
+func TestMuxOpenChannelDuringShutdown(t *testing.T) {
+	conn := newShutdownConn()
+	t.Cleanup(func() { close(conn.release) })
+	conn.onWrite = func(p []byte) {
+		if p[0] == msgChannelOpen {
+			t.Error("channel open sent after the mux shut down")
+		}
+	}
+	m := newMux(conn)
+	close(conn.readErr)
+	// The mux loop has dropped its channels and is closing the transport,
+	// which still accepts writes.
+	<-conn.closing
+
+	errc := make(chan error, 1)
+	go func() {
+		_, _, err := m.OpenChannel("chan", nil)
+		errc <- err
+	}()
+	select {
+	case err := <-errc:
+		if err != io.EOF {
+			t.Errorf("OpenChannel: got %v, want io.EOF", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("OpenChannel blocked while the mux was shutting down")
+	}
+}
+
+func TestMuxOpenChannelConnectionLost(t *testing.T) {
+	conn := newShutdownConn()
+	close(conn.release)
+	conn.onWrite = func(p []byte) {
+		if p[0] == msgChannelOpen {
+			close(conn.readErr)
+		}
+	}
+	m := newMux(conn)
+	if _, _, err := m.OpenChannel("chan", nil); err != io.EOF {
+		t.Errorf("OpenChannel: got %v, want io.EOF", err)
+	}
+}
+
 func TestMuxConnectionCloseWriteUnblock(t *testing.T) {
 	reader, writer, mux := channelPair(t)
 	defer reader.Close()
