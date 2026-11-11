@@ -37,7 +37,7 @@ import (
 const (
 	// pebbleModVersion is the module version used for Pebble and Pebble's
 	// challenge test server. It is ignored if `-pebble-local-dir` is provided.
-	pebbleModVersion = "v2.10.1"
+	pebbleModVersion = "v2.10.3"
 	// startingPort is the first port number used for binding interface
 	// addresses. Each call to takeNextPort() will increment a port number
 	// starting at this value.
