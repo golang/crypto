@@ -565,11 +565,17 @@ func isAlgoCompatible(algo, sigFormat string) bool {
 	//
 	// With gpg-agent < 2.2.6 the algorithm can be rsa-sha2-256 or rsa-sha2-512
 	// for signature format ssh-rsa.
-	if isRSA(algo) && isRSA(sigFormat) {
-		return true
-	}
-	// Standard case: the underlying algorithm must match the signature format.
-	return underlyingAlgo(algo) == sigFormat
+	//
+	// Similarly, the signature format can be
+	// webauthn-sk-ecdsa-sha2-nistp256@openssh.com for the algorithm
+	// sk-ecdsa-sha2-nistp256@openssh.com (or its certificate form), and vice
+	// versa.
+	//
+	// All these cases are covered by requiring that the algorithm and the
+	// signature format, ignoring certificate types, correspond to the same key
+	// format.
+	keyFormat := keyFormatForAlgorithm(underlyingAlgo(algo))
+	return keyFormat != "" && keyFormat == keyFormatForAlgorithm(underlyingAlgo(sigFormat))
 }
 
 // ServerAuthError represents server authentication errors and is
@@ -864,7 +870,7 @@ userAuthLoop:
 				// ssh-rsa-cert-v01@openssh.com algorithm with ssh-rsa public
 				// key type. The algorithm and public key type must be
 				// consistent: both must be certificate algorithms, or neither.
-				if !slices.Contains(algorithmsForKeyFormat(pubKey.Type()), algo) {
+				if keyFormatForAlgorithm(algo) != pubKey.Type() {
 					authErr = fmt.Errorf("ssh: public key type %q not compatible with selected algorithm %q",
 						pubKey.Type(), algo)
 					break

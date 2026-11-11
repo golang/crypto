@@ -10,6 +10,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"math/big"
@@ -254,6 +255,43 @@ func TestCheckCertSKAuthorityNoUPRequired(t *testing.T) {
 	}
 	if err := checker.CheckCert("user", mkCert(flagUserPresence)); err != nil {
 		t.Errorf("UP=1 CA signature must verify: %v", err)
+	}
+
+	// Also verify certificates signed by an SK CA using the WebAuthn
+	// signature format (including round-tripping through Marshal and
+	// ParsePublicKey).
+	for _, flags := range []byte{0, flagUserPresence} {
+		c := &Certificate{
+			CertType:        UserCert,
+			Key:             userPub,
+			ValidBefore:     CertTimeInfinity,
+			ValidPrincipals: []string{"user"},
+			SignatureKey: &skECDSAPublicKey{
+				application: "ssh:",
+				PublicKey:   caKey.PublicKey,
+			},
+			Nonce: make([]byte, 32),
+		}
+		if _, err := rand.Read(c.Nonce); err != nil {
+			t.Fatal(err)
+		}
+		const origin = "https://example.com"
+		signingBytes := c.bytesForSigning()
+		clientData := fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"%s"}`,
+			base64.RawURLEncoding.EncodeToString(signingBytes), origin)
+		sig, err := signWebAuthnSK(rand.Reader, caKey, "ssh:", signingBytes, flags, origin, clientData, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.Signature = sig
+
+		parsed, err := ParsePublicKey(c.Marshal())
+		if err != nil {
+			t.Fatalf("ParsePublicKey(WebAuthn-signed cert, flags=%#x): %v", flags, err)
+		}
+		if err := checker.CheckCert("user", parsed.(*Certificate)); err != nil {
+			t.Errorf("WebAuthn CA signature (flags=%#x) failed CheckCert: %v", flags, err)
+		}
 	}
 }
 

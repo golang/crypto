@@ -60,6 +60,13 @@ const (
 	// corresponding PublicKey.Type is KeyAlgoRSA. See RFC 8332, Section 2.
 	KeyAlgoRSASHA256 = "rsa-sha2-256"
 	KeyAlgoRSASHA512 = "rsa-sha2-512"
+
+	// SigAlgoWebAuthnSKECDSA256 is only a signature algorithm, not a public key
+	// format, so it can't appear as a PublicKey.Type. The corresponding
+	// PublicKey.Type is KeyAlgoSKECDSA256. Such signatures are produced by a
+	// web browser using the WebAuthn API. This package can verify them but
+	// doesn't produce them. See openssh/PROTOCOL.u2f, 'webauthn signatures'.
+	SigAlgoWebAuthnSKECDSA256 = "webauthn-sk-ecdsa-sha2-nistp256@openssh.com"
 )
 
 const (
@@ -782,6 +789,21 @@ type skFields struct {
 	Counter uint32
 }
 
+// webAuthnSKFields holds the additional fields present in WebAuthn
+// signatures. See openssh/PROTOCOL.u2f 'webauthn signatures' for details.
+type webAuthnSKFields struct {
+	Flags   byte
+	Counter uint32
+	// Origin is the origin of the web page that requested the signature.
+	Origin string
+	// ClientData is the JSON serialization of the WebAuthn client data
+	// signed by the authenticator. It contains the signed message as the
+	// challenge.
+	ClientData string
+	// Extensions is the CBOR-encoded authenticator extension data, if any.
+	Extensions string
+}
+
 // flagUserPresence is the "user present" bit (UP) in the SK signature
 // flags, matching the FIDO CTAP2 authenticatorData UP flag. See
 // openssh/PROTOCOL.u2f.
@@ -858,9 +880,33 @@ func (k *skECDSAPublicKey) Marshal() []byte {
 }
 
 func (k *skECDSAPublicKey) Verify(data []byte, sig *Signature) error {
-	if sig.Format != k.Type() {
+	// The signature covers the digest of either data, for an SK signature, or
+	// of the WebAuthn clientData that contains data as its challenge, for a
+	// WebAuthn signature.
+	var flags byte
+	var counter uint32
+	var extensions, message []byte
+	switch sig.Format {
+	case KeyAlgoSKECDSA256:
+		var skf skFields
+		if err := Unmarshal(sig.Rest, &skf); err != nil {
+			return err
+		}
+		flags, counter, message = skf.Flags, skf.Counter, data
+	case SigAlgoWebAuthnSKECDSA256:
+		var waf webAuthnSKFields
+		if err := Unmarshal(sig.Rest, &waf); err != nil {
+			return err
+		}
+		if err := verifyWebAuthnClientData(&waf, data); err != nil {
+			return err
+		}
+		flags, counter = waf.Flags, waf.Counter
+		extensions, message = []byte(waf.Extensions), []byte(waf.ClientData)
+	default:
 		return fmt.Errorf("ssh: signature type %s for key type %s", sig.Format, k.Type())
 	}
+
 	hash, err := hashFunc(sig.Format)
 	if err != nil {
 		return err
@@ -870,8 +916,8 @@ func (k *skECDSAPublicKey) Verify(data []byte, sig *Signature) error {
 	appDigest := h.Sum(nil)
 
 	h.Reset()
-	h.Write(data)
-	dataDigest := h.Sum(nil)
+	h.Write(message)
+	messageDigest := h.Sum(nil)
 
 	var ecSig struct {
 		R *big.Int
@@ -881,12 +927,7 @@ func (k *skECDSAPublicKey) Verify(data []byte, sig *Signature) error {
 		return err
 	}
 
-	var skf skFields
-	if err := Unmarshal(sig.Rest, &skf); err != nil {
-		return err
-	}
-
-	if skf.Flags&flagUserPresence == 0 && !k.noTouchRequired {
+	if flags&flagUserPresence == 0 && !k.noTouchRequired {
 		return errSKMissingUserPresence
 	}
 
@@ -894,12 +935,14 @@ func (k *skECDSAPublicKey) Verify(data []byte, sig *Signature) error {
 		ApplicationDigest []byte `ssh:"rest"`
 		Flags             byte
 		Counter           uint32
+		Extensions        []byte `ssh:"rest"`
 		MessageDigest     []byte `ssh:"rest"`
 	}{
 		appDigest,
-		skf.Flags,
-		skf.Counter,
-		dataDigest,
+		flags,
+		counter,
+		extensions,
+		messageDigest,
 	}
 
 	original := Marshal(blob)
@@ -912,6 +955,36 @@ func (k *skECDSAPublicKey) Verify(data []byte, sig *Signature) error {
 		return nil
 	}
 	return errors.New("ssh: signature did not verify")
+}
+
+// verifyWebAuthnClientData checks that the clientData of a WebAuthn signature
+// is a WebAuthn assertion whose challenge is data, and that the flags are
+// consistent with the extensions. These are the same checks as OpenSSH's
+// webauthn_check_prepare_hash.
+func verifyWebAuthnClientData(waf *webAuthnSKFields, data []byte) error {
+	// Per FIDO2/WebAuthn (Section 6.1), bit 6 (AT) indicates attested
+	// credential data, which must not be present in an assertion, and bit 7
+	// (ED) indicates whether extension data is present.
+	if waf.Flags&0x40 != 0 {
+		return errors.New("ssh: unexpected attested credential data flag in webauthn signature")
+	}
+	if (waf.Flags&0x80 != 0) != (len(waf.Extensions) != 0) {
+		return errors.New("ssh: webauthn extension data flag does not match extensions length")
+	}
+	// The browser serializes clientData with the type, challenge and origin
+	// members first, in this order (W3C WebAuthn, Section 5.8.1.1), so only
+	// this prefix is compared. Like OpenSSH, the rest of clientData
+	// (crossOrigin, any other members) is ignored, and the origin must not
+	// contain a quote since it would end the JSON string early.
+	if strings.Contains(waf.Origin, `"`) {
+		return errors.New("ssh: invalid webauthn origin")
+	}
+	expectedPrefix := fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"%s"`,
+		base64.RawURLEncoding.EncodeToString(data), waf.Origin)
+	if !strings.HasPrefix(waf.ClientData, expectedPrefix) {
+		return errors.New("ssh: invalid webauthn clientData")
+	}
+	return nil
 }
 
 func (k *skECDSAPublicKey) CryptoPublicKey() crypto.PublicKey {

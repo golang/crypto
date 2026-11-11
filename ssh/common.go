@@ -205,6 +205,7 @@ var (
 		KeyAlgoED25519,
 		KeyAlgoSKED25519,
 		KeyAlgoSKECDSA256,
+		SigAlgoWebAuthnSKECDSA256,
 		KeyAlgoECDSA256,
 		KeyAlgoECDSA384,
 		KeyAlgoECDSA521,
@@ -219,6 +220,7 @@ var (
 		KeyAlgoED25519,
 		KeyAlgoSKED25519,
 		KeyAlgoSKECDSA256,
+		SigAlgoWebAuthnSKECDSA256,
 		KeyAlgoECDSA256,
 		KeyAlgoECDSA384,
 		KeyAlgoECDSA521,
@@ -271,7 +273,7 @@ func init() {
 
 func hashFunc(format string) (crypto.Hash, error) {
 	switch format {
-	case KeyAlgoRSASHA256, KeyAlgoECDSA256, KeyAlgoSKED25519, KeyAlgoSKECDSA256:
+	case KeyAlgoRSASHA256, KeyAlgoECDSA256, KeyAlgoSKED25519, KeyAlgoSKECDSA256, SigAlgoWebAuthnSKECDSA256:
 		return crypto.SHA256, nil
 	case KeyAlgoECDSA384:
 		return crypto.SHA384, nil
@@ -344,9 +346,14 @@ func keyFormatForAlgorithm(sigAlgo string) string {
 		return KeyAlgoRSA
 	case CertAlgoRSAv01, CertAlgoRSASHA256v01, CertAlgoRSASHA512v01:
 		return CertAlgoRSAv01
+	// SigAlgoWebAuthnSKECDSA256 signatures are only verified, never
+	// produced, by this package. The algorithm is deliberately not returned
+	// by algorithmsForKeyFormat, since a generic AlgorithmSigner for an SK key
+	// can't be assumed to produce WebAuthn signatures.
+	case KeyAlgoSKECDSA256, SigAlgoWebAuthnSKECDSA256:
+		return KeyAlgoSKECDSA256
 	case KeyAlgoED25519,
 		KeyAlgoSKED25519,
-		KeyAlgoSKECDSA256,
 		KeyAlgoECDSA256,
 		KeyAlgoECDSA384,
 		KeyAlgoECDSA521,
