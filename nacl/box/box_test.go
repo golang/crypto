@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"golang.org/x/crypto/curve25519"
+	"golang.org/x/crypto/nacl/secretbox"
+	"golang.org/x/crypto/salsa20/salsa"
 )
 
 func TestSealOpen(t *testing.T) {
@@ -177,5 +179,69 @@ func TestSealedBox(t *testing.T) {
 	}
 	if !bytes.Equal(result, message[:]) {
 		t.Fatalf("message didn't match, got\n%x\n, expected\n%x", result, message[:])
+	}
+}
+
+// lowOrderPoints are some of the Curve25519 points of small order, for which
+// X25519 produces an all-zero output regardless of the scalar.
+var lowOrderPoints = []string{
+	"0000000000000000000000000000000000000000000000000000000000000000",
+	"0100000000000000000000000000000000000000000000000000000000000000",
+	"e0eb7a7c3b41b8ae1656e3faf19fc46ada098deb9c32b1fd866205165f49b800",
+	"5f9c95bca3508c24b1d0b1559c83ef5b04445cc4581c8e86d8224eddd09f1157",
+	"ecffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff7f",
+}
+
+func TestLowOrderPoints(t *testing.T) {
+	publicKey, privateKey, _ := GenerateKey(rand.Reader)
+	message := []byte("test message")
+	var nonce [24]byte
+
+	// zeroSharedKey is the shared key derived from an all-zero X25519 output.
+	var zeroSharedKey [32]byte
+	salsa.HSalsa20(&zeroSharedKey, &zeros, &zeroSharedKey, &salsa.Sigma)
+
+	mustPanic := func(t *testing.T, name string, f func()) {
+		t.Helper()
+		defer func() {
+			if recover() == nil {
+				t.Errorf("%s did not panic", name)
+			}
+		}()
+		f()
+	}
+
+	for _, p := range lowOrderPoints {
+		t.Run(p, func(t *testing.T) {
+			var lowOrder [32]byte
+			if _, err := hex.Decode(lowOrder[:], []byte(p)); err != nil {
+				t.Fatal(err)
+			}
+
+			mustPanic(t, "Precompute", func() {
+				var sharedKey [32]byte
+				Precompute(&sharedKey, &lowOrder, privateKey)
+			})
+			mustPanic(t, "Seal", func() {
+				Seal(nil, message, &nonce, &lowOrder, privateKey)
+			})
+			if _, err := SealAnonymous(nil, message, &lowOrder, nil); err == nil {
+				t.Error("SealAnonymous did not return an error")
+			}
+
+			box := secretbox.Seal(nil, message, &nonce, &zeroSharedKey)
+			if _, ok := Open(nil, box, &nonce, &lowOrder, privateKey); ok {
+				t.Error("Open accepted a box from a low-order public key")
+			}
+
+			var anonNonce [24]byte
+			if err := sealNonce(&lowOrder, publicKey, &anonNonce); err != nil {
+				t.Fatal(err)
+			}
+			box = secretbox.Seal(lowOrder[:], message, &anonNonce, &zeroSharedKey)
+			if _, ok := OpenAnonymous(nil, box, publicKey, privateKey); ok {
+				t.Error("OpenAnonymous accepted a box with a low-order ephemeral key")
+			}
+		})
 	}
 }
