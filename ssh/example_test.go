@@ -17,9 +17,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"unicode"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/terminal"
+	"golang.org/x/term"
 )
 
 func ExampleNewServerConn() {
@@ -400,6 +402,70 @@ func ExamplePublicKeys() {
 	}
 
 	// Connect to the remote server and perform the SSH handshake.
+	client, err := ssh.Dial("tcp", "host.com:22", config)
+	if err != nil {
+		log.Fatalf("unable to connect: %v", err)
+	}
+	defer client.Close()
+}
+
+func ExampleKeyboardInteractive() {
+	var hostKey ssh.PublicKey
+	stdin := bufio.NewReader(os.Stdin)
+
+	// The text comes from the server, so remove control characters from it
+	// before printing it, as RFC 4256 section 3.3 recommends.
+	sanitize := func(s string) string {
+		return strings.Map(func(r rune) rune {
+			if unicode.IsControl(r) && r != '\n' {
+				return -1
+			}
+			return r
+		}, s)
+	}
+
+	// The server sends a name, an instruction and zero or more questions,
+	// possibly several times. Show the name and instruction, then ask
+	// each question in turn. Answers are only echoed when the server
+	// allows it, as for a password prompt they should not be.
+	challenge := func(name, instruction string, questions []string, echos []bool) ([]string, error) {
+		if name != "" {
+			fmt.Println(sanitize(name))
+		}
+		if instruction != "" {
+			fmt.Println(sanitize(instruction))
+		}
+		answers := make([]string, len(questions))
+		for i, question := range questions {
+			fmt.Print(sanitize(question))
+			if echos[i] {
+				answer, err := stdin.ReadString('\n')
+				if err != nil {
+					return nil, err
+				}
+				answers[i] = strings.TrimRight(answer, "\r\n")
+			} else {
+				answer, err := term.ReadPassword(int(os.Stdin.Fd()))
+				fmt.Println()
+				if err != nil {
+					return nil, err
+				}
+				answers[i] = string(answer)
+			}
+		}
+		return answers, nil
+	}
+
+	config := &ssh.ClientConfig{
+		User: "user",
+		Auth: []ssh.AuthMethod{
+			// Use the KeyboardInteractive method to answer the questions
+			// the server asks, such as a password or a one-time code.
+			ssh.KeyboardInteractive(challenge),
+		},
+		HostKeyCallback: ssh.FixedHostKey(hostKey),
+	}
+
 	client, err := ssh.Dial("tcp", "host.com:22", config)
 	if err != nil {
 		log.Fatalf("unable to connect: %v", err)
