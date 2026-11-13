@@ -535,7 +535,13 @@ func handleAuthResponse(c packetConn) (authResult, []string, error) {
 func handleBannerResponse(c packetConn, packet []byte) error {
 	var msg userAuthBannerMsg
 	if err := Unmarshal(packet, &msg); err != nil {
-		return err
+		// The banner message is informational and has no effect on
+		// the authentication outcome (RFC 4252, Section 5.4). Some
+		// servers send malformed banners, for example with trailing
+		// bytes after the language tag, and other clients such as
+		// OpenSSH tolerate them, so ignore banners that fail to
+		// parse instead of failing the handshake.
+		return nil
 	}
 
 	transport, ok := c.(*handshakeTransport)
