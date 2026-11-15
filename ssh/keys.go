@@ -1209,6 +1209,8 @@ func ParseRawPrivateKey(pemBytes []byte) (interface{}, error) {
 	// RFC5208 - https://tools.ietf.org/html/rfc5208
 	case "PRIVATE KEY":
 		return x509.ParsePKCS8PrivateKey(block.Bytes)
+	case "ENCRYPTED PRIVATE KEY":
+		return nil, &PassphraseMissingError{}
 	case "EC PRIVATE KEY":
 		return x509.ParseECPrivateKey(block.Bytes)
 	case "OPENSSH PRIVATE KEY":
