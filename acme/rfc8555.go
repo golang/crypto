@@ -109,10 +109,16 @@ func (c *Client) updateRegRFC(ctx context.Context, a *Account) (*Account, error)
 	if url == "" {
 		return nil, ErrNoAccount
 	}
+	contact := a.Contact
+	if contact == nil {
+		// An empty array removes existing contacts. A missing field leaves
+		// them unchanged, and null is not an array as required by RFC 8555.
+		contact = []string{}
+	}
 	req := struct {
-		Contact []string `json:"contact,omitempty"`
+		Contact []string `json:"contact"`
 	}{
-		Contact: a.Contact,
+		Contact: contact,
 	}
 	res, err := c.post(ctx, nil, url, req, wantStatus(http.StatusOK))
 	if err != nil {
