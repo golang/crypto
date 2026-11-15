@@ -272,24 +272,31 @@ func (s *String) ReadASN1Boolean(out *bool) bool {
 // ReadASN1Integer reports whether the read was successful.
 func (s *String) ReadASN1Integer(out interface{}) bool {
 	switch out := out.(type) {
-	case *int, *int8, *int16, *int32, *int64:
-		var i int64
-		if !s.readASN1Int64(&i) || reflect.ValueOf(out).Elem().OverflowInt(i) {
-			return false
-		}
-		reflect.ValueOf(out).Elem().SetInt(i)
-		return true
-	case *uint, *uint8, *uint16, *uint32, *uint64:
-		var u uint64
-		if !s.readASN1Uint64(&u) || reflect.ValueOf(out).Elem().OverflowUint(u) {
-			return false
-		}
-		reflect.ValueOf(out).Elem().SetUint(u)
-		return true
 	case *big.Int:
 		return s.readASN1BigInt(out)
 	case *[]byte:
 		return s.readASN1Bytes(out)
+	}
+	v := reflect.ValueOf(out)
+	if v.Kind() != reflect.Ptr {
+		panic("out is not a pointer")
+	}
+	v = v.Elem()
+	switch v.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		var i int64
+		if !s.readASN1Int64(&i) || v.OverflowInt(i) {
+			return false
+		}
+		v.SetInt(i)
+		return true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		var u uint64
+		if !s.readASN1Uint64(&u) || v.OverflowUint(u) {
+			return false
+		}
+		v.SetUint(u)
+		return true
 	default:
 		panic("out does not point to an integer type")
 	}
@@ -688,8 +695,7 @@ func (s *String) ReadOptionalASN1Integer(out interface{}, tag asn1.Tag, defaultV
 	}
 	if !present {
 		switch out.(type) {
-		case *int, *int8, *int16, *int32, *int64,
-			*uint, *uint8, *uint16, *uint32, *uint64, *[]byte:
+		case *[]byte:
 			reflect.ValueOf(out).Elem().Set(reflect.ValueOf(defaultValue))
 		case *big.Int:
 			if defaultValue, ok := defaultValue.(*big.Int); ok {
@@ -698,6 +704,16 @@ func (s *String) ReadOptionalASN1Integer(out interface{}, tag asn1.Tag, defaultV
 				panic("out points to big.Int, but defaultValue does not")
 			}
 		default:
+			v := reflect.ValueOf(out)
+			if v.Kind() == reflect.Ptr {
+				v = v.Elem()
+				switch v.Kind() {
+				case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+					v.Set(reflect.ValueOf(defaultValue))
+					return true
+				}
+			}
 			panic("invalid integer type")
 		}
 		return true
