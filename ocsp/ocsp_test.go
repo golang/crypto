@@ -533,6 +533,49 @@ func createMultiResp() ([]byte, error) {
 		},
 	})
 }
+func selfSignedCA(t *testing.T, serial int64, cn string) (*x509.Certificate, *rsa.PrivateKey) {
+	t.Helper()
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmpl := &x509.Certificate{
+		SerialNumber:          big.NewInt(serial),
+		Subject:               pkix.Name{CommonName: cn},
+		NotBefore:             time.Now().Add(-time.Hour),
+		NotAfter:              time.Now().Add(time.Hour),
+		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature,
+		IsCA:                  true,
+		BasicConstraintsValid: true,
+	}
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cert, key
+}
+
+func issuerHashesForTest(t *testing.T, issuer *x509.Certificate) ([]byte, []byte) {
+	t.Helper()
+	var publicKeyInfo struct {
+		Algorithm pkix.AlgorithmIdentifier
+		PublicKey asn1.BitString
+	}
+	if _, err := asn1.Unmarshal(issuer.RawSubjectPublicKeyInfo, &publicKeyInfo); err != nil {
+		t.Fatal(err)
+	}
+	h := sha1.New()
+	h.Write(publicKeyInfo.PublicKey.RightAlign())
+	keyHash := h.Sum(nil)
+	h.Reset()
+	h.Write(issuer.RawSubject)
+	nameHash := h.Sum(nil)
+	return nameHash, keyHash
+}
 
 func TestOCSPDecodeMultiResponse(t *testing.T) {
 	respBytes, err := createMultiResp()
@@ -559,6 +602,105 @@ func TestOCSPDecodeMultiResponseWithoutMatchingCert(t *testing.T) {
 	want := ParseError("no response matching the supplied certificate")
 	if err != want {
 		t.Errorf("err: got %q, want %q", err, want)
+	}
+}
+func TestParseResponseForCertMatchesFullCertIDWhenIssuerProvided(t *testing.T) {
+	issuerA, keyA := selfSignedCA(t, 1, "issuer-a")
+	issuerB, _ := selfSignedCA(t, 2, "issuer-b")
+	serial := big.NewInt(42)
+	nameHashA, keyHashA := issuerHashesForTest(t, issuerA)
+	nameHashB, keyHashB := issuerHashesForTest(t, issuerB)
+	sha1OID := getOIDFromHashAlgorithm(crypto.SHA1)
+
+	wrongFirst := singleResponse{
+		CertID: certID{
+			HashAlgorithm: pkix.AlgorithmIdentifier{
+				Algorithm:  sha1OID,
+				Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+			},
+			NameHash:      nameHashB,
+			IssuerKeyHash: keyHashB,
+			SerialNumber:  serial,
+		},
+		ThisUpdate: time.Now().UTC(),
+		NextUpdate: time.Now().Add(time.Hour).UTC(),
+		Good:       true,
+	}
+	correctSecond := singleResponse{
+		CertID: certID{
+			HashAlgorithm: pkix.AlgorithmIdentifier{
+				Algorithm:  sha1OID,
+				Parameters: asn1.RawValue{Tag: 5 /* ASN.1 NULL */},
+			},
+			NameHash:      nameHashA,
+			IssuerKeyHash: keyHashA,
+			SerialNumber:  serial,
+		},
+		ThisUpdate: time.Now().UTC(),
+		NextUpdate: time.Now().Add(time.Hour).UTC(),
+		Revoked: revokedInfo{
+			RevocationTime: time.Now().UTC(),
+			Reason:         1,
+		},
+	}
+	rawResponderID := asn1.RawValue{
+		Class:      2, // context-specific
+		Tag:        1, // Name (explicit tag)
+		IsCompound: true,
+		Bytes:      issuerA.RawSubject,
+	}
+	tbsResponseData := responseData{
+		Version:        0,
+		RawResponderID: rawResponderID,
+		ProducedAt:     time.Now().Truncate(time.Minute).UTC(),
+		Responses:      []singleResponse{wrongFirst, correctSecond},
+	}
+	tbsResponseDataDER, err := asn1.Marshal(tbsResponseData)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hashFunc, signatureAlgorithm, err := signingParamsForPublicKey(keyA.Public(), x509.SHA256WithRSA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	responseHash := hashFunc.New()
+	responseHash.Write(tbsResponseDataDER)
+	signature, err := keyA.Sign(rand.Reader, responseHash.Sum(nil), hashFunc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := basicResponse{
+		TBSResponseData:    tbsResponseData,
+		SignatureAlgorithm: signatureAlgorithm,
+		Signature: asn1.BitString{
+			Bytes:     signature,
+			BitLength: 8 * len(signature),
+		},
+	}
+	responseDER, err := asn1.Marshal(response)
+	if err != nil {
+		t.Fatal(err)
+	}
+	respBytes, err := asn1.Marshal(responseASN1{
+		Status: asn1.Enumerated(Success),
+		Response: responseBytes{
+			ResponseType: idPKIXOCSPBasic,
+			Response:     responseDER,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, err := ParseResponseForCert(respBytes, &x509.Certificate{SerialNumber: serial}, issuerA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.Status != Revoked {
+		t.Fatalf("resp.Status: got %v, want %v", resp.Status, Revoked)
+	}
+	if resp.RevocationReason != int(correctSecond.Revoked.Reason) {
+		t.Fatalf("resp.RevocationReason: got %v, want %v", resp.RevocationReason, correctSecond.Revoked.Reason)
 	}
 }
 
