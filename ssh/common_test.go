@@ -188,6 +188,11 @@ func TestKeyFormatAlgorithms(t *testing.T) {
 		if keyFormat == "" {
 			t.Errorf("got empty key format for algorithm %q", algo)
 		}
+		// WebAuthn signatures are only verified, never produced, so the
+		// algorithm is intentionally absent from algorithmsForKeyFormat.
+		if algo == SigAlgoWebAuthnSKECDSA256 {
+			continue
+		}
 		if !slices.Contains(algorithmsForKeyFormat(keyFormat), algo) {
 			t.Errorf("algorithms for key format %q, does not contain %q", keyFormat, algo)
 		}
