@@ -13,6 +13,7 @@ import (
 	"io"
 	"math/rand"
 	"net"
+	"strings"
 	"sync"
 	"testing"
 
@@ -311,6 +312,47 @@ func TestUnknownExitSignal(t *testing.T) {
 	}
 	if e.Signal() != "SYS" || e.ExitStatus() != 128 {
 		t.Fatalf("expected command to exit with signal SYS and status 128 but got signal %s and status %v", e.Signal(), e.ExitStatus())
+	}
+}
+
+func TestExitSignalSanitizesError(t *testing.T) {
+	const (
+		signal = "TERM\x1b[2J"
+		errmsg = "bye\r\n\x1b]0;title\a"
+	)
+	conn := dial(func(ch Channel, in <-chan *Request, t *testing.T) {
+		defer ch.Close()
+		shell := newServerShell(ch, in, "> ")
+		readLine(shell, t)
+		sig := exitSignalMsg{Signal: signal, Errmsg: errmsg}
+		if _, err := ch.SendRequest("exit-signal", false, Marshal(&sig)); err != nil {
+			t.Errorf("unable to send signal: %v", err)
+		}
+	}, t)
+	defer conn.Close()
+	session, err := conn.NewSession()
+	if err != nil {
+		t.Fatalf("Unable to request new session: %v", err)
+	}
+	defer session.Close()
+	if err := session.Shell(); err != nil {
+		t.Fatalf("Unable to execute command: %v", err)
+	}
+	err = session.Wait()
+	e, ok := err.(*ExitError)
+	if !ok {
+		t.Fatalf("expected *ExitError but got %T", err)
+	}
+	if e.Signal() != signal || e.Msg() != errmsg {
+		t.Errorf("got signal %q and msg %q, want %q and %q", e.Signal(), e.Msg(), signal, errmsg)
+	}
+	got := e.Error()
+	want := `Process exited with status 128 from signal "TERM\x1b[2J". Reason was: "bye\r\n\x1b]0;title\a"`
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if bad := "\n\r\a\x1b"; strings.ContainsAny(got, bad) {
+		t.Errorf("got %q, want none of %q", got, bad)
 	}
 }
 

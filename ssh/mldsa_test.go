@@ -170,6 +170,7 @@ func TestMLDSAVerifyRejectsBadSignatures(t *testing.T) {
 		{"wrong format", &Signature{Format: KeyAlgoED25519, Blob: sig.Blob}, "signature type"},
 		{"other parameter set format", &Signature{Format: KeyAlgoMLDSA44, Blob: sig.Blob}, "signature type"},
 		{"signature from another parameter set", smallerSig, "signature type"},
+		{"control characters in format", &Signature{Format: "evil\x1b[31m\r\n", Blob: sig.Blob}, `"evil\x1b[31m\r\n"`},
 		{"truncated signature", &Signature{Format: algo, Blob: shortSig}, "did not verify"},
 		{"extended signature", &Signature{Format: algo, Blob: longSig}, "did not verify"},
 		{"empty signature", &Signature{Format: algo, Blob: nil}, "did not verify"},

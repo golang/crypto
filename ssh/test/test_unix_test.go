@@ -25,23 +25,17 @@ import (
 	"golang.org/x/crypto/ssh/testdata"
 )
 
-// unixConnection creates two halves of a connected net.UnixConn.  It
-// is used for connecting the Go SSH client with sshd without opening
-// ports.
-func unixConnection() (*net.UnixConn, *net.UnixConn, error) {
-	dir, err := os.MkdirTemp("", "unixConnection")
-	if err != nil {
-		return nil, nil, err
-	}
-	defer os.Remove(dir)
-
-	addr := filepath.Join(dir, "ssh")
-	listener, err := net.Listen("unix", addr)
+// loopbackConnection creates two halves of a connected net.TCPConn on
+// the loopback interface. It is used for connecting the Go SSH client
+// with sshd running in inetd mode. The macOS sshd terminates the
+// session if the peer address is not an IP address.
+func loopbackConnection() (*net.TCPConn, *net.TCPConn, error) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		return nil, nil, err
 	}
 	defer listener.Close()
-	c1, err := net.Dial("unix", addr)
+	c1, err := net.Dial("tcp", listener.Addr().String())
 	if err != nil {
 		return nil, nil, err
 	}
@@ -52,7 +46,7 @@ func unixConnection() (*net.UnixConn, *net.UnixConn, error) {
 		return nil, nil, err
 	}
 
-	return c1.(*net.UnixConn), c2.(*net.UnixConn), nil
+	return c1.(*net.TCPConn), c2.(*net.TCPConn), nil
 }
 
 func (s *server) TryDial(config *ssh.ClientConfig) (*ssh.Client, error) {
@@ -67,9 +61,9 @@ func (s *server) TryDialWithAddr(config *ssh.ClientConfig, addr string) (client 
 		s.t.Skipf("skipping test: %v", err)
 	}
 
-	c1, c2, err := unixConnection()
+	c1, c2, err := loopbackConnection()
 	if err != nil {
-		s.t.Fatalf("unixConnection: %v", err)
+		s.t.Fatalf("loopbackConnection: %v", err)
 	}
 	defer func() {
 		// Close c2 after we've started the sshd command so that it won't prevent c1
@@ -86,7 +80,7 @@ func (s *server) TryDialWithAddr(config *ssh.ClientConfig, addr string) (client 
 
 	f, err := c2.File()
 	if err != nil {
-		s.t.Fatalf("UnixConn.File: %v", err)
+		s.t.Fatalf("TCPConn.File: %v", err)
 	}
 	defer f.Close()
 

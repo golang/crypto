@@ -175,7 +175,8 @@ func skKeyWithoutUP(pubKey PublicKey) PublicKey {
 	return &c
 }
 
-// ServerConfig holds server specific configuration data.
+// ServerConfig holds server specific configuration data. It must not be
+// modified after having been passed to an SSH function.
 type ServerConfig struct {
 	// Config contains configuration shared between client and server.
 	Config
@@ -437,7 +438,7 @@ func (s *connection) serverHandshake(config *ServerConfig) (*Permissions, error)
 		return nil, err
 	}
 	if serviceRequest.Service != serviceUserAuth {
-		return nil, errors.New("ssh: requested service '" + serviceRequest.Service + "' before authenticating")
+		return nil, fmt.Errorf("ssh: requested service %q before authenticating", serviceRequest.Service)
 	}
 	serviceAccept := serviceAcceptMsg{
 		Service: serviceUserAuth,

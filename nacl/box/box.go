@@ -78,14 +78,32 @@ var zeros [16]byte
 // and writes it to sharedKey. The shared key can be used with
 // OpenAfterPrecomputation and SealAfterPrecomputation to speed up processing
 // when using the same pair of keys repeatedly.
+//
+// Precompute panics if peersPublicKey is a low-order point, as the shared key
+// would not depend on privateKey.
 func Precompute(sharedKey, peersPublicKey, privateKey *[32]byte) {
-	curve25519.ScalarMult(sharedKey, privateKey, peersPublicKey)
+	if err := precompute(sharedKey, peersPublicKey, privateKey); err != nil {
+		panic("box: " + err.Error())
+	}
+}
+
+// precompute is like Precompute, but returns an error instead of panicking.
+func precompute(sharedKey, peersPublicKey, privateKey *[32]byte) error {
+	sk, err := curve25519.X25519(privateKey[:], peersPublicKey[:])
+	if err != nil {
+		return err
+	}
+	copy(sharedKey[:], sk)
 	salsa.HSalsa20(sharedKey, &zeros, sharedKey, &salsa.Sigma)
+	return nil
 }
 
 // Seal appends an encrypted and authenticated copy of message to out, which
 // will be Overhead bytes longer than the original and must not overlap it. The
 // nonce must be unique for each distinct message for a given pair of keys.
+//
+// Seal panics if peersPublicKey is a low-order point, as the message would be
+// encrypted with a key that does not depend on privateKey.
 func Seal(out, message []byte, nonce *[24]byte, peersPublicKey, privateKey *[32]byte) []byte {
 	var sharedKey [32]byte
 	Precompute(&sharedKey, peersPublicKey, privateKey)
@@ -101,9 +119,13 @@ func SealAfterPrecomputation(out, message []byte, nonce *[24]byte, sharedKey *[3
 // Open authenticates and decrypts a box produced by Seal and appends the
 // message to out, which must not overlap box. The output will be Overhead
 // bytes smaller than box.
+//
+// Open returns false if peersPublicKey is a low-order point.
 func Open(out, box []byte, nonce *[24]byte, peersPublicKey, privateKey *[32]byte) ([]byte, bool) {
 	var sharedKey [32]byte
-	Precompute(&sharedKey, peersPublicKey, privateKey)
+	if err := precompute(&sharedKey, peersPublicKey, privateKey); err != nil {
+		return nil, false
+	}
 	return secretbox.Open(out, box, nonce, &sharedKey)
 }
 
@@ -117,6 +139,8 @@ func OpenAfterPrecomputation(out, box []byte, nonce *[24]byte, sharedKey *[32]by
 // which will be AnonymousOverhead bytes longer than the original and must not
 // overlap it. This differs from Seal in that the sender is not required to
 // provide a private key.
+//
+// SealAnonymous returns an error if recipient is a low-order point.
 func SealAnonymous(out, message []byte, recipient *[32]byte, rand io.Reader) ([]byte, error) {
 	if rand == nil {
 		rand = cryptorand.Reader
@@ -131,6 +155,11 @@ func SealAnonymous(out, message []byte, recipient *[32]byte, rand io.Reader) ([]
 		return nil, err
 	}
 
+	var sharedKey [32]byte
+	if err := precompute(&sharedKey, recipient, ephemeralPriv); err != nil {
+		return nil, err
+	}
+
 	if total := len(out) + AnonymousOverhead + len(message); cap(out) < total {
 		original := out
 		out = make([]byte, 0, total)
@@ -138,7 +167,7 @@ func SealAnonymous(out, message []byte, recipient *[32]byte, rand io.Reader) ([]
 	}
 	out = append(out, ephemeralPub[:]...)
 
-	return Seal(out, message, &nonce, recipient, ephemeralPriv), nil
+	return secretbox.Seal(out, message, &nonce, &sharedKey), nil
 }
 
 // OpenAnonymous authenticates and decrypts a box produced by SealAnonymous and

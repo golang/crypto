@@ -40,7 +40,15 @@ func startOpenSSHAgent(t *testing.T) (client ExtendedAgent, socket string, clean
 		t.Skip("could not find ssh-agent")
 	}
 
-	cmd := exec.Command(bin, "-s")
+	// Unix socket paths are limited to 104 bytes on darwin, so use a short
+	// directory instead of the default one under HOME.
+	dir, err := os.MkdirTemp("", "sshagent")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+
+	cmd := exec.Command(bin, "-s", "-a", filepath.Join(dir, "agent.sock"))
 	cmd.Env = []string{
 		// ssh-agent creates ~/.ssh and ~/.ssh/agent;
 		// ensure a writeable home directory.
@@ -89,7 +97,6 @@ func startOpenSSHAgent(t *testing.T) (client ExtendedAgent, socket string, clean
 			proc.Kill()
 		}
 		conn.Close()
-		os.RemoveAll(filepath.Dir(socket))
 	}
 }
 
