@@ -492,6 +492,28 @@ func TestParseECPrivateKey(t *testing.T) {
 	}
 }
 
+func TestParseEncryptedPKCS8PrivateKey(t *testing.T) {
+	// EncryptedPrivateKeyInfo example from RFC 7468, Section 11.
+	key := []byte(`-----BEGIN ENCRYPTED PRIVATE KEY-----
+MIHNMEAGCSqGSIb3DQEFDTAzMBsGCSqGSIb3DQEFDDAOBAghhICA6T/51QICCAAw
+FAYIKoZIhvcNAwcECBCxDgvI59i9BIGIY3CAqlMNBgaSI5QiiWVNJ3IpfLnEiEsW
+Z0JIoHyRmKK/+cr9QPLnzxImm0TR9s4JrG3CilzTWvb0jIvbG3hu0zyFPraoMkap
+8eRzWsIvC5SVel+CSjoS2mVS87cyjlD+txrmrXOVYDE+eTgMLbrLmsWh3QkCTRtF
+QC7k0NNzUHTV9yGDwfqMbw==
+-----END ENCRYPTED PRIVATE KEY-----
+`)
+	if _, err := ParseRawPrivateKey(key); err == nil {
+		t.Fatal("ParseRawPrivateKey succeeded; want PassphraseMissingError")
+	} else if _, ok := err.(*PassphraseMissingError); !ok {
+		t.Errorf("ParseRawPrivateKey error = %v; want PassphraseMissingError", err)
+	}
+	if _, err := ParsePrivateKey(key); err == nil {
+		t.Fatal("ParsePrivateKey succeeded; want PassphraseMissingError")
+	} else if _, ok := err.(*PassphraseMissingError); !ok {
+		t.Errorf("ParsePrivateKey error = %v; want PassphraseMissingError", err)
+	}
+}
+
 func TestParseEncryptedPrivateKeysWithPassphrase(t *testing.T) {
 	data := []byte("sign me")
 	for _, tt := range testdata.PEMEncryptedKeys {
