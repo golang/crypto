@@ -628,6 +628,44 @@ func TestRFC_UpdateReg(t *testing.T) {
 	}
 }
 
+func TestRFC_UpdateRegRemoveContact(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		contact []string
+	}{
+		{"nil", nil},
+		{"empty", []string{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := newACMEServer()
+			s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Location", s.url("/accounts/1"))
+				w.Write([]byte(`{"status": "valid"}`))
+			})
+			var didUpdate bool
+			s.handle("/accounts/1", func(w http.ResponseWriter, r *http.Request) {
+				didUpdate = true
+				var req struct{ Contact *[]string }
+				decodeJWSRequest(t, &req, r.Body)
+				if req.Contact == nil || len(*req.Contact) != 0 {
+					t.Errorf("contact = %v; want an empty JSON array", req.Contact)
+				}
+				w.Write([]byte(`{"status": "valid"}`))
+			})
+			s.start()
+			defer s.close()
+
+			cl := &Client{Key: testKeyEC, DirectoryURL: s.url("/")}
+			if _, err := cl.UpdateReg(context.Background(), &Account{Contact: tc.contact}); err != nil {
+				t.Fatal(err)
+			}
+			if !didUpdate {
+				t.Error("UpdateReg didn't update the account")
+			}
+		})
+	}
+}
+
 func TestRFC_GetReg(t *testing.T) {
 	s := newACMEServer()
 	s.handle("/acme/new-account", func(w http.ResponseWriter, r *http.Request) {
