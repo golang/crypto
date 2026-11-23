@@ -10,6 +10,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
@@ -1225,18 +1226,26 @@ func (*markerConn) SetWriteDeadline(t time.Time) error { return nil }
 // skTestSigner is a Signer that produces SK-ECDSA signatures over
 // user-auth data, simulating a FIDO/U2F authenticator. The flags
 // byte (UP and other bits) is caller-controlled so tests can exercise
-// the server's user-presence enforcement and its opt-out paths. This
-// is test-only: the real Signer is hardware-backed.
+// the server's user-presence enforcement and its opt-out paths. With
+// webauthn set, it produces WebAuthn signatures instead, simulating a
+// web browser. This is test-only: the real Signer is hardware-backed.
 type skTestSigner struct {
 	priv        *ecdsa.PrivateKey
 	pub         PublicKey
 	flags       byte
 	application string
+	webauthn    bool
 }
 
 func (s *skTestSigner) PublicKey() PublicKey { return s.pub }
 
 func (s *skTestSigner) Sign(r io.Reader, data []byte) (*Signature, error) {
+	if s.webauthn {
+		const origin = "https://example.com"
+		clientData := fmt.Sprintf(`{"type":"webauthn.get","challenge":"%s","origin":"%s"}`,
+			base64.RawURLEncoding.EncodeToString(data), origin)
+		return signWebAuthnSK(r, s.priv, s.application, data, s.flags, origin, clientData, "")
+	}
 	h := sha256.New()
 	h.Write([]byte(s.application))
 	appDigest := h.Sum(nil)
@@ -1341,6 +1350,82 @@ func TestServerAuthSKUserPresence(t *testing.T) {
 	t.Run("non-SK RSA signer unaffected", func(t *testing.T) {
 		if err := runAuth(t, testSigners["rsa"], nil); err != nil {
 			t.Errorf("plain RSA auth must still work: %v", err)
+		}
+	})
+	t.Run("WebAuthn UP=1, default perms accepts", func(t *testing.T) {
+		s := &skTestSigner{priv: userKey, pub: skPub, flags: flagUserPresence, application: "ssh:", webauthn: true}
+		if err := runAuth(t, s, nil); err != nil {
+			t.Errorf("expected WebAuthn auth to succeed: %v", err)
+		}
+	})
+	t.Run("WebAuthn UP=0, default perms rejects", func(t *testing.T) {
+		s := &skTestSigner{priv: userKey, pub: skPub, flags: 0, application: "ssh:", webauthn: true}
+		if err := runAuth(t, s, nil); err == nil {
+			t.Error("expected WebAuthn auth to fail with UP=0")
+		}
+	})
+	t.Run("WebAuthn UP=0, perms opt-out accepts", func(t *testing.T) {
+		s := &skTestSigner{priv: userKey, pub: skPub, flags: 0, application: "ssh:", webauthn: true}
+		if err := runAuth(t, s, optOut); err != nil {
+			t.Errorf("expected WebAuthn auth to succeed with opt-out: %v", err)
+		}
+	})
+	t.Run("WebAuthn certificate UP=1 accepts", func(t *testing.T) {
+		cert := &Certificate{
+			Key:             skPub,
+			ValidPrincipals: []string{"user"},
+			CertType:        UserCert,
+			ValidBefore:     CertTimeInfinity,
+		}
+		if err := cert.SignCert(rand.Reader, testSigners["ecdsa"]); err != nil {
+			t.Fatal(err)
+		}
+		s := &skTestSigner{priv: userKey, pub: skPub, flags: flagUserPresence, application: "ssh:", webauthn: true}
+		certSigner, err := NewCertSigner(cert, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runAuth(t, certSigner, nil); err != nil {
+			t.Errorf("expected WebAuthn certificate auth to succeed: %v", err)
+		}
+	})
+	t.Run("WebAuthn certificate UP=0 rejects without extension", func(t *testing.T) {
+		cert := &Certificate{
+			Key:             skPub,
+			ValidPrincipals: []string{"user"},
+			CertType:        UserCert,
+			ValidBefore:     CertTimeInfinity,
+		}
+		if err := cert.SignCert(rand.Reader, testSigners["ecdsa"]); err != nil {
+			t.Fatal(err)
+		}
+		s := &skTestSigner{priv: userKey, pub: skPub, flags: 0, application: "ssh:", webauthn: true}
+		certSigner, err := NewCertSigner(cert, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runAuth(t, certSigner, nil); err == nil {
+			t.Error("expected WebAuthn certificate auth with UP=0 to fail")
+		}
+	})
+	t.Run("WebAuthn certificate UP=0 accepts with cert no-touch-required extension", func(t *testing.T) {
+		cert := &Certificate{
+			Key:             skPub,
+			ValidPrincipals: []string{"user"},
+			CertType:        UserCert,
+			ValidBefore:     CertTimeInfinity,
+			Permissions:     Permissions{Extensions: map[string]string{noTouchRequiredExtension: ""}},
+		}
+		if err := cert.SignCert(rand.Reader, testSigners["ecdsa"]); err != nil {
+			t.Fatal(err)
+		}
+		s := &skTestSigner{priv: userKey, pub: skPub, flags: 0, application: "ssh:", webauthn: true}
+		certSigner, err := NewCertSigner(cert, s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := runAuth(t, certSigner, &cert.Permissions); err != nil {
+			t.Errorf("expected WebAuthn certificate auth with no-touch-required to succeed: %v", err)
 		}
 	})
 }

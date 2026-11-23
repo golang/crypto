@@ -1938,6 +1938,46 @@ func TestCompatibleAlgoAndSignatures(t *testing.T) {
 			KeyAlgoED25519,
 			true,
 		},
+		{
+			KeyAlgoSKECDSA256,
+			KeyAlgoSKECDSA256,
+			true,
+		},
+		{
+			KeyAlgoSKECDSA256,
+			SigAlgoWebAuthnSKECDSA256,
+			true,
+		},
+		{
+			SigAlgoWebAuthnSKECDSA256,
+			SigAlgoWebAuthnSKECDSA256,
+			true,
+		},
+		{
+			SigAlgoWebAuthnSKECDSA256,
+			KeyAlgoSKECDSA256,
+			true,
+		},
+		{
+			CertAlgoSKECDSA256v01,
+			KeyAlgoSKECDSA256,
+			true,
+		},
+		{
+			CertAlgoSKECDSA256v01,
+			SigAlgoWebAuthnSKECDSA256,
+			true,
+		},
+		{
+			KeyAlgoSKED25519,
+			SigAlgoWebAuthnSKECDSA256,
+			false,
+		},
+		{
+			CertAlgoSKED25519v01,
+			SigAlgoWebAuthnSKECDSA256,
+			false,
+		},
 	}
 
 	for _, c := range testcases {

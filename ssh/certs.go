@@ -629,7 +629,7 @@ func parseSignatureBody(in []byte) (out *Signature, rest []byte, ok bool) {
 	}
 
 	switch out.Format {
-	case KeyAlgoSKECDSA256, CertAlgoSKECDSA256v01, KeyAlgoSKED25519, CertAlgoSKED25519v01:
+	case KeyAlgoSKECDSA256, SigAlgoWebAuthnSKECDSA256, CertAlgoSKECDSA256v01, KeyAlgoSKED25519, CertAlgoSKED25519v01:
 		out.Rest = in
 		return out, nil, ok
 	}
