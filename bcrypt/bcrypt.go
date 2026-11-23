@@ -21,7 +21,7 @@ import (
 const (
 	MinCost     int = 4  // the minimum allowable cost as passed in to GenerateFromPassword
 	MaxCost     int = 31 // the maximum allowable cost as passed in to GenerateFromPassword
-	DefaultCost int = 10 // the cost that will actually be set if a cost below MinCost is passed into GenerateFromPassword
+	DefaultCost int = 12 // the cost that will actually be set if a cost below MinCost is passed into GenerateFromPassword
 )
 
 // The error returned from CompareHashAndPassword when a password and hash do
