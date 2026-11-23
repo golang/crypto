@@ -2077,11 +2077,11 @@ func (cb configurablePublicKeyCallback) method() string {
 func (cb configurablePublicKeyCallback) auth(session []byte, user string, c packetConn, rand io.Reader, extensions map[string][]byte) (authResult, []string, error) {
 	pub := cb.signer.PublicKey()
 
-	ok, err := validateKey(pub, cb.signatureAlgo, user, c)
+	query, err := validateKey(pub, cb.signatureAlgo, user, c)
 	if err != nil {
 		return authFailure, nil, err
 	}
-	if !ok {
+	if !query.accepted {
 		return authFailure, nil, fmt.Errorf("invalid public key")
 	}
 

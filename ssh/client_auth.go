@@ -356,10 +356,19 @@ func (cb publicKeyCallback) auth(session []byte, user string, c packetConn, rand
 			errSigAlgo = err
 			continue
 		}
-		ok, err := validateKey(pub, algo, user, c)
+		query, err := validateKey(pub, algo, user, c)
 		if err != nil {
 			return authFailure, nil, err
 		}
+		// Some servers answer the unsigned query with a failure that carries
+		// the partial success flag instead of SSH_MSG_USERAUTH_PK_OK, when
+		// the key alone is enough for the first factor. OpenSSH treats that
+		// answer as the method having succeeded and goes on with the methods
+		// the server lists, without signing; do the same.
+		if query.partialSuccess {
+			return authPartialSuccess, query.methods, nil
+		}
+		ok := query.accepted
 		// OpenSSH 7.2-7.7 advertises support for rsa-sha2-256 and rsa-sha2-512
 		// in the "server-sig-algs" extension but doesn't support these
 		// algorithms for certificate authentication, so if the server rejects
@@ -425,8 +434,18 @@ func (cb publicKeyCallback) auth(session []byte, user string, c packetConn, rand
 	return authFailure, methods, errSigAlgo
 }
 
+// keyQuery is the server's answer to an unsigned public key query.
+type keyQuery struct {
+	// accepted is set by SSH_MSG_USERAUTH_PK_OK: the key may be used to sign.
+	accepted bool
+	// partialSuccess is set when the server answered with a failure that
+	// carries the partial success flag; methods lists what it wants next.
+	partialSuccess bool
+	methods        []string
+}
+
 // validateKey validates the key provided is acceptable to the server.
-func validateKey(key PublicKey, algo string, user string, c packetConn) (bool, error) {
+func validateKey(key PublicKey, algo string, user string, c packetConn) (keyQuery, error) {
 	pubKey := key.Marshal()
 	msg := publickeyAuthMsg{
 		User:     user,
@@ -437,29 +456,29 @@ func validateKey(key PublicKey, algo string, user string, c packetConn) (bool, e
 		PubKey:   pubKey,
 	}
 	if err := c.writePacket(Marshal(&msg)); err != nil {
-		return false, err
+		return keyQuery{}, err
 	}
 
 	return confirmKeyAck(key, c)
 }
 
-func confirmKeyAck(key PublicKey, c packetConn) (bool, error) {
+func confirmKeyAck(key PublicKey, c packetConn) (keyQuery, error) {
 	pubKey := key.Marshal()
 
 	for {
 		packet, err := c.readPacket()
 		if err != nil {
-			return false, err
+			return keyQuery{}, err
 		}
 		switch packet[0] {
 		case msgUserAuthBanner:
 			if err := handleBannerResponse(c, packet); err != nil {
-				return false, err
+				return keyQuery{}, err
 			}
 		case msgUserAuthPubKeyOk:
 			var msg userAuthPubKeyOkMsg
 			if err := Unmarshal(packet, &msg); err != nil {
-				return false, err
+				return keyQuery{}, err
 			}
 			// According to RFC 4252 Section 7 the algorithm in
 			// SSH_MSG_USERAUTH_PK_OK should match that of the request but some
@@ -467,16 +486,23 @@ func confirmKeyAck(key PublicKey, c packetConn) (bool, error) {
 			// that matches the public key, so we do the same.
 			// https://github.com/openssh/openssh-portable/blob/86bdd385/sshconnect2.c#L709
 			if !slices.Contains(algorithmsForKeyFormat(key.Type()), msg.Algo) {
-				return false, nil
+				return keyQuery{}, nil
 			}
 			if !bytes.Equal(msg.PubKey, pubKey) {
-				return false, nil
+				return keyQuery{}, nil
 			}
-			return true, nil
+			return keyQuery{accepted: true}, nil
 		case msgUserAuthFailure:
-			return false, nil
+			var msg userAuthFailureMsg
+			if err := Unmarshal(packet, &msg); err != nil {
+				return keyQuery{}, err
+			}
+			if msg.PartialSuccess {
+				return keyQuery{partialSuccess: true, methods: msg.Methods}, nil
+			}
+			return keyQuery{}, nil
 		default:
-			return false, unexpectedMessageError(msgUserAuthPubKeyOk, packet[0])
+			return keyQuery{}, unexpectedMessageError(msgUserAuthPubKeyOk, packet[0])
 		}
 	}
 }
