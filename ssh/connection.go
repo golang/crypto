@@ -62,11 +62,12 @@ type Conn interface {
 	// connection will hang.
 	OpenChannel(name string, data []byte) (Channel, <-chan *Request, error)
 
-	// Close closes the underlying network connection
+	// Close closes the underlying network connection.
 	Close() error
 
 	// Wait blocks until the connection has shut down, and returns the
-	// error causing the shutdown.
+	// error causing the shutdown. It is typically called from a separate
+	// goroutine, and does not need to be called after Close.
 	Wait() error
 
 	// TODO(hanwen): consider exposing:
